@@ -18,22 +18,6 @@ import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/bui
 
 export function activate(context: ExtensionContext) {
 	init(context);
-	// Access the configuration for your plugin
-	const config = workspace.getConfiguration('myPlugin');
-
-	// Read the settings
-	const someSetting = config.get('someSetting');
-	const isFeatureEnabled = config.get('enableFeature');
-	const numberSetting = config.get('numberSetting');
-  
-	console.log('Setting value:', someSetting);
-	console.log('Is feature enabled:', isFeatureEnabled);
-	console.log('Number setting:', numberSetting);
-  
-	// Example of using a setting in your plugin's logic
-	if (isFeatureEnabled) {
-	  // Do something if the feature is enabled
-	}
 
 	let buildCommandsCache: CommandsCache;
 
