@@ -1,5 +1,5 @@
 import { BaseMetaItem } from "./base-meta-item";
-import { View } from "./View";
+import { View } from "./view";
 
 export class GraphStructure extends BaseMetaItem {
 	public views? :  { [x: string] : View};
