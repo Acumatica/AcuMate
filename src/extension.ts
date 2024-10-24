@@ -7,7 +7,7 @@ import { setPrimaryView } from './create-screen/set-primary-view';
 import { setViewTypes } from './create-screen/set-view-types';
 import { selectFields } from './create-screen/select-fields';
 
-import { buildScreens, CommandsCache } from './build-commands/build-screens';
+import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 
 
 export function activate(context: ExtensionContext) {
@@ -26,6 +26,13 @@ export function activate(context: ExtensionContext) {
 		const primaryView = await setPrimaryView(views);
 		await setViewTypes(views);
 		await selectFields(views);
+	});
+
+	disposable = commands.registerCommand('acumate.buildMenu', async () => {
+		const command = await openBuildMenu();
+		if (command) {
+			commands.executeCommand(command);
+		}
 	});
 
 	disposable = commands.registerCommand('acumate.buildScreensDev', async () => {
