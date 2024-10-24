@@ -1,4 +1,4 @@
-import { ExtensionContext, commands, workspace } from 'vscode';
+import { ExtensionContext, commands, languages, CodeActionProvider, CodeActionKind, TextDocument, Range, CodeAction, WorkspaceEdit } from 'vscode';
 
 import { CachedDataService } from './api/cached-data-service';
 import { AcuMateApiClient } from './api/api-service';
@@ -12,6 +12,8 @@ import { selectViews } from './create-screen/select-views';
 import { setPrimaryView } from './create-screen/set-primary-view';
 import { setViewTypes } from './create-screen/set-view-types';
 import { selectFields } from './create-screen/select-fields';
+
+import { BulbActionsProvider } from './providers/bulb-actions-provider';
 
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 
@@ -149,6 +151,11 @@ export function activate(context: ExtensionContext) {
 
 	disposable = commands.registerCommand('acumate.dropCache', async () => {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
+	});
+	context.subscriptions.push(disposable);
+
+	disposable = languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
+		providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
 	});
 	context.subscriptions.push(disposable);
 }
