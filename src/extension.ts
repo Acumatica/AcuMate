@@ -11,7 +11,13 @@ export function activate(context: ExtensionContext) {
 	const disposable = commands.registerCommand('acumate.createScreen', async () => {
 		const screenId = await setScreenName();
 		const graphType = await selectGraphType();
-		const views = await selectViews();
+		if (!graphType) {
+			return;
+		}
+		const views = await selectViews(graphType);
+		if (!views) {
+			return;
+		}
 		const primaryView = await setPrimaryView(views);
 		await setViewTypes(views);
 		await selectFields(views);

@@ -1,12 +1,23 @@
 import { window, QuickPickItem } from 'vscode';
 import { CREATE_SCREEN_TITLE } from '../constants';
 import { IView } from '../types';
+import { AcuMateApiClient } from '../api/api-service';
 
-const items = ['OAuthResource', 'Roles']; // TODO: get these items with backend api
 const placeHolder = 'Select Views';
 
-export async function selectViews(): Promise<IView[]> {
-	const result = await window.showQuickPick(items.map(label => ({ label })), {
+export async function selectViews(graphName: string): Promise<IView[] | undefined> {
+	var apiClient = new AcuMateApiClient();
+	var graphStructure = await apiClient.getGraphStructure(graphName);
+	if (!graphStructure?.views) {
+		return undefined;
+	}
+
+	var views: QuickPickItem[] = [];
+	graphStructure.views.forEach(v => {
+		views.push({ label: v.name ?? "", description: v.cacheName, detail: v.cacheType });
+		
+	});
+	const result = await window.showQuickPick<QuickPickItem>(views, {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
 		canPickMany: true,
@@ -19,7 +30,7 @@ export async function selectViews(): Promise<IView[]> {
 	}
 
 	window.showErrorMessage(validationErrors);
-	return selectViews();
+	return selectViews(graphName);
 }
 
 function validateViews(items?: QuickPickItem[]) {

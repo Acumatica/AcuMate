@@ -1,8 +1,10 @@
 import { Axios } from "axios";
 import { GraphModel } from "../model/graph-model";
 import { json } from "stream/consumers";
+import { GraphStructure } from "../model/graph-structure";
 
 const GraphAPIRoute = "ui/graphs";
+const GraphAPIStructureRoute = "ui/graphs/";
 
 export class AcuMateApiClient {
     private client = new Axios({});
@@ -46,5 +48,9 @@ export class AcuMateApiClient {
 
     public async getGraphs(): Promise<GraphModel[] | undefined> {
         return await this.makeGetRequest<GraphModel[]>(GraphAPIRoute);
+    }
+
+    public async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
+        return await this.makeGetRequest<GraphStructure>(GraphAPIStructureRoute + graphName);
     }
 }

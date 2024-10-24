@@ -1,4 +1,6 @@
-export class GraphModel {
+import { BaseMetaItem } from "./base-meta-item";
+
+export class GraphModel extends BaseMetaItem {
     public text?: string;
-    public name?: string;
+    
 }
