@@ -1,12 +1,11 @@
 import { window, QuickPickItem } from 'vscode';
 import { CREATE_SCREEN_TITLE } from '../constants';
-import { IView } from '../types';
-import { AcuMateApiClient } from '../api/api-service';
+import { View } from '../types';
 import { AcuMateContext } from '../plugin-context';
 
 const placeHolder = 'Select Views';
 
-export async function selectViews(graphName: string): Promise<IView[] | undefined> {
+export async function selectViews(graphName: string): Promise<View[] | undefined> {
 	var apiClient = AcuMateContext.ApiService;
 	var graphStructure = await apiClient.getGraphStructure(graphName);
 	if (!graphStructure?.views) {
@@ -32,7 +31,18 @@ export async function selectViews(graphName: string): Promise<IView[] | undefine
 	const validationErrors = validateViews(result);
 	
 	if (!validationErrors) {
-		return result!.map(item => ({ name: item.label }));
+		return result!.map(item => { 
+			var result = new View(item.label);
+			result.dacname = graphStructure!.views![item.label].cacheType; 
+			var fieldsMap = graphStructure!.views![item.label].fields;
+			if (fieldsMap) {
+				result.fields = [];
+				for (const key in fieldsMap) {
+					result.fields.push(fieldsMap[key]);
+				}
+			}
+			return result;
+	});
 	}
 
 	window.showErrorMessage(validationErrors);

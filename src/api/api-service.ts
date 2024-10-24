@@ -75,7 +75,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
 
             console.log(response.data);
 
-            return json(response.data) as T;
+            return response.data as T;
         }
         catch (error) {
             console.error('Error making POST request:', error);
@@ -106,7 +106,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
 
             console.log(response.data);
 
-            return json(response.data) as T;
+            return response.data as T;
         }
         catch (error) {
             console.error('Error making POST request:', error);

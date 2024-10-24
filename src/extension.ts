@@ -1,4 +1,4 @@
-import { ExtensionContext, commands, workspace } from 'vscode';
+import vscode from 'vscode';
 
 import { CachedDataService } from './api/cached-data-service';
 import { AcuMateApiClient } from './api/api-service';
@@ -14,36 +14,27 @@ import { setViewTypes } from './create-screen/set-view-types';
 import { selectFields } from './create-screen/select-fields';
 
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
+import Handlebars from 'handlebars';
+import { createScreen } from './create-screen/create-screen';
 
 
-export function activate(context: ExtensionContext) {
+export function activate(context: vscode.ExtensionContext) {
 	init(context);
 
 	let buildCommandsCache: CommandsCache;
 
-	let disposable = commands.registerCommand('acumate.createScreen', async () => {
-		const screenId = await setScreenName();
-		const graphType = await selectGraphType();
-		if (!graphType) {
-			return;
-		}
-		const views = await selectViews(graphType);
-		if (!views) {
-			return;
-		}
-		const primaryView = await setPrimaryView(views);
-		await setViewTypes(views);
-		await selectFields(views);
+	let disposable = vscode.commands.registerCommand('acumate.createScreen', async () => {
+		createScreen();
 	});
 
-	disposable = commands.registerCommand('acumate.buildMenu', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildMenu', async () => {
 		const command = await openBuildMenu();
 		if (command) {
-			commands.executeCommand(command);
+			vscode.commands.executeCommand(command);
 		}
 	});
 
-	disposable = commands.registerCommand('acumate.buildScreensDev', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildScreensDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -53,7 +44,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.buildScreens', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildScreens', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -62,7 +53,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.buildScreensByNamesDev', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildScreensByNamesDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -73,7 +64,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.buildScreensByNames', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildScreensByNames', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -83,7 +74,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.buildScreensByModulesDev', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildScreensByModulesDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -94,7 +85,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.buildScreensByModules', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildScreensByModules', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -104,7 +95,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.buildCurrentScreenDev', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildCurrentScreenDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -114,7 +105,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.buildCurrentScreen', async () => {
+	disposable = vscode.commands.registerCommand('acumate.buildCurrentScreen', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -123,7 +114,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.repeatLastBuildCommand', async () => {
+	disposable = vscode.commands.registerCommand('acumate.repeatLastBuildCommand', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
 			...await buildScreens({
@@ -135,7 +126,7 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
-	disposable = commands.registerCommand('acumate.dropCache', async () => {
+	disposable = vscode.commands.registerCommand('acumate.dropCache', async () => {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
 	});
 
@@ -143,11 +134,14 @@ export function activate(context: ExtensionContext) {
 	context.subscriptions.push(disposable);
 }
 
-function init(context: ExtensionContext) {
+function init(context: vscode.ExtensionContext) {
 	AcuMateContext.ConfigurationService = new ConfigurationService();
 	const cacheService = new CachedDataService(context.globalState);
 	const apiClient = new AcuMateApiClient();
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
+
 }
+
+
 
 export function deactivate() {}

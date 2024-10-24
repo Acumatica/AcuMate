@@ -1,6 +1,6 @@
-import { window } from 'vscode';
+import { QuickPickItem, window } from 'vscode';
 import { CREATE_SCREEN_TITLE } from '../constants';
-import { IView, ViewType } from '../types';
+import { View, ViewType } from '../types';
 
 const types = [
 	{
@@ -17,14 +17,14 @@ const types = [
  	},
 ];
 
-export async function setViewTypes(views: IView[]): Promise<void> {
+export async function setViewTypes(views: View[]): Promise<void> {
 	for await (const item of views) {
 		await setTypeForView(item);
 	};
 }
 
-async function setTypeForView(view: IView) {
-	const result = await window.showQuickPick(types.map(item => ({ label: item.description })), {
+async function setTypeForView(view: View) {
+	const result = await window.showQuickPick<QuickPickItem>(types.map(item => ({ label: item.id, description: item.description })), {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder: `Set Type For View "${view.name}"`,
 	});

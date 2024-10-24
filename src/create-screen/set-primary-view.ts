@@ -1,10 +1,10 @@
 import { window } from 'vscode';
 import { CREATE_SCREEN_TITLE } from '../constants';
-import { IView } from '../types';
+import { View } from '../types';
 
 const placeHolder = 'Select Primary View';
 
-export async function setPrimaryView(views: IView[]): Promise<string> {
+export async function setPrimaryView(views: View[]): Promise<string> {
 	const result = await window.showQuickPick(views.map(item => ({ label: item.name })), {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
