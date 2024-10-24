@@ -1,5 +1,11 @@
 import { ExtensionContext, commands, workspace } from 'vscode';
 
+import { CachedDataService } from './api/cached-data-service';
+import { AcuMateApiClient } from './api/api-service';
+import { AcuMateContext } from './plugin-context';
+import { LayeredDataService } from './api/layered-data-service';
+import { ConfigurationService } from './services/configuration-service';
+
 import { setScreenName } from './create-screen/set-screen-name';
 import { selectGraphType } from './create-screen/select-graph-type';
 import { selectViews } from './create-screen/select-views';
@@ -7,12 +13,7 @@ import { setPrimaryView } from './create-screen/set-primary-view';
 import { setViewTypes } from './create-screen/set-view-types';
 import { selectFields } from './create-screen/select-fields';
 
-import { buildScreens, CommandsCache } from './build-commands/build-screens';
-import { CachedDataService } from './api/cached-data-service';
-import { AcuMateApiClient } from './api/api-service';
-import { AcuMateContext } from './plugin-context';
-import { LayeredDataService } from './api/layered-data-service';
-import { ConfigurationService } from './services/configuration-service';
+import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 
 
 export function activate(context: ExtensionContext) {
@@ -49,6 +50,13 @@ export function activate(context: ExtensionContext) {
 		const primaryView = await setPrimaryView(views);
 		await setViewTypes(views);
 		await selectFields(views);
+	});
+
+	disposable = commands.registerCommand('acumate.buildMenu', async () => {
+		const command = await openBuildMenu();
+		if (command) {
+			commands.executeCommand(command);
+		}
 	});
 
 	disposable = commands.registerCommand('acumate.buildScreensDev', async () => {

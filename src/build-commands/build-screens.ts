@@ -1,6 +1,54 @@
-import { window } from 'vscode';
+import { QuickPickItem, QuickPickItemKind, window } from 'vscode';
 
 const title = 'Build Screens';
+const buildCommands = [
+    {
+        command: 'acumate.buildCurrentScreenDev',
+        description: 'Build Current Screen (Dev)',
+    },
+    {
+        command: 'acumate.buildCurrentScreen',
+        description: 'Build Current Screen (Production)',
+    },
+    {
+        separator: true,
+    },
+    {
+        command: 'acumate.buildScreensDev',
+        description: 'Build Screens (Dev)',
+    },
+    {
+        command: 'acumate.buildScreensByNamesDev',
+        description: 'Build Screens by Names (Dev)',
+    },
+    {
+        command: 'acumate.buildScreensByModulesDev',
+        description: 'Build Screens by Modules (Dev)',
+    },
+    {
+        separator: true,
+    },
+    {
+        command: 'acumate.buildScreens',
+        description: 'Build Screens (Production)',
+    },
+    {
+        command: 'acumate.buildScreensByNames',
+        description: 'Build Screens by Names (Production)',
+    },
+    {
+        command: 'acumate.buildScreensByModules',
+        description: 'Build Screens by Modules (Production)',
+    },
+    {
+        separator: true,
+    },
+    {
+        command: 'acumate.repeatLastBuildCommand',
+        description: 'Repeat Last Build Command',
+    },
+];
+
 export type CommandsCache = {
     lastEnteredNames?: string;
     lastEnteredModules?: string;
@@ -18,6 +66,20 @@ interface IBuildParameters {
     currentScreen?: boolean;
     noPrompt?: boolean;
 };
+
+export async function openBuildMenu() {
+    const result = await window.showQuickPick<QuickPickItem>(buildCommands.map(item => ({
+        label: item.description,
+        kind: item.separator ? QuickPickItemKind.Separator : QuickPickItemKind.Default,
+    } as QuickPickItem)), {
+        title,
+    });
+
+    if (!result) {
+        return;
+    }
+    return buildCommands.find(item => item.description === result.label)?.command;
+}
 
 export async function buildScreens(params: IBuildParameters) {
     const terminal = window.createTerminal(title);

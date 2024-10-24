@@ -54,48 +54,79 @@
     "commands": [
       {
         "command": "acumate.createScreen",
-        "title": "Create Screen"
+        "title": "Create Screen",
+        "category": "AcuMate"
+      },
+      {
+        "command": "acumate.buildMenu",
+        "title": "Open Build Menu",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildScreensDev",
-        "title": "Build Screens (Dev)"
+        "title": "Build Screens (Dev)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildScreens",
-        "title": "Build Screens (Production)"
+        "title": "Build Screens (Production)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildScreensByNamesDev",
-        "title": "Build Screens by Names (Dev)"
+        "title": "Build Screens by Names (Dev)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildScreensByNames",
-        "title": "Build Screens by Names (Production)"
+        "title": "Build Screens by Names (Production)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildScreensByModulesDev",
-        "title": "Build Screens by Modules (Dev)"
+        "title": "Build Screens by Modules (Dev)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildScreensByModules",
-        "title": "Build Screens by Modules (Production)"
+        "title": "Build Screens by Modules (Production)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildCurrentScreenDev",
-        "title": "Build Current Screen (Dev) (Hot+Key+Here)"
+        "title": "Build Current Screen (Dev)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.buildCurrentScreen",
-        "title": "Build Current Screen (Production)"
+        "title": "Build Current Screen (Production)",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.repeatLastBuildCommand",
-        "title": "Repeat Last Build Command (Hot+Key+Here)"
+        "title": "Repeat Last Build Command",
+        "category": "AcuMate"
       },
       {
         "command": "acumate.dropCache",
-        "title": "Drop local cache",
+        "title": "Drop Local Cache",
         "category": "AcuMate"
+      }
+    ],
+    "menus": {
+      "editor/context": [{
+        "command": "acumate.buildMenu",
+        "group": "z_commands@0"
+      }]
+    },
+    "keybindings": [
+      {
+        "command": "acumate.repeatLastBuildCommand",
+        "key": "ctrl+b ctrl+l"
+      },
+      {
+        "command": "acumate.buildCurrentScreenDev",
+        "key": "ctrl+b ctrl+c"
       }
     ]
   },
