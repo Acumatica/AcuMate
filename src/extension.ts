@@ -36,8 +36,9 @@ export function activate(context: ExtensionContext) {
 	}
 
 	let buildCommandsCache: CommandsCache;
+	let disposable;
 
-	let disposable = commands.registerCommand('acumate.createScreen', async () => {
+	disposable = commands.registerCommand('acumate.createScreen', async () => {
 		const screenId = await setScreenName();
 		const graphType = await selectGraphType();
 		if (!graphType) {
@@ -51,6 +52,7 @@ export function activate(context: ExtensionContext) {
 		await setViewTypes(views);
 		await selectFields(views);
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildMenu', async () => {
 		const command = await openBuildMenu();
@@ -58,6 +60,7 @@ export function activate(context: ExtensionContext) {
 			commands.executeCommand(command);
 		}
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildScreensDev', async () => {
 		buildCommandsCache = { 
@@ -68,6 +71,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildScreens', async () => {
 		buildCommandsCache = { 
@@ -77,6 +81,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildScreensByNamesDev', async () => {
 		buildCommandsCache = { 
@@ -88,6 +93,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildScreensByNames', async () => {
 		buildCommandsCache = { 
@@ -98,6 +104,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildScreensByModulesDev', async () => {
 		buildCommandsCache = { 
@@ -109,6 +116,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildScreensByModules', async () => {
 		buildCommandsCache = { 
@@ -119,6 +127,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildCurrentScreenDev', async () => {
 		buildCommandsCache = { 
@@ -129,6 +138,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.buildCurrentScreen', async () => {
 		buildCommandsCache = { 
@@ -138,6 +148,7 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.repeatLastBuildCommand', async () => {
 		buildCommandsCache = { 
@@ -150,12 +161,11 @@ export function activate(context: ExtensionContext) {
 			})
 		};
 	});
+	context.subscriptions.push(disposable);
 
 	disposable = commands.registerCommand('acumate.dropCache', async () => {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
 	});
-
-
 	context.subscriptions.push(disposable);
 }
 
