@@ -152,11 +152,10 @@ export function activate(context: ExtensionContext) {
 }
 
 function init(context: ExtensionContext) {
+	AcuMateContext.ConfigurationService = new ConfigurationService();
 	const cacheService = new CachedDataService(context.globalState);
 	const apiClient = new AcuMateApiClient();
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
-
-	AcuMateContext.ConfigurationService = new ConfigurationService();
 }
 
 export function deactivate() {}
