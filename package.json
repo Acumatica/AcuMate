@@ -16,6 +16,42 @@
       {
         "command": "acumate.createScreen",
         "title": "Create Screen"
+      },
+      {
+        "command": "acumate.buildScreensDev",
+        "title": "Build Screens (Dev)"
+      },
+      {
+        "command": "acumate.buildScreens",
+        "title": "Build Screens (Production)"
+      },
+      {
+        "command": "acumate.buildScreensByNamesDev",
+        "title": "Build Screens by Names (Dev)"
+      },
+      {
+        "command": "acumate.buildScreensByNames",
+        "title": "Build Screens by Names (Production)"
+      },
+      {
+        "command": "acumate.buildScreensByModulesDev",
+        "title": "Build Screens by Modules (Dev)"
+      },
+      {
+        "command": "acumate.buildScreensByModules",
+        "title": "Build Screens by Modules (Production)"
+      },
+      {
+        "command": "acumate.buildCurrentScreenDev",
+        "title": "Build Current Screen (Dev) (Hot+Key+Here)"
+      },
+      {
+        "command": "acumate.buildCurrentScreen",
+        "title": "Build Current Screen (Production)"
+      },
+      {
+        "command": "acumate.repeatLastBuildCommand",
+        "title": "Repeat Last Build Command (Hot+Key+Here)"
       }
     ]
   },
