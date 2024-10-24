@@ -37,56 +37,80 @@ export function activate(context: ExtensionContext) {
 	disposable = commands.registerCommand('acumate.buildScreensDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ devMode: true, cache: buildCommandsCache })
+			...await buildScreens({
+				devMode: true,
+				cache: buildCommandsCache,
+			})
 		};
 	});
 
 	disposable = commands.registerCommand('acumate.buildScreens', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ cache: buildCommandsCache })
+			...await buildScreens({
+				cache: buildCommandsCache,
+			})
 		};
 	});
 
 	disposable = commands.registerCommand('acumate.buildScreensByNamesDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ devMode: true, byNames: true, cache: buildCommandsCache })
+			...await buildScreens({
+				devMode: true,
+				byNames: true,
+				cache: buildCommandsCache,
+			})
 		};
 	});
 
 	disposable = commands.registerCommand('acumate.buildScreensByNames', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ byNames: true, cache: buildCommandsCache })
+			...await buildScreens({
+				byNames: true,
+				cache: buildCommandsCache,
+			})
 		};
 	});
 
 	disposable = commands.registerCommand('acumate.buildScreensByModulesDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ devMode: true, byModules: true, cache: buildCommandsCache })
+			...await buildScreens({
+				devMode: true,
+				byModules: true,
+				cache: buildCommandsCache,
+			})
 		};
 	});
 
 	disposable = commands.registerCommand('acumate.buildScreensByModules', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ byModules: true, cache: buildCommandsCache })
+			...await buildScreens({
+				byModules: true,
+				cache: buildCommandsCache,
+			})
 		};
 	});
 
 	disposable = commands.registerCommand('acumate.buildCurrentScreenDev', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ currentScreen: true, devMode: true })
+			...await buildScreens({
+				currentScreen: true,
+				devMode: true,
+			})
 		};
 	});
 
 	disposable = commands.registerCommand('acumate.buildCurrentScreen', async () => {
 		buildCommandsCache = { 
 			...buildCommandsCache, 
-			...await buildScreens({ currentScreen: true })
+			...await buildScreens({
+				currentScreen: true,
+			})
 		};
 	});
 
@@ -97,7 +121,7 @@ export function activate(context: ExtensionContext) {
 				noPrompt: true,
 				byNames: buildCommandsCache.byNames,
 				byModules: buildCommandsCache.byModules,
-				cache: buildCommandsCache
+				cache: buildCommandsCache,
 			})
 		};
 	});

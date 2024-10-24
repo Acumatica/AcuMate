@@ -21,16 +21,15 @@ interface IBuildParameters {
 
 export async function buildScreens(params: IBuildParameters) {
     const terminal = window.createTerminal(title);
-    let result;
     let command = 'npm run build-all';
+    let result;
     
     if (params.devMode) {
         command += '-dev';
     }
 
     if (params.currentScreen) {
-        const currentScreen = 'SO301000'; // getCurrentScreen
-        command += ` -- --env screenIds=${currentScreen}`;
+        command += ` -- --env screenIds=${getOpenedScreenId()}`;
     }
 
     else if (params.byNames) {
@@ -67,6 +66,7 @@ export async function buildScreens(params: IBuildParameters) {
         command += ` -- --env modules=${result}`;
     }
 
+    terminal.sendText(`cd ${getProjectPath()}`);
     terminal.sendText(command);
     terminal.show();
 
@@ -93,4 +93,19 @@ export async function buildScreens(params: IBuildParameters) {
     }
     
     return cache;
+}
+
+function getProjectPath(): string | undefined {
+    const screensPath = 'screen\\src\\screens\\';
+    const openedFilePath = window.activeTextEditor?.document.uri.fsPath;
+    const projectPathArray = openedFilePath?.split(screensPath);
+    const projectPath = projectPathArray ? `${projectPathArray[0]}${screensPath}` : undefined;
+    return projectPath;
+}
+
+function getOpenedScreenId(): string | undefined {
+    const openedFilePath = window.activeTextEditor?.document.uri.fsPath;
+    const openedScreenPathArray = openedFilePath?.split('\\');
+    const openedScreenId = openedScreenPathArray ? openedScreenPathArray[openedScreenPathArray.length - 1].split('.')[0] : undefined;
+    return openedScreenId;
 }
