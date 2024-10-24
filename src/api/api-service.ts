@@ -2,16 +2,16 @@ import { Axios } from "axios";
 import { GraphModel } from "../model/graph-model";
 import { json } from "stream/consumers";
 import { GraphStructure } from "../model/graph-structure";
+import { GraphAPIRoute, GraphAPIStructureRoute } from "./constants";
+import { IAcuMateApiClient } from "./acu-mate-api-client";
+import { AcuMateContext } from "../plugin-context";
 
-const GraphAPIRoute = "ui/graphs";
-const GraphAPIStructureRoute = "ui/graphs/";
-
-export class AcuMateApiClient {
+export class AcuMateApiClient implements IAcuMateApiClient {
     private client = new Axios({});
 
     private async makePostRequest<T>(route: string): Promise<T | undefined> {
         try {
-            const response = await this.client.post(`http://msk-lt-195/Delta/` + route, {
+            const response = await this.client.post(AcuMateContext.ConfigurationService.backedUrl + route, {
                 data:
                 {
 
@@ -34,7 +34,7 @@ export class AcuMateApiClient {
 
     private async makeGetRequest<T>(route: string): Promise<T | undefined> {
         try {
-            const response = await this.client.get(`http://msk-lt-195/Delta/` + route);
+            const response = await this.client.get(AcuMateContext.ConfigurationService.backedUrl + route);
 
             console.log(response.data);
 
@@ -54,3 +54,4 @@ export class AcuMateApiClient {
         return await this.makeGetRequest<GraphStructure>(GraphAPIStructureRoute + graphName);
     }
 }
+
