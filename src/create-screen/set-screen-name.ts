@@ -1,5 +1,5 @@
 import { window } from 'vscode';
-import { CREATE_SCREEN_TITLE } from './constants';
+import { CREATE_SCREEN_TITLE } from '../constants';
 
 const SCREEN_ID_LENGTH = 8;
 
@@ -14,13 +14,13 @@ export async function setScreenName(value?: string) {
         value,
 	});
 
-	const validationResult = validateScreenName(result);
+	const validationErrors = validateScreenName(result);
 
-	if (!validationResult) {
+	if (!validationErrors) {
 		return result;
 	}
 
-	window.showErrorMessage(validationResult);
+	window.showErrorMessage(validationErrors);
 	return setScreenName(result);
 }
 
