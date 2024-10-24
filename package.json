@@ -12,6 +12,30 @@
   "activationEvents": [],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "AcuMate Settings",
+      "properties": {
+        "acuMate.backedUrl": {
+          "type": "string",
+          "default": "http://localhost",
+          "description": "This is a URL to the backend."
+        },
+        "acuMate.login": {
+          "type": "string",
+          "default": "admin",
+          "description": "Login to the backend."
+        },
+        "acuMate.password": {
+          "type": "string",
+          "default": "123",
+          "description": "Password to the backend."
+        },
+        "acuMate.tenant": {
+          "type": "string",
+          "description": "Tenant to use."
+        }
+      }
+    },
     "commands": [
       {
         "command": "acumate.createScreen",
