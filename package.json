@@ -98,6 +98,12 @@
         "category": "AcuMate"
       }
     ],
+    "menus": {
+      "editor/context": [{
+        "command": "acumate.buildMenu",
+        "group": "z_commands@0"
+      }]
+    },
     "keybindings": [
       {
         "command": "acumate.repeatLastBuildCommand",
