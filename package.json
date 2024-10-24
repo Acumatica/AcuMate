@@ -33,6 +33,21 @@
         "acuMate.tenant": {
           "type": "string",
           "description": "Tenant to use."
+        },
+        "acuMate.useCache": {
+          "type": "boolean",
+          "default": true,
+          "description": "Cache the server result."
+        },
+        "acuMate.useBackend": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use the backend for plugin. If 'false' some features won't work."
+        },
+        "acuMate.useAuthentification": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use credentials to access Acumatica backend."
         }
       }
     },

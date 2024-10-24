@@ -11,4 +11,28 @@ export class ConfigurationService {
         return this.config.get("backedUrl");
     }
 
+    get login() : string | undefined {
+        return this.config.get("login");
+    }
+
+    get password() : string | undefined {
+        return this.config.get("password");
+    }
+
+    get tenant() : string | undefined {
+        return this.config.get("tenant");
+    }
+
+    get useCache() : boolean | undefined {
+        return this.config.get("useCache");
+    }
+
+    get useBackend() : boolean | undefined {
+        return this.config.get("useBackend");
+    }
+
+    get useAuthentification() : boolean | undefined {
+        return this.config.get("useAuthentification");
+    }
+
 }
