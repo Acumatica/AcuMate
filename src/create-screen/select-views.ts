@@ -13,10 +13,15 @@ export async function selectViews(graphName: string): Promise<IView[] | undefine
 	}
 
 	var views: QuickPickItem[] = [];
-	graphStructure.views.forEach(v => {
+	for (const viewInfoName in graphStructure.views) {
+		const v = graphStructure.views[viewInfoName];
+		if (!v) {
+			continue;
+		}
+			
 		views.push({ label: v.name ?? "", description: v.cacheName, detail: v.cacheType });
-		
-	});
+	}
+	
 	const result = await window.showQuickPick<QuickPickItem>(views, {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
