@@ -2,11 +2,10 @@ import { Axios } from "axios";
 import { GraphModel } from "../model/graph-model";
 import { json } from "stream/consumers";
 import { GraphStructure } from "../model/graph-structure";
+import { GraphAPIRoute, GraphAPIStructureRoute } from "./constants";
+import { IAcuMateApiClient } from "./acu-mate-api-client";
 
-const GraphAPIRoute = "ui/graphs";
-const GraphAPIStructureRoute = "ui/graphs/";
-
-export class AcuMateApiClient {
+export class AcuMateApiClient implements IAcuMateApiClient {
     private client = new Axios({});
 
     private async makePostRequest<T>(route: string): Promise<T | undefined> {
@@ -54,3 +53,4 @@ export class AcuMateApiClient {
         return await this.makeGetRequest<GraphStructure>(GraphAPIStructureRoute + graphName);
     }
 }
+

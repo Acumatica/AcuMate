@@ -2,11 +2,12 @@ import { window, QuickPickItem } from 'vscode';
 import { CREATE_SCREEN_TITLE } from '../constants';
 import { IView } from '../types';
 import { AcuMateApiClient } from '../api/api-service';
+import { AcuMateContext } from '../plugin-context';
 
 const placeHolder = 'Select Views';
 
 export async function selectViews(graphName: string): Promise<IView[] | undefined> {
-	var apiClient = new AcuMateApiClient();
+	var apiClient = AcuMateContext.ApiService;
 	var graphStructure = await apiClient.getGraphStructure(graphName);
 	if (!graphStructure?.views) {
 		return undefined;

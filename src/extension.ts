@@ -8,9 +8,15 @@ import { setViewTypes } from './create-screen/set-view-types';
 import { selectFields } from './create-screen/select-fields';
 
 import { buildScreens, CommandsCache } from './build-commands/build-screens';
+import { CachedDataService } from './api/cached-data-service';
+import { AcuMateApiClient } from './api/api-service';
+import { AcuMateContext } from './plugin-context';
+import { LayeredDataService } from './api/layered-data-service';
 
 
 export function activate(context: ExtensionContext) {
+	initClient(context);
+
 	let buildCommandsCache: CommandsCache;
 
 	let disposable = commands.registerCommand('acumate.createScreen', async () => {
@@ -97,6 +103,12 @@ export function activate(context: ExtensionContext) {
 	});
 
 	context.subscriptions.push(disposable);
+}
+
+function initClient(context: ExtensionContext) {
+	const cacheService = new CachedDataService(context.globalState);
+	const apiClient = new AcuMateApiClient();
+	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
 }
 
 export function deactivate() {}
