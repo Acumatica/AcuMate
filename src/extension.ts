@@ -1,4 +1,4 @@
-import { ExtensionContext, commands } from 'vscode';
+import { ExtensionContext, commands, workspace } from 'vscode';
 
 import { setScreenName } from './create-screen/set-screen-name';
 import { selectGraphType } from './create-screen/select-graph-type';
@@ -12,10 +12,27 @@ import { CachedDataService } from './api/cached-data-service';
 import { AcuMateApiClient } from './api/api-service';
 import { AcuMateContext } from './plugin-context';
 import { LayeredDataService } from './api/layered-data-service';
+import { ConfigurationService } from './services/configuration-service';
 
 
 export function activate(context: ExtensionContext) {
-	initClient(context);
+	init(context);
+	// Access the configuration for your plugin
+	const config = workspace.getConfiguration('myPlugin');
+
+	// Read the settings
+	const someSetting = config.get('someSetting');
+	const isFeatureEnabled = config.get('enableFeature');
+	const numberSetting = config.get('numberSetting');
+  
+	console.log('Setting value:', someSetting);
+	console.log('Is feature enabled:', isFeatureEnabled);
+	console.log('Number setting:', numberSetting);
+  
+	// Example of using a setting in your plugin's logic
+	if (isFeatureEnabled) {
+	  // Do something if the feature is enabled
+	}
 
 	let buildCommandsCache: CommandsCache;
 
@@ -126,13 +143,20 @@ export function activate(context: ExtensionContext) {
 		};
 	});
 
+	disposable = commands.registerCommand('acumate.dropCache', async () => {
+		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
+	});
+
+
 	context.subscriptions.push(disposable);
 }
 
-function initClient(context: ExtensionContext) {
+function init(context: ExtensionContext) {
 	const cacheService = new CachedDataService(context.globalState);
 	const apiClient = new AcuMateApiClient();
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
+
+	AcuMateContext.ConfigurationService = new ConfigurationService();
 }
 
 export function deactivate() {}

@@ -76,6 +76,11 @@
       {
         "command": "acumate.repeatLastBuildCommand",
         "title": "Repeat Last Build Command (Hot+Key+Here)"
+      },
+      {
+        "command": "acumate.dropCache",
+        "title": "Drop local cache",
+        "category": "AcuMate"
       }
     ]
   },

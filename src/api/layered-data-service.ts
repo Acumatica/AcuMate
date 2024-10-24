@@ -3,7 +3,7 @@ import { GraphStructure } from "../model/graph-structure";
 import { AcuMateApiClient } from "./api-service";
 import { IAcuMateApiClient } from "./acu-mate-api-client";
 import { CachedDataService } from "./cached-data-service";
-import { GraphAPICache } from "./constants";
+import { GraphAPICache, GraphAPIStructureCachePrefix } from "./constants";
 
 export class LayeredDataService implements IAcuMateApiClient {
 
@@ -30,7 +30,7 @@ export class LayeredDataService implements IAcuMateApiClient {
         }
 
         const apiResult = await this.apiService.getGraphStructure(graphName);
-        this.cacheService.store(GraphAPICache, apiResult);
+        this.cacheService.store(GraphAPIStructureCachePrefix + graphName, apiResult);
         return apiResult;
     }
 
