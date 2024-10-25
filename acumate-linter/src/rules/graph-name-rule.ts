@@ -1,14 +1,15 @@
-import { ESLintUtils, TSESTree } from "@typescript-eslint/utils";
+import { ESLintUtils } from "@typescript-eslint/utils";
 import {
 	createRule,
 	getGraphName,
 	getScreenDataService,
 	DecoratorFindResult,
-	SCREEN_CLASS_NAME
+	SCREEN_CLASS_NAME,
+	inheritsFrom
 } from "../common";
 
 export const acuGraphRule = createRule({
-	name: "eslint-plugin-acumate-graph-name",
+	name: "eslint-plugin-graph-name",
 	defaultOptions: [{ dataUrl: "" }],
 	meta: {
 		type: "problem",
@@ -33,10 +34,7 @@ export const acuGraphRule = createRule({
 		return {
 			ClassDeclaration(node) {
 				const services = ESLintUtils.getParserServices(context);
-				const tsClass = services.getTypeAtLocation(node);
-				const parentClass = node.superClass as TSESTree.Identifier;
-
-				if (!node.id || parentClass?.name !== SCREEN_CLASS_NAME) {
+				if (!node.id || !inheritsFrom(services, node, SCREEN_CLASS_NAME)) {
 					return;
 				}
 

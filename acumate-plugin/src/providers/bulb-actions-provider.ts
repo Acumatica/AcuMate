@@ -1,4 +1,4 @@
-import { CodeActionProvider, CodeActionKind, TextDocument, Range, CodeAction, WorkspaceEdit } from 'vscode';
+import { CodeActionProvider, CodeActionKind, TextDocument, Range, CodeAction, WorkspaceEdit, workspace } from 'vscode';
 import * as ts from 'typescript';
 import * as fs from 'fs';
 
@@ -46,7 +46,7 @@ export class BulbActionsProvider implements CodeActionProvider {
             getScriptFileNames: () => [filePath],
             getScriptVersion: () => '1',
             getScriptSnapshot: (fileName) => ts.ScriptSnapshot.fromString(fileText),
-            getCurrentDirectory: () => process.cwd(),
+            getCurrentDirectory: () => workspace.rootPath || '',
             getCompilationSettings: () => ({ allowJs: true }),
             getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
             fileExists: fileName => fs.existsSync(fileName),

@@ -5,7 +5,7 @@ import { AcuMateContext } from './plugin-context';
 import { LayeredDataService } from './api/layered-data-service';
 import { ConfigurationService } from './services/configuration-service';
 
-import { BulbActionsProvider } from './providers/bulb-actions-provider';
+// import { BulbActionsProvider } from './providers/bulb-actions-provider';
 
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 import { createScreen } from './scaffolding/create-screen/create-screen';
@@ -18,18 +18,15 @@ import { provideTSCompletionItems } from './completionItemProviders/ts-completio
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
 
-	
-	
-
 	// Register a completion item provider for TypeScript files
 	createIntelliSenseProviders(context);
 
 	createCommands(context);
 
-	var actionProviderDisposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
-		providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
-	});
-	context.subscriptions.push(actionProviderDisposable);
+	//var actionProviderDisposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
+	//	providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
+	//});
+	//context.subscriptions.push(actionProviderDisposable);
 }
 
 function createCommands(context: vscode.ExtensionContext) {
@@ -155,6 +152,14 @@ function createCommands(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
+	disposable = vscode.commands.registerCommand('acumate.watchCurrentScreen', async () => {
+		await buildScreens({
+			watch: true,
+			currentScreen: true,
+		});
+	});
+	context.subscriptions.push(disposable);
+
 	disposable = vscode.commands.registerCommand('acumate.dropCache', async () => {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
 	});
@@ -180,7 +185,6 @@ function init(context: vscode.ExtensionContext) {
 	const cacheService = new CachedDataService(context.globalState);
 	const apiClient = new AcuMateApiClient();
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
-
 }
 
 

@@ -9,9 +9,6 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [
-    "onLanguage:typescript"
-  ],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
@@ -110,6 +107,11 @@
         "category": "AcuMate"
       },
       {
+        "command": "acumate.watchCurrentScreen",
+        "title": "Watch Current Screen",
+        "category": "AcuMate"
+      },
+      {
         "command": "acumate.repeatLastBuildCommand",
         "title": "Repeat Last Build Command",
         "category": "AcuMate"
@@ -128,6 +130,12 @@
         }
       ]
     },
+    "snippets": [
+      {
+        "language": "typescript",
+        "path": "./snippets.json"
+      }
+    ],
     "keybindings": [
       {
         "command": "acumate.repeatLastBuildCommand",

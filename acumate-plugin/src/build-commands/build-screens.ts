@@ -3,6 +3,10 @@ import { QuickPickItem, QuickPickItemKind, window } from 'vscode';
 const title = 'Build Screens';
 const buildCommands = [
     {
+        command: 'acumate.watchCurrentScreen',
+        description: 'Watch Current Screen',
+    },
+    {
         command: 'acumate.buildCurrentScreenDev',
         description: 'Build Current Screen (Dev)',
     },
@@ -65,6 +69,7 @@ interface IBuildParameters {
     cache?: CommandsCache;
     currentScreen?: boolean;
     noPrompt?: boolean;
+    watch?: boolean;
 };
 
 export async function openBuildMenu() {
@@ -83,7 +88,7 @@ export async function openBuildMenu() {
 
 export async function buildScreens(params: IBuildParameters) {
     const terminal = window.createTerminal(title);
-    let command = 'npm run build-all';
+    let command = `npm run ${params.watch ? 'watch' : 'build'}`; // include build-all option?
     let result;
     
     if (params.devMode) {
