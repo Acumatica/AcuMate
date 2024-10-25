@@ -1,11 +1,11 @@
-import { checkFileExists, createFile } from "../utils";
-import { selectActions } from "./select-actions";
-import { selectFields } from "./select-fields";
+import { checkFileExists, createFile } from "../../utils";
+import { selectActions } from "../common/select-actions";
+import { selectFields } from "../common/select-fields";
 import { selectGraphType } from "./select-graph-type";
-import { selectViews } from "./select-views";
+import { selectViews } from "../common/select-views";
 import { setPrimaryView } from "./set-primary-view";
 import { setScreenName } from "./set-screen-name";
-import { setViewTypes } from "./set-view-types";
+import { setViewTypes } from "../common/set-view-types";
 import vscode from "vscode";
 import Handlebars from 'handlebars';
 

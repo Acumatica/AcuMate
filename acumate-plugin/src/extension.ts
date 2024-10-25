@@ -8,7 +8,8 @@ import { ConfigurationService } from './services/configuration-service';
 import { BulbActionsProvider } from './providers/bulb-actions-provider';
 
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
-import { createScreen } from './create-screen/create-screen';
+import { createScreen } from './scaffolding/create-screen/create-screen';
+import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
 
 
 export function activate(context: vscode.ExtensionContext) {
@@ -20,6 +21,11 @@ export function activate(context: vscode.ExtensionContext) {
 
 	disposable = vscode.commands.registerCommand('acumate.createScreen', async () => {
 		createScreen();
+	});
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('acumate.createScreenExtension', async () => {
+		createScreenExtension();
 	});
 	context.subscriptions.push(disposable);
 

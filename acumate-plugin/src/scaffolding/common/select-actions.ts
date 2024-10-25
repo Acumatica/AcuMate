@@ -1,7 +1,7 @@
 import { window, QuickPickItem } from 'vscode';
-import { CREATE_SCREEN_TITLE } from '../constants';
-import { Action, View } from '../types';
-import { AcuMateContext } from '../plugin-context';
+import { CREATE_SCREEN_TITLE } from '../../constants';
+import { Action, View } from '../../types';
+import { AcuMateContext } from '../../plugin-context';
 
 const placeHolder = 'Select Actions';
 

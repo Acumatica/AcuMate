@@ -10,8 +10,8 @@
     "Other"
   ],
   "activationEvents": [
-		"onLanguage:typescript"
-	],
+    "onLanguage:typescript"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "configuration": {
@@ -57,6 +57,11 @@
       {
         "command": "acumate.createScreen",
         "title": "Create Screen",
+        "category": "AcuMate"
+      },
+      {
+        "command": "acumate.createScreenExtension",
+        "title": "Create Screen Extension from current screen",
         "category": "AcuMate"
       },
       {
@@ -155,6 +160,7 @@
   },
   "dependencies": {
     "axios": "^1.7.7",
-    "handlebars": "^4.7.8"
+    "handlebars": "^4.7.8",
+    "jsonic": "^1.0.1"
   }
 }
