@@ -15,10 +15,7 @@ export async function selectActions(graphName: string): Promise<Action[] | undef
 	var actions: QuickPickItem[] = [];
     if (graphStructure.actions) {
         for (const action of graphStructure.actions) {
-            //actions.push({ label: action.name ?? "", description: action.displayName });
-
-			actions.push({ label: action ?? "" });
-
+            actions.push({ label: action.name ?? "", description: action.displayName });
         }
     }
 	

@@ -66,10 +66,18 @@ export class {{dacname}} extends PXView {
 
 {{/each}}`;
 
+const htmlTemplate = `
+<template>
+</template>
+`;
+
 const template = Handlebars.compile(templateSource);
 
 export async function createScreen() {
     const screenId = await setScreenName();
+	if (!screenId) {
+        return;
+    }
     const graphType = await selectGraphType();
     if (!graphType) {
         return;
@@ -94,5 +102,7 @@ export async function createScreen() {
     const tsCode = template(data, {
 		allowProtoPropertiesByDefault: true
 	  });
+
     await createFile("screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId, screenId + ".ts", tsCode);
+	await createFile("screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId, screenId + ".html", htmlTemplate);
 }

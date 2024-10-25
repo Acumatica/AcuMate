@@ -14,6 +14,10 @@ export async function setScreenName(value?: string) {
         value,
 	});
 
+	if (!result) {
+		return undefined;
+	}
+
 	const validationErrors = validateScreenName(result);
 
 	if (!validationErrors) {
