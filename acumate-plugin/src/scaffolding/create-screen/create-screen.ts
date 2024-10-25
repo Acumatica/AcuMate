@@ -10,8 +10,7 @@ import vscode from "vscode";
 import Handlebars from 'handlebars';
 import { AcuMateContext } from "../../plugin-context";
 
-const templateSource = `
-import {
+const templateSource = `import {
 	PXScreen,
 	PXView,
 	PXActionState,
@@ -26,6 +25,7 @@ import {
 	viewInfo,
 	gridConfig,
 	columnConfig,
+	treeConfig,
 
 	GridPreset,
 	GridColumnType,
@@ -52,7 +52,7 @@ export class {{screenName}} extends PXScreen {
 {{/each}}
 
 {{#each views}}
-	{{#if isGrid}}@gridConfig({preset: GridPreset.Details}){{/if}}{{#if isTree}}@treeConfig(){{/if}}
+	{{#if isGrid}}@gridConfig({ preset: GridPreset.Details }){{/if}}{{#if isTree}}@treeConfig(){{/if}}
 	{{name}} = {{#if isEntity}}createSingle{{else}}createCollection{{/if}}({{dacname}});
 
 {{/each}}
@@ -68,8 +68,7 @@ export class {{dacname}} extends PXView {
 
 {{/each}}`;
 
-const htmlTemplate = `
-<template>
+const htmlTemplate = `<template>
 </template>
 `;
 

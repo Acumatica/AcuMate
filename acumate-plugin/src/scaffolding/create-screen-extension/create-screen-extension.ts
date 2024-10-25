@@ -9,8 +9,7 @@ import { setViewTypes } from "../common/set-view-types";
 import { selectFields } from "../common/select-fields";
 import { AcuMateContext } from '../../plugin-context';
 
-const templateSource = `
-import {
+const templateSource = `import {
 	PXScreen,
 	PXView,
 	PXActionState,
@@ -25,6 +24,7 @@ import {
 	viewInfo,
 	gridConfig,
 	columnConfig,
+	treeConfig,
 
 	GridPreset,
 	GridColumnType,
@@ -49,7 +49,7 @@ export class {{extensionName}} {
 {{/each}}
 
 {{#each views}}
-	{{#if isGrid}}@gridConfig({preset: GridPreset.Details}){{/if}}{{#if isTree}}@treeConfig(){{/if}}
+	{{#if isGrid}}@gridConfig({ preset: GridPreset.Details }){{/if}}{{#if isTree}}@treeConfig(){{/if}}
 	{{name}} = {{#if isEntity}}createSingle{{else}}createCollection{{/if}}({{dacname}});
 
 {{/each}}
@@ -65,8 +65,7 @@ export class {{dacname}} extends PXView {
 
 {{/each}}`;
 
-const htmlTemplate = `
-<template>
+const htmlTemplate = `<template>
 </template>
 `;
 
