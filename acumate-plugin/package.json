@@ -107,6 +107,11 @@
         "category": "AcuMate"
       },
       {
+        "command": "acumate.watchCurrentScreen",
+        "title": "Watch Current Screen",
+        "category": "AcuMate"
+      },
+      {
         "command": "acumate.repeatLastBuildCommand",
         "title": "Repeat Last Build Command",
         "category": "AcuMate"

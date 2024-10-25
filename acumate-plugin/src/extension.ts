@@ -138,6 +138,14 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
+	disposable = vscode.commands.registerCommand('acumate.watchCurrentScreen', async () => {
+		await buildScreens({
+			watch: true,
+			currentScreen: true,
+		});
+	});
+	context.subscriptions.push(disposable);
+
 	disposable = vscode.commands.registerCommand('acumate.dropCache', async () => {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
 	});
@@ -154,7 +162,6 @@ function init(context: vscode.ExtensionContext) {
 	const cacheService = new CachedDataService(context.globalState);
 	const apiClient = new AcuMateApiClient();
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
-
 }
 
 
