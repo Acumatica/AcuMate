@@ -10,8 +10,7 @@ import { ConfigurationService } from './services/configuration-service';
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 import { createScreen } from './scaffolding/create-screen/create-screen';
 import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
-import { provideTSCompletionItems } from './completionItemProviders/ts-completion-providr';
-import { Parser, DomHandler } from 'htmlparser2';
+import { provideTSCompletionItems } from './completionItemProviders/ts-completion-provider';
 const fs = require(`fs`);
 import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 
@@ -180,7 +179,7 @@ function createCommands(context: vscode.ExtensionContext) {
 }
 
 function createIntelliSenseProviders(context: vscode.ExtensionContext) {
-	const provider = vscode.languages.registerCompletionItemProvider(
+	let provider = vscode.languages.registerCompletionItemProvider(
 		'typescript',
 		{
 			async provideCompletionItems(document, position, token, context): Promise<vscode.CompletionItem[] | undefined> {
@@ -191,6 +190,18 @@ function createIntelliSenseProviders(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(provider);
+
+	/*provider = vscode.languages.registerCompletionItemProvider(
+		{ language:'html', scheme:'file'},
+		{
+			async provideCompletionItems(document, position, token, context): Promise<vscode.CompletionItem[] | undefined> {
+				return provideHTMLCompletionItems(document, position, token, context);
+			},
+		},
+		'"', ' ' 
+	);
+
+	context.subscriptions.push(provider);*/
 }
 
 function init(context: vscode.ExtensionContext) {

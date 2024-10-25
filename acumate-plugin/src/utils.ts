@@ -1,6 +1,7 @@
 import vscode from 'vscode';
 const jsonic = require('jsonic');
 const { exec } = require('child_process');
+const fs = require(`fs`);
 
 export const screensPath = 'screen\\src\\screens\\';
 
@@ -143,15 +144,23 @@ export function getOpenedScreenId(): string | undefined {
 }
 
 export function groupBy<T>(array: T[], key: keyof T): Record<string, T[]> {
-	return array.reduce((result, item) => {
-	  const groupKey = item[key] ? item[key] as unknown as string : '';  // Ensure key is treated as a string for Record
-	  if (!result[groupKey]) {
-		result[groupKey] = [];
-	  }
-	  result[groupKey].push(item);
-	  return result;
-	}, {} as Record<string, T[]>);
-  }
+  return array.reduce(
+    (result, item) => {
+      const groupKey = item[key] ? (item[key] as unknown as string) : ""; // Ensure key is treated as a string for Record
+      if (!result[groupKey]) {
+        result[groupKey] = [];
+      }
+      result[groupKey].push(item);
+      return result;
+    },
+    {} as Record<string, T[]>
+  );
+}
+
+export function getCorrespondingTsFile(htmlFilePath: string) {
+  const tsFilePath = htmlFilePath.replace(/\.html$/, ".ts"); // Assumes the same name and path
+  return fs.existsSync(tsFilePath) ? tsFilePath : null;
+}
   
   
 

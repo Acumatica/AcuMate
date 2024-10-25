@@ -3,6 +3,7 @@ import { Parser, DomHandler } from "htmlparser2";
 const fs = require(`fs`);
 import {
   getClassPropertiesFromTs,
+  getCorrespondingTsFile,
   getLineAndColumnFromIndex,
 } from "../../utils";
 import { AcuMateContext } from "../../plugin-context";
@@ -109,11 +110,6 @@ function validateDom(
       validateDom((<any>node).children, diagnostics, classProperties, content);
     }
   });
-}
-
-function getCorrespondingTsFile(htmlFilePath: string) {
-  const tsFilePath = htmlFilePath.replace(/\.html$/, ".ts"); // Assumes the same name and path
-  return fs.existsSync(tsFilePath) ? tsFilePath : null;
 }
 
 function getRange(content: string, node: any) {
