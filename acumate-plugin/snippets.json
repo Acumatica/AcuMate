@@ -1,0 +1,62 @@
+{
+	"CurrentRowChanged": {
+		"prefix": ["hook", "handleEvent", "currentRowChanged"],
+		"body": [
+			"@handleEvent(CustomEventType.CurrentRowChanged, { view: \"${1:ViewName}\" })",
+			"on${2:Row}Changed(args: CurrentRowChangedHandlerArgs<${3:ViewType}>) {",
+            "   $4",
+            "}"
+		],
+		"description": "CurrentRowChanged event hook"
+	},
+    "RowSelected": {
+		"prefix": ["hook", "handleEvent", "rowSelected"],
+		"body": [
+			"@handleEvent(CustomEventType.RowSelected, { view: \"${1:ViewName}\" })",
+			"on${2:Row}Changed(args: RowSelectedHandlerArgs<${3:ViewType}>) {",
+            "   $4",
+            "}"
+		],
+		"description": "RowSelected event hook"
+	},
+    "ValueChanged": {
+		"prefix": ["hook", "handleEvent", "valueChanged"],
+		"body": [
+			"@handleEvent(CustomEventType.ValueChanged, { view: \"${1:ViewName}\" })",
+			"on${1:ViewName}Changed(args: ValueChangedHandlerArgs<${2:ViewType}>) {",
+            "   $3",
+            "}"
+		],
+		"description": "ValueChanged event hook"
+	},
+    "CallbackCompleted": {
+		"prefix": ["hook", "handleEvent", "callbackCompleted"],
+		"body": [
+			"@handleEvent(CustomEventType.CallbackCompleted)",
+			"onCallbackCompleted(args: CallbackCompletedHandlerArgs<any>) {",
+            "   $1",
+            "}"
+		],
+		"description": "CallbackCompleted event hook"
+	},
+    "GetRowCss": {
+		"prefix": ["hook", "handleEvent", "getRowCss"],
+		"body": [
+			"@handleEvent(CustomEventType.GetRowCss, { view: \"${1:ViewName}\" })",
+			"get${2:Row}RowCss(args: RowCssHandlerArgs): string | undefined {",
+            "   $3",
+            "}"
+		],
+		"description": "GetRowCss event hook"
+	},
+    "GetCellCss": {
+		"prefix": ["hook", "handleEvent", "getCellCss"],
+		"body": [
+			"@handleEvent(CustomEventType.GetCellCss, { view: \"${1:ViewName}\", allColumns: true })",
+			"get${2:Cell}CellCss(args: CellCssHandlerArgs): string | undefined {",
+            "   $3",
+            "}"
+		],
+		"description": "GetCellCss event hook"
+	}
+}

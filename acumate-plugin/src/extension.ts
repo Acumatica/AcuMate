@@ -5,7 +5,7 @@ import { AcuMateContext } from './plugin-context';
 import { LayeredDataService } from './api/layered-data-service';
 import { ConfigurationService } from './services/configuration-service';
 
-import { BulbActionsProvider } from './providers/bulb-actions-provider';
+// import { BulbActionsProvider } from './providers/bulb-actions-provider';
 
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 import { createScreen } from './create-screen/create-screen';
@@ -137,10 +137,10 @@ export function activate(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
-	disposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
-		providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
-	});
-	context.subscriptions.push(disposable);
+	// disposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
+	// 	providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
+	// });
+	// context.subscriptions.push(disposable);
 }
 
 function init(context: vscode.ExtensionContext) {
