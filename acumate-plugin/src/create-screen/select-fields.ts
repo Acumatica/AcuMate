@@ -28,6 +28,7 @@ async function selectFieldsForView(view: View) {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder: `Select Fields For View "${view.name}"`,
 		canPickMany: true,
+		ignoreFocusOut: true
 	});
 
 	var map = result!.map(item => item.label);

@@ -8,6 +8,7 @@ export async function setPrimaryView(views: View[]): Promise<string> {
 	const result = await window.showQuickPick(views.map(item => ({ label: item.name })), {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
+		ignoreFocusOut: true
 	});
 	
 	const validationErrors = validatePrimaryView(result?.label);

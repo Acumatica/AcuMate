@@ -27,6 +27,7 @@ async function setTypeForView(view: View) {
 	const result = await window.showQuickPick<QuickPickItem>(types.map(item => ({ label: item.id, description: item.description })), {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder: `Set Type For View "${view.name}"`,
+		ignoreFocusOut: true
 	});
 
 	view.type = result!.label as ViewType;

@@ -1,4 +1,4 @@
-import { createFile } from "../utils";
+import { checkFileExists, createFile } from "../utils";
 import { selectActions } from "./select-actions";
 import { selectFields } from "./select-fields";
 import { selectGraphType } from "./select-graph-type";
@@ -6,6 +6,7 @@ import { selectViews } from "./select-views";
 import { setPrimaryView } from "./set-primary-view";
 import { setScreenName } from "./set-screen-name";
 import { setViewTypes } from "./set-view-types";
+import vscode from "vscode";
 import Handlebars from 'handlebars';
 
 const templateSource = `
@@ -78,6 +79,21 @@ export async function createScreen() {
 	if (!screenId) {
         return;
     }
+
+	const folderPath = "screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId;
+
+	if (vscode.workspace.workspaceFolders) {
+		const workspaceFolder = vscode.workspace.workspaceFolders[0];
+		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, folderPath, screenId + ".ts");
+
+		if (await checkFileExists(fileUri)) {
+			const selection = await vscode.window.showWarningMessage(`Screen ${screenId} already exists. Do you want to verride it?`, `OK`, `Cancel`);
+			if (selection === "Cancel") {
+				return undefined;
+			}
+		}
+	}
+
     const graphType = await selectGraphType();
     if (!graphType) {
         return;
@@ -103,6 +119,11 @@ export async function createScreen() {
 		allowProtoPropertiesByDefault: true
 	  });
 
-    await createFile("screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId, screenId + ".ts", tsCode);
-	await createFile("screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId, screenId + ".html", htmlTemplate);
+    const uri = await createFile(folderPath, screenId + ".ts", tsCode);
+	await createFile(folderPath, screenId + ".html", htmlTemplate);
+
+	if (uri) {
+		const document = await vscode.workspace.openTextDocument(uri);
+		await vscode.window.showTextDocument(document);
+	}
 }

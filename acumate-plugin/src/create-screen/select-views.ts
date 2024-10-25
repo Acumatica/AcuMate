@@ -26,6 +26,7 @@ export async function selectViews(graphName: string): Promise<View[] | undefined
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
 		canPickMany: true,
+		ignoreFocusOut: true
 	});
 
 	const validationErrors = validateViews(result);

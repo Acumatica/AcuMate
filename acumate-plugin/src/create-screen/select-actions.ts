@@ -23,6 +23,7 @@ export async function selectActions(graphName: string): Promise<Action[] | undef
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
 		canPickMany: true,
+		ignoreFocusOut: true
 	});
 	return result!.map(item => (new Action(item.label)));
 }
