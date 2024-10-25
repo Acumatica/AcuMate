@@ -1,5 +1,5 @@
 {
-  "name": "acumate-eslint-plugin",
+  "name": "eslint-plugin-acumate",
   "description": "Acumatica linter rules",
   "version": "0.1.0",
   "scripts": {
