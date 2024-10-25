@@ -48,13 +48,12 @@ export async function runNpmCommand(command: string, workingDirectory: string) {
   return new Promise((resolve, reject) => {
     exec(`npx ${command}`, { cwd: workingDirectory }, (error: any, stdout: unknown, stderr: any) => {
       if (error) {
-        //vscode.window.showErrorMessage(Error running npm command: ${error.message});
         return reject(error);
       }
       if (stderr) {
-        //vscode.window.showWarningMessage(NPM Warning: ${stderr});
+        
       }
-      //vscode.window.showInformationMessage(NPM Output: ${stdout});
+      
       resolve(stdout);
     });
   });
@@ -142,3 +141,17 @@ export function getOpenedScreenId(): string | undefined {
     const openedScreenId = openedScreenPathArray ? openedScreenPathArray[openedScreenPathArray.length - 1].split('.')[0] : undefined;
     return openedScreenId;
 }
+
+export function groupBy<T>(array: T[], key: keyof T): Record<string, T[]> {
+	return array.reduce((result, item) => {
+	  const groupKey = item[key] ? item[key] as unknown as string : '';  // Ensure key is treated as a string for Record
+	  if (!result[groupKey]) {
+		result[groupKey] = [];
+	  }
+	  result[groupKey].push(item);
+	  return result;
+	}, {} as Record<string, T[]>);
+  }
+  
+  
+

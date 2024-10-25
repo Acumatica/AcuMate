@@ -49,13 +49,13 @@ export class {{extensionName}} {
 {{/each}}
 
 {{#each views}}
-	{{#if isGrid}}@gridConfig({ preset: GridPreset.Details }){{/if}}{{#if isTree}}@treeConfig(){{/if}}
 	{{name}} = {{#if isEntity}}createSingle{{else}}createCollection{{/if}}({{dacname}});
 
 {{/each}}
 }
 
 {{#each views}}
+{{#if isGrid}}@gridConfig({ preset: GridPreset.Details }){{/if}}{{#if isTree}}@treeConfig(){{/if}}
 export class {{dacname}} extends PXView {
 {{#each fields}}
 	//{{displayName}}
