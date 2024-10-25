@@ -1,10 +1,11 @@
 {
-  "name": "acu-linter-rules",
+  "name": "acumate-eslint-plugin",
   "description": "Acumatica linter rules",
   "version": "0.1.0",
   "scripts": {
     "build": "rimraf dist && tsc",
-    "test": "jest"
+    "test": "jest",
+    "publish": "npm run build && npm pack"
   },
   "main": "./dist/index.js",
   "repository": {
