@@ -1,6 +1,7 @@
 import vscode from 'vscode';
 const jsonic = require('jsonic');
 const { exec } = require('child_process');
+import ts from 'typescript';
 
 export async function createFile(path: string, fileName: string, content: string): Promise<vscode.Uri | undefined> {
 	if (vscode.workspace.workspaceFolders)
@@ -54,3 +55,58 @@ export async function runNpmCommand(command: string, workingDirectory: string) {
     });
   });
 }
+
+export function buildClassInheritance(node: ts.ClassDeclaration) {
+	if (node.heritageClauses) {
+		const inheritedClasses = node.heritageClauses
+			.map((it) => it.types
+				.filter((inner) => ts.isIdentifier(inner.expression))
+				.map((inner) => inner.expression as ts.Identifier)
+			)
+			.reduce((acc, el) => acc.concat(el), []);
+
+		return inheritedClasses;
+	}
+	return undefined;
+}
+
+export function getClassPropertiesFromTs(tsContent: string): { className: string; type: "PXScreen" | "PXView"; properties: Set<string>; }[] {
+	const classes: { className: string, type: 'PXScreen' | 'PXView', properties: Set<string> }[] = [];
+	const sourceFile = ts.createSourceFile('temp.ts', tsContent, ts.ScriptTarget.Latest, true);
+  
+	function findClassProperties(node: ts.Node) {
+	  if (ts.isClassDeclaration(node) && node.members) {
+		const properties = new Set<string>();
+		node.members.forEach(member => {
+		  if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
+			properties.add(member.name.text);
+		  }
+		});
+
+		const inheritanceChain = buildClassInheritance(node);
+		const screenOrViewItem = inheritanceChain?.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
+
+		classes.push({className: node.name!.escapedText!, properties: properties, type: screenOrViewItem?.escapedText as any });
+	  }
+	  ts.forEachChild(node, findClassProperties);
+	}
+  
+	ts.forEachChild(sourceFile, findClassProperties);
+	return classes;
+  }
+
+export function getLineAndColumnFromIndex(text: string, index: number): { line: number; column: number; } {
+	let line = 0;
+	let column = 0;
+  
+	for (let i = 0; i < index; i++) {
+	  if (text[i] === '\n') {
+		line++;
+		column = 0;
+	  } else {
+		column++;
+	  }
+	}
+  
+	return { line, column };
+  }

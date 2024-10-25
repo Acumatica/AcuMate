@@ -1,6 +1,6 @@
 import vscode from 'vscode';
 import ts from 'typescript';
-import { tryGetGraphType } from '../utils';
+import { buildClassInheritance, tryGetGraphType } from '../utils';
 import { AcuMateContext } from '../plugin-context';
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
@@ -31,19 +31,7 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
         ts.forEachChild(node, findClassAndCheckPosition);
     }
 
-    function buildClassInheritance(node: ts.ClassDeclaration) {
-        if (node.heritageClauses) {
-            const inheritedClasses = node.heritageClauses
-                .map((it) => it.types
-                    .filter((inner) => ts.isIdentifier(inner.expression))
-                    .map((inner) => inner.expression as ts.Identifier)
-                )
-                .reduce((acc, el) => acc.concat(el), []);
 
-            return inheritedClasses;
-        }
-        return undefined;
-    }
 
     findClassAndCheckPosition(sourceFile);
 
