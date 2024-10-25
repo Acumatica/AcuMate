@@ -1,4 +1,5 @@
 import vscode from 'vscode';
+const jsonic = require('jsonic');
 
 export async function createFile(path: string, fileName: string, content: string): Promise<vscode.Uri | undefined> {
 	if (vscode.workspace.workspaceFolders)
@@ -21,4 +22,18 @@ export async function checkFileExists(uri: vscode.Uri): Promise<boolean> {
 	  console.log("File does not exist.");
 	  return false;
 	}
-  }
+}
+
+export function tryGetGraphType(text: string): string | undefined {
+	try {
+		const graphInfoMatch = text.match(new RegExp(`\\@graphInfo\(([^)]*)\)`, "gms"));
+		if (!graphInfoMatch || graphInfoMatch.length !== 1) {
+			return undefined;;
+		}
+		return jsonic(graphInfoMatch[0].substring(11)).graphType;
+	}
+	catch {
+		return undefined;
+	}
+	
+}

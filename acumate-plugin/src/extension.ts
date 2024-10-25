@@ -10,14 +10,31 @@ import { BulbActionsProvider } from './providers/bulb-actions-provider';
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 import { createScreen } from './scaffolding/create-screen/create-screen';
 import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
+import ts from 'typescript';
+import { tryGetGraphType } from './utils';
+import { provideTSCompletionItems } from './completionItemProviders/ts-completion-providr';
 
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
 
+	
+	
+
+	// Register a completion item provider for TypeScript files
+	createIntelliSenseProviders(context);
+
+	createCommands(context);
+
+	var actionProviderDisposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
+		providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
+	});
+	context.subscriptions.push(actionProviderDisposable);
+}
+
+function createCommands(context: vscode.ExtensionContext) {
 	let buildCommandsCache: CommandsCache;
 	let disposable;
-
 
 	disposable = vscode.commands.registerCommand('acumate.createScreen', async () => {
 		createScreen();
@@ -38,8 +55,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildScreensDev', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				devMode: true,
 				cache: buildCommandsCache,
@@ -49,8 +66,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildScreens', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				cache: buildCommandsCache,
 			})
@@ -59,8 +76,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildScreensByNamesDev', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				devMode: true,
 				byNames: true,
@@ -71,8 +88,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildScreensByNames', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				byNames: true,
 				cache: buildCommandsCache,
@@ -82,8 +99,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildScreensByModulesDev', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				devMode: true,
 				byModules: true,
@@ -94,8 +111,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildScreensByModules', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				byModules: true,
 				cache: buildCommandsCache,
@@ -105,8 +122,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildCurrentScreenDev', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				currentScreen: true,
 				devMode: true,
@@ -116,8 +133,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.buildCurrentScreen', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				currentScreen: true,
 			})
@@ -126,8 +143,8 @@ export function activate(context: vscode.ExtensionContext) {
 	context.subscriptions.push(disposable);
 
 	disposable = vscode.commands.registerCommand('acumate.repeatLastBuildCommand', async () => {
-		buildCommandsCache = { 
-			...buildCommandsCache, 
+		buildCommandsCache = {
+			...buildCommandsCache,
 			...await buildScreens({
 				noPrompt: true,
 				byNames: buildCommandsCache.byNames,
@@ -142,11 +159,20 @@ export function activate(context: vscode.ExtensionContext) {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
 	});
 	context.subscriptions.push(disposable);
+}
 
-	disposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
-		providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
-	});
-	context.subscriptions.push(disposable);
+function createIntelliSenseProviders(context: vscode.ExtensionContext) {
+	const provider = vscode.languages.registerCompletionItemProvider(
+		'typescript',
+		{
+			async provideCompletionItems(document, position, token, context): Promise<vscode.CompletionItem[] | undefined> {
+				return provideTSCompletionItems(document, position, token, context);
+			},
+		},
+		'.' // Optional: Trigger completion when typing a specific character (e.g., '.')
+	);
+
+	context.subscriptions.push(provider);
 }
 
 function init(context: vscode.ExtensionContext) {

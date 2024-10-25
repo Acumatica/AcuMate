@@ -1,5 +1,5 @@
 import path from 'path';
-import { checkFileExists, createFile } from "../../utils";
+import { checkFileExists, createFile, tryGetGraphType } from "../../utils";
 import vscode from "vscode";
 import Handlebars from 'handlebars';
 import { setScreenExtensionName } from "./set-screen-extension-name";
@@ -7,7 +7,6 @@ import { selectViews } from "../common/select-views";
 import { selectActions } from "../common/select-actions";
 import { setViewTypes } from "../common/set-view-types";
 import { selectFields } from "../common/select-fields";
-const jsonic = require('jsonic');
 
 const templateSource = `
 import {
@@ -108,11 +107,7 @@ export async function createScreenExtension() {
 		}
 	}
 
-    const graphInfoMatch = activeEditor.document.getText().match(new RegExp(`\\@graphInfo\(([^)]*)\)`, "gms"));
-    if (!graphInfoMatch || graphInfoMatch.length !== 1) {
-        return;
-    }
-    const graphType = jsonic(graphInfoMatch[0].substring(11)).graphType;
+    const graphType = tryGetGraphType(activeEditor.document.getText());
     if (!graphType) {
         return;
     }
