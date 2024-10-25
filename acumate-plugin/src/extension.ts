@@ -5,17 +5,9 @@ import { AcuMateContext } from './plugin-context';
 import { LayeredDataService } from './api/layered-data-service';
 import { ConfigurationService } from './services/configuration-service';
 
-import { setScreenName } from './create-screen/set-screen-name';
-import { selectGraphType } from './create-screen/select-graph-type';
-import { selectViews } from './create-screen/select-views';
-import { setPrimaryView } from './create-screen/set-primary-view';
-import { setViewTypes } from './create-screen/set-view-types';
-import { selectFields } from './create-screen/select-fields';
-
 import { BulbActionsProvider } from './providers/bulb-actions-provider';
 
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
-import Handlebars from 'handlebars';
 import { createScreen } from './create-screen/create-screen';
 
 
