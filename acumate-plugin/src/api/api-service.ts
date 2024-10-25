@@ -15,8 +15,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         return await fetch(AcuMateContext.ConfigurationService.backedUrl!+AuthEndpoint, {
             method:'POST',
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
-            credentials: `include`
+            body: JSON.stringify(data)
         });
     }
 
@@ -44,14 +43,17 @@ export class AcuMateApiClient implements IAcuMateApiClient {
 
             const url = AcuMateContext.ConfigurationService.backedUrl!+route;
             const settings: RequestInit = {
-                method:'POST',
-                headers: { "Content-Type": "application/json" },
+                method:'GET',
+                headers: { "Content-Type": "application/json" }
                 
             };
             if (AcuMateContext.ConfigurationService.useAuthentification) {
                 settings.credentials = `include`;
             }
-            const response = await fetch(url, );
+            else {
+                settings.credentials = `same-origin`;
+            }
+            const response = await fetch(url, settings);
 
             const data = await response.json();
 
