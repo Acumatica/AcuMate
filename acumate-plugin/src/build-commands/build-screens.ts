@@ -1,5 +1,6 @@
 import { QuickPickItem, QuickPickItemKind, window } from 'vscode';
 import * as fs from 'fs';
+import { getFrontendSourcesPath, getOpenedScreenId, getScreenAppPath, getScreensSrcPath } from '../utils';
 
 const title = 'Build Screens';
 const buildCommands = [
@@ -104,7 +105,7 @@ export async function buildScreens(params: IBuildParameters) {
 
     else if (params.byNames) {
         const prompt = 'Enter screen IDs separated by commas';
-        const placeHolder = 'XXXXXXXX, YYYYYYYY, ...';
+        const placeHolder = 'e.g. SM301000,AU201000,...';
         if (!params.noPrompt) {
             result = await window.showInputBox({
                 title,
@@ -121,7 +122,7 @@ export async function buildScreens(params: IBuildParameters) {
 
     else if (params.byModules) {
         const prompt = 'Enter screen modules separated by commas';
-        const placeHolder = 'XX, YY, ...';
+        const placeHolder = 'eg SO,AU,...';
         if (!params.noPrompt) {
             result = await window.showInputBox({
                 title,
@@ -168,34 +169,6 @@ export async function buildScreens(params: IBuildParameters) {
     }
     
     return cache;
-}
-
-const screensPath = 'screen\\src\\screens\\';
-
-function getFrontendSourcesPath(): string | undefined {
-    const openedFilePath = window.activeTextEditor?.document.uri.fsPath;
-    const pathArray = openedFilePath?.split(screensPath);
-    const path = pathArray ? pathArray[0] : undefined;
-    return path;
-}
-
-function getScreenAppPath(): string | undefined {
-    const frontendSourcesPath = getFrontendSourcesPath();
-    const path = frontendSourcesPath ? `${frontendSourcesPath}screen` : undefined;
-    return path;
-}
-
-function getScreensSrcPath(): string | undefined {
-    const frontendSourcesPath = getFrontendSourcesPath();
-    const path = frontendSourcesPath ? `${frontendSourcesPath}${screensPath}` : undefined;
-    return path;
-}
-
-function getOpenedScreenId(): string | undefined {
-    const openedFilePath = window.activeTextEditor?.document.uri.fsPath;
-    const openedScreenPathArray = openedFilePath?.split('\\');
-    const openedScreenId = openedScreenPathArray ? openedScreenPathArray[openedScreenPathArray.length - 1].split('.')[0] : undefined;
-    return openedScreenId;
 }
 
 function nodeModulesExists(): boolean {

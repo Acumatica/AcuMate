@@ -13,14 +13,14 @@ async function selectFieldsForView(view: View) {
 		return;
 	}
 
-	var fields: QuickPickItem[] = [];
+	const fields: QuickPickItem[] = [];
 	for (const fieldName in view.fields) {
 		const v = view.fields[fieldName];
 		if (!v) {
 			continue;
 		}
 			
-		fields.push({ label: v.name ?? "", description: v.displayName, detail: v.typeName });
+		fields.push({ label: v.name ?? '', description: v.displayName, detail: v.typeName });
 	}
 	
 
@@ -31,6 +31,6 @@ async function selectFieldsForView(view: View) {
 		ignoreFocusOut: true
 	});
 
-	var map = result!.map(item => item.label);
+	const map = result!.map(item => item.label);
 	view.fields = view.fields.filter(f => f.name && map.indexOf(f.name) >= 0 ) ;
 }

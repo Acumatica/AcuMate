@@ -44,8 +44,8 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
             return;
         }
 
-        var apiClient = AcuMateContext.ApiService;
-        var graphStructure = await apiClient.getGraphStructure(graphName);
+        const apiClient = AcuMateContext.ApiService;
+        const graphStructure = await apiClient.getGraphStructure(graphName);
         if (!graphStructure?.actions) {
             return;
         }
@@ -102,8 +102,8 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
             return;
         }
 
-        var apiClient = AcuMateContext.ApiService;
-        var graphStructure = await apiClient.getGraphStructure(graphName);
+        const apiClient = AcuMateContext.ApiService;
+        const graphStructure = await apiClient.getGraphStructure(graphName);
         if (!graphStructure?.actions) {
             return;
         }

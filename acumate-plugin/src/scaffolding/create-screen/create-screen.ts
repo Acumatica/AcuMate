@@ -1,4 +1,4 @@
-import { checkFileExists, createFile, runNpmCommand } from "../../utils";
+import { checkFileExists, createFile, runNpmCommand, screensPath } from "../../utils";
 import { selectActions } from "../common/select-actions";
 import { selectFields } from "../common/select-fields";
 import { selectGraphType } from "./select-graph-type";
@@ -10,8 +10,7 @@ import vscode from "vscode";
 import Handlebars from 'handlebars';
 import { AcuMateContext } from "../../plugin-context";
 
-const templateSource = `
-import {
+const templateSource = `import {
 	PXScreen,
 	PXView,
 	PXActionState,
@@ -26,6 +25,7 @@ import {
 	viewInfo,
 	gridConfig,
 	columnConfig,
+	treeConfig,
 
 	GridPreset,
 	GridColumnType,
@@ -52,7 +52,7 @@ export class {{screenName}} extends PXScreen {
 {{/each}}
 
 {{#each views}}
-	{{#if isGrid}}@gridConfig({preset: GridPreset.Details}){{/if}}{{#if isTree}}@treeConfig(){{/if}}
+	{{#if isGrid}}@gridConfig({ preset: GridPreset.Details }){{/if}}{{#if isTree}}@treeConfig(){{/if}}
 	{{name}} = {{#if isEntity}}createSingle{{else}}createCollection{{/if}}({{dacname}});
 
 {{/each}}
@@ -68,8 +68,7 @@ export class {{dacname}} extends PXView {
 
 {{/each}}`;
 
-const htmlTemplate = `
-<template>
+const htmlTemplate = `<template>
 </template>
 `;
 
@@ -81,7 +80,7 @@ export async function createScreen() {
         return;
     }
 
-	const folderPath = "screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId;
+	const folderPath = screensPath + screenId?.substring(0, 2) + "\\" + screenId;
 
 	if (vscode.workspace.workspaceFolders) {
 		const workspaceFolder = vscode.workspace.workspaceFolders[0];

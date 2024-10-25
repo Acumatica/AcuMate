@@ -1,13 +1,17 @@
 import vscode from 'vscode';
 const jsonic = require('jsonic');
 const { exec } = require('child_process');
+
+export const screensPath = 'screen\\src\\screens\\';
+
 import ts from 'typescript';
 
 export async function createFile(path: string, fileName: string, content: string): Promise<vscode.Uri | undefined> {
-	if (vscode.workspace.workspaceFolders)
-	{
-		const workspaceFolder = vscode.workspace.workspaceFolders[0];
-		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri,path, fileName);
+	const workspaceFoldersList = vscode.workspace.workspaceFolders;
+	const openedFilePath = getOpenedFilePath();
+	if (workspaceFoldersList || openedFilePath) {
+		const workspaceFolder = workspaceFoldersList ? workspaceFoldersList[0] : { uri: vscode.Uri.file(getFrontendSourcesPath()!) };
+		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, path, fileName);
 
 		await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf-8'));
 		return fileUri;
@@ -110,3 +114,31 @@ export function getLineAndColumnFromIndex(text: string, index: number): { line: 
   
 	return { line, column };
   }
+
+export function getOpenedFilePath(): string | undefined {
+	return vscode.window.activeTextEditor?.document.uri.fsPath;
+}
+
+export function getFrontendSourcesPath(): string | undefined {
+    const pathArray = getOpenedFilePath()?.split(screensPath);
+    const path = pathArray ? pathArray[0] : undefined;
+    return path;
+}
+
+export function getScreenAppPath(): string | undefined {
+    const frontendSourcesPath = getFrontendSourcesPath();
+    const path = frontendSourcesPath ? `${frontendSourcesPath}screen` : undefined;
+    return path;
+}
+
+export function getScreensSrcPath(): string | undefined {
+    const frontendSourcesPath = getFrontendSourcesPath();
+    const path = frontendSourcesPath ? `${frontendSourcesPath}${screensPath}` : undefined;
+    return path;
+}
+
+export function getOpenedScreenId(): string | undefined {
+    const openedScreenPathArray = getOpenedFilePath()?.split('\\');
+    const openedScreenId = openedScreenPathArray ? openedScreenPathArray[openedScreenPathArray.length - 1].split('.')[0] : undefined;
+    return openedScreenId;
+}

@@ -1,18 +1,24 @@
 import { window, QuickPickItem } from 'vscode';
-import { CREATE_SCREEN_TITLE } from '../../constants';
+import { BACKEND_ERROR_MESSAGE, CREATE_SCREEN_TITLE } from '../../constants';
 import { View } from '../../types';
 import { AcuMateContext } from '../../plugin-context';
 
 const placeHolder = 'Select Views';
 
 export async function selectViews(graphName: string): Promise<View[] | undefined> {
-	var apiClient = AcuMateContext.ApiService;
-	var graphStructure = await apiClient.getGraphStructure(graphName);
+	const apiClient = AcuMateContext.ApiService;
+	let graphStructure;
+	try {
+		graphStructure = await apiClient.getGraphStructure(graphName);
+	}
+	catch(error) {
+		window.showErrorMessage(`${BACKEND_ERROR_MESSAGE} ${error}`);
+	}
 	if (!graphStructure?.views) {
 		return undefined;
 	}
 
-	var views: QuickPickItem[] = [];
+	const views: QuickPickItem[] = [];
 	for (const viewInfoName in graphStructure.views) {
 		const v = graphStructure.views[viewInfoName];
 		if (!v) {
@@ -33,9 +39,9 @@ export async function selectViews(graphName: string): Promise<View[] | undefined
 	
 	if (!validationErrors) {
 		return result!.map(item => { 
-			var result = new View(item.label);
+			const result = new View(item.label);
 			result.dacname = graphStructure!.views![item.label].cacheType; 
-			var fieldsMap = graphStructure!.views![item.label].fields;
+			const fieldsMap = graphStructure!.views![item.label].fields;
 			if (fieldsMap) {
 				result.fields = [];
 				for (const key in fieldsMap) {

@@ -25,11 +25,6 @@ export function activate(context: vscode.ExtensionContext) {
 
 	createHtmlDiagnostics();
 
-
-	//var actionProviderDisposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
-	//	providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
-	//});
-	//context.subscriptions.push(actionProviderDisposable);
 }
 
 function createHtmlDiagnostics() {
