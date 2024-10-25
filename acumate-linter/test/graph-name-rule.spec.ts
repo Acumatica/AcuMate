@@ -1,5 +1,5 @@
 import { RuleTester } from "@typescript-eslint/rule-tester";
-import { acuGraphRule } from "../src/rules/acu-graph-rule";
+import { acuGraphRule } from "../src/rules/graph-name-rule";
 import * as path from "path";
 
 const ruleTester = new RuleTester({
@@ -9,7 +9,7 @@ const ruleTester = new RuleTester({
 	}
 });
 
-ruleTester.run("aculint-graph rule", acuGraphRule, {
+ruleTester.run("eslint-plugin-graph-name rule", acuGraphRule, {
 	valid: [
 		{
 			name: "no graphInfo decorator",

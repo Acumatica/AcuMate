@@ -1,4 +1,4 @@
-import { TSESTree } from "@typescript-eslint/utils";
+import { ParserServicesWithTypeInformation, TSESTree } from "@typescript-eslint/utils";
 import { DecoratorFindResult, GraphNameFindResult } from "./types";
 import { GRAPH_INFO_DECORATOR, GRAPH_TYPE_PROP_NAME } from "./constants";
 
@@ -60,22 +60,53 @@ export function getDecorator(
 	return null;
 };
 
-export function isCallExpression(node: TSESTree.Node): node is TSESTree.CallExpression {
-	return node.type === TSESTree.AST_NODE_TYPES.CallExpression;
+export function isCallExpression(node: TSESTree.Node | null): node is TSESTree.CallExpression {
+	return node?.type === TSESTree.AST_NODE_TYPES.CallExpression;
 }
 
-export function isObjectExpression(node: TSESTree.Node): node is TSESTree.ObjectExpression {
-	return node.type === TSESTree.AST_NODE_TYPES.ObjectExpression;
+export function isObjectExpression(node: TSESTree.Node | null): node is TSESTree.ObjectExpression {
+	return node?.type === TSESTree.AST_NODE_TYPES.ObjectExpression;
 }
 
-export function isProperty(node: TSESTree.Node): node is TSESTree.Property {
-	return node.type === TSESTree.AST_NODE_TYPES.Property;
+export function isProperty(node: TSESTree.Node | null): node is TSESTree.Property {
+	return node?.type === TSESTree.AST_NODE_TYPES.Property;
 }
 
-export function isIdentifier(node: TSESTree.Node): node is TSESTree.Identifier {
-	return node.type === TSESTree.AST_NODE_TYPES.Identifier;
+export function isIdentifier(node: TSESTree.Node | null): node is TSESTree.Identifier {
+	return node?.type === TSESTree.AST_NODE_TYPES.Identifier;
 }
 
-export function isLiteral(node: TSESTree.Node): node is TSESTree.Literal {
-	return node.type === TSESTree.AST_NODE_TYPES.Literal;
+export function isLiteral(node: TSESTree.Node | null): node is TSESTree.Literal {
+	return node?.type === TSESTree.AST_NODE_TYPES.Literal;
+}
+
+export function isClassDeclaration(node: TSESTree.Node | null): node is TSESTree.ClassDeclaration {
+	return node?.type === TSESTree.AST_NODE_TYPES.ClassDeclaration;
+}
+
+export function isMemberExpression(node: TSESTree.Node | null): node is TSESTree.MemberExpression {
+	return node?.type === TSESTree.AST_NODE_TYPES.MemberExpression;
+}
+
+export function inheritsFrom(
+	services: ParserServicesWithTypeInformation,
+	node: TSESTree.ClassDeclaration,
+	baseClassName: string,
+	onlyImmidiateParent = true
+): boolean {
+	const parentClass = node.superClass;
+	if (!isIdentifier(parentClass)) {
+		return false;
+	}
+
+	if (parentClass.name === baseClassName) {
+		return true;
+	}
+
+	if (onlyImmidiateParent) {
+		return false;
+	}
+
+	// TODO: support not only immidiate parent!
+	return false;
 }
