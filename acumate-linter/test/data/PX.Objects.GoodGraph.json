@@ -1,0 +1,17 @@
+{
+	"views": {
+		"GoodView": {
+			"isCollection": false,
+			"cacheType": "GoodCache",
+			"cacheName": "GoodCache",
+			"name": "GoodView"
+		},
+		"BestView": {
+			"isCollection": false,
+			"cacheType": "BestCache",
+			"cacheName": "BestCache",
+			"name": "BestView"
+		},
+	},
+	"name": "PX.Objects.GoodGraph"
+}
