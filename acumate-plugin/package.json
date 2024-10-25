@@ -2,6 +2,7 @@
   "name": "acumate",
   "displayName": "AcuMate",
   "description": "Acumatica Modern UI code helper",
+  "repository": "https://github.com/Acumatica/AcuMate/",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.54.0"
@@ -176,14 +177,14 @@
     "@typescript-eslint/parser": "^8.7.0",
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
-    "eslint": "^9.13.0",
+    "eslint": "^9.13.0"
+  },
+  "dependencies": {
+    "jsonic": "^1.0.1",
+    "handlebars": "^4.7.8",
+    "htmlparser2": "^9.1.0",
     "prettier": "3.3.0",
     "prettier-plugin-organize-attributes": "1.0.0",
     "typescript": "^5.6.3"
-  },
-  "dependencies": {
-    "handlebars": "^4.7.8",
-    "htmlparser2": "^9.1.0",
-    "jsonic": "^1.0.1"
   }
 }
