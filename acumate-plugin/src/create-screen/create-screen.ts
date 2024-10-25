@@ -87,7 +87,7 @@ export async function createScreen() {
 		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, folderPath, screenId + ".ts");
 
 		if (await checkFileExists(fileUri)) {
-			const selection = await vscode.window.showWarningMessage(`Screen ${screenId} already exists. Do you want to verride it?`, `OK`, `Cancel`);
+			const selection = await vscode.window.showWarningMessage(`Screen ${screenId} already exists. Do you want to override it?`, `OK`, `Cancel`);
 			if (selection === "Cancel") {
 				return undefined;
 			}
