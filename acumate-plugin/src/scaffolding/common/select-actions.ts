@@ -1,7 +1,7 @@
 import { window, QuickPickItem } from 'vscode';
-import { CREATE_SCREEN_TITLE } from '../constants';
-import { Action, View } from '../types';
-import { AcuMateContext } from '../plugin-context';
+import { CREATE_SCREEN_TITLE } from '../../constants';
+import { Action, View } from '../../types';
+import { AcuMateContext } from '../../plugin-context';
 
 const placeHolder = 'Select Actions';
 
@@ -23,6 +23,7 @@ export async function selectActions(graphName: string): Promise<Action[] | undef
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
 		canPickMany: true,
+		ignoreFocusOut: true
 	});
 	return result!.map(item => (new Action(item.label)));
 }
