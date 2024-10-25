@@ -1,5 +1,6 @@
 import { CodeActionProvider, CodeActionKind, TextDocument, Range, CodeAction, WorkspaceEdit } from 'vscode';
 import * as ts from 'typescript';
+import * as fs from 'fs';
 
 export class BulbActionsProvider implements CodeActionProvider {
 
@@ -32,38 +33,38 @@ export class BulbActionsProvider implements CodeActionProvider {
 	}
 
 	private isInsidePXScreen(document: TextDocument, range: Range) {
-		// return this.getContainingClass(document, range) === 'PXScreen';
-        return this.getContainingClass(document, range) === 'AM100000';
+		return this.getContainingClass(document, range) === 'PXScreen';
 	}
 
     private getContainingClass(document: TextDocument, range: Range) {
         const filePath = document.uri.fsPath;
-        // const cursorPosition = document.lineAt(range.start.line);
         const fileText = document.getText();
 
-        const sourceFile = ts.createSourceFile(filePath, fileText, ts.ScriptTarget.Latest, true);
+        // const sourceFile = ts.createSourceFile(filePath, fileText, ts.ScriptTarget.Latest, true);
 
-        // const languageService = ts.createLanguageService({
-        //     getScriptFileNames: () => [filePath],
-        //     getScriptVersion: () => '1',
-        //     getScriptSnapshot: (fileName) => ts.ScriptSnapshot.fromString(fileText),
-        //     getCurrentDirectory: () => vscode.workspace.rootPath || '',
-        //     getCompilationSettings: () => ({ allowJs: true }),
-        //     getDefaultLibFileName: ts.getDefaultLibFilePath,
-        // }); 
-        // const program = languageService.getProgram();
-        // const sourceFile = program?.getSourceFile(filePath);
+        const servicesHost: ts.LanguageServiceHost = {
+            getScriptFileNames: () => [filePath],
+            getScriptVersion: () => '1',
+            getScriptSnapshot: (fileName) => ts.ScriptSnapshot.fromString(fileText),
+            getCurrentDirectory: () => process.cwd(),
+            getCompilationSettings: () => ({ allowJs: true }),
+            getDefaultLibFileName: (options) => ts.getDefaultLibFilePath(options),
+            fileExists: fileName => fs.existsSync(fileName),
+            readFile: fileName => JSON.parse(fs.readFileSync(fileName).toString()),
+        };
 
-        // program?.getTypeChecker().getTypeFromTypeNode().getBaseTypes();
-
+        const languageService = ts.createLanguageService(servicesHost);
+        const program = languageService.getProgram();
+        const sourceFile = program?.getSourceFile(filePath);
+        
         const cursorOffset = document.offsetAt(range.start);
-        const node = this.findNodeAtPosition(sourceFile, cursorOffset);
-
+        const node = this.findNodeAtPosition(sourceFile!, cursorOffset);
+        
         if (node) {
-            // check if the node is inside a class
             const classNode = this.findContainingClass(node);
             if (classNode) {
                 const className = classNode.name?.getText(sourceFile);
+                program?.getTypeChecker().getTypeAtLocation(classNode).getBaseTypes();
                 return className;
             }
             return undefined;
