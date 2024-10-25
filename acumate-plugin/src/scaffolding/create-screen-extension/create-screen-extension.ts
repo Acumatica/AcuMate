@@ -9,8 +9,7 @@ import { setViewTypes } from "../common/set-view-types";
 import { selectFields } from "../common/select-fields";
 import { AcuMateContext } from '../../plugin-context';
 
-const templateSource = `
-import {
+const templateSource = `import {
 	PXScreen,
 	PXView,
 	PXActionState,
@@ -25,6 +24,7 @@ import {
 	viewInfo,
 	gridConfig,
 	columnConfig,
+	treeConfig,
 
 	GridPreset,
 	GridColumnType,
@@ -49,13 +49,13 @@ export class {{extensionName}} {
 {{/each}}
 
 {{#each views}}
-	{{#if isGrid}}@gridConfig({preset: GridPreset.Details}){{/if}}{{#if isTree}}@treeConfig(){{/if}}
 	{{name}} = {{#if isEntity}}createSingle{{else}}createCollection{{/if}}({{dacname}});
 
 {{/each}}
 }
 
 {{#each views}}
+{{#if isGrid}}@gridConfig({ preset: GridPreset.Details }){{/if}}{{#if isTree}}@treeConfig(){{/if}}
 export class {{dacname}} extends PXView {
 {{#each fields}}
 	//{{displayName}}
@@ -65,8 +65,7 @@ export class {{dacname}} extends PXView {
 
 {{/each}}`;
 
-const htmlTemplate = `
-<template>
+const htmlTemplate = `<template>
 </template>
 `;
 
@@ -79,8 +78,8 @@ export async function createScreenExtension() {
         return;
     }
 
-    var fileUri = activeEditor.document.uri;
-    var fileName = path.parse(activeEditor.document.fileName).name;
+    const fileUri = activeEditor.document.uri;
+    const fileName = path.parse(activeEditor.document.fileName).name;
 
     if (!fileUri.toString().includes("screen/src/screens/" + fileName?.substring(0, 2) + "/" + fileName)) {
         await vscode.window.showErrorMessage(`File ${fileName} is not a screen`, `OK`);

@@ -1,27 +1,53 @@
 import { window, QuickPickItem } from 'vscode';
-import { CREATE_SCREEN_TITLE } from '../../constants';
-import { View } from '../../types';
+import { BACKEND_ERROR_MESSAGE, CREATE_SCREEN_TITLE } from '../../constants';
 import { AcuMateContext } from '../../plugin-context';
+import { groupBy } from '../../utils';
+import vscode from 'vscode';
+import { View as ViewModel } from '../../model/view';
+import { View } from '../../types';
 
 const placeHolder = 'Select Views';
 
 export async function selectViews(graphName: string): Promise<View[] | undefined> {
-	var apiClient = AcuMateContext.ApiService;
-	var graphStructure = await apiClient.getGraphStructure(graphName);
+	const apiClient = AcuMateContext.ApiService;
+	let graphStructure;
+	try {
+		graphStructure = await apiClient.getGraphStructure(graphName);
+	}
+	catch(error) {
+		window.showErrorMessage(`${BACKEND_ERROR_MESSAGE} ${error}`);
+	}
 	if (!graphStructure?.views) {
 		return undefined;
 	}
 
-	var views: QuickPickItem[] = [];
+	const views: QuickPickItem[] = [];
+	const viewsRecords: (ViewModel & { name: string})[] = [];
 	for (const viewInfoName in graphStructure.views) {
 		const v = graphStructure.views[viewInfoName];
 		if (!v) {
 			continue;
 		}
 			
-		views.push({ label: v.name ?? "", description: v.cacheName, detail: v.cacheType });
+		const newLocal = { name: viewInfoName, ...v };
+		viewsRecords.push(newLocal);
 	}
-	
+	const groupedItems = groupBy(viewsRecords, 'extension');
+	for (const category in groupedItems) {
+		if (category) {
+			views.push({label: category.substring(0, 50),  description: category, kind: vscode.QuickPickItemKind.Separator });
+		}
+
+		const viewsInCategory = groupedItems[category];
+		if (!viewsInCategory) {
+			continue;
+		}
+
+		for (const v of viewsInCategory) {
+			views.push({ label: v.name ?? "", description: v.cacheName, detail: v.cacheType });
+		}	
+	}
+
 	const result = await window.showQuickPick<QuickPickItem>(views, {
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
@@ -29,30 +55,20 @@ export async function selectViews(graphName: string): Promise<View[] | undefined
 		ignoreFocusOut: true
 	});
 
-	const validationErrors = validateViews(result);
-	
-	if (!validationErrors) {
-		return result!.map(item => { 
-			var result = new View(item.label);
-			result.dacname = graphStructure!.views![item.label].cacheType; 
-			var fieldsMap = graphStructure!.views![item.label].fields;
-			if (fieldsMap) {
-				result.fields = [];
-				for (const key in fieldsMap) {
-					result.fields.push(fieldsMap[key]);
-				}
+	if (!result || result.length === 0) {
+		return undefined;
+	}
+
+	return result!.map(item => { 
+		const result = new View(item.label);
+		result.dacname = graphStructure!.views![item.label].cacheType; 
+		const fieldsMap = graphStructure!.views![item.label].fields;
+		if (fieldsMap) {
+			result.fields = [];
+			for (const key in fieldsMap) {
+				result.fields.push(fieldsMap[key]);
 			}
-			return result;
-	});
-	}
-
-	window.showErrorMessage(validationErrors);
-	return selectViews(graphName);
-}
-
-function validateViews(items?: QuickPickItem[]) {
-	if (!items?.length) {
-		return 'Select at least one view!';
-	}
-	return;
+		}
+		return result;
+});
 }

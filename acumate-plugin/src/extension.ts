@@ -10,10 +10,10 @@ import { ConfigurationService } from './services/configuration-service';
 import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/build-screens';
 import { createScreen } from './scaffolding/create-screen/create-screen';
 import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
-import ts from 'typescript';
-import { tryGetGraphType } from './utils';
 import { provideTSCompletionItems } from './completionItemProviders/ts-completion-providr';
-
+import { Parser, DomHandler } from 'htmlparser2';
+const fs = require(`fs`);
+import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -23,11 +23,24 @@ export function activate(context: vscode.ExtensionContext) {
 
 	createCommands(context);
 
-	//var actionProviderDisposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
-	//	providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
-	//});
-	//context.subscriptions.push(actionProviderDisposable);
+	createHtmlDiagnostics();
+
 }
+
+function createHtmlDiagnostics() {
+	vscode.workspace.onDidChangeTextDocument(event => {
+		if (event.document.languageId === 'html') {
+			validateHtmlFile(event.document);
+		}
+	});
+
+	vscode.workspace.onDidOpenTextDocument(doc => {
+		if (doc.languageId === 'html') {
+			validateHtmlFile(doc);
+		}
+	});
+}
+
 
 function createCommands(context: vscode.ExtensionContext) {
 	let buildCommandsCache: CommandsCache;
@@ -185,6 +198,8 @@ function init(context: vscode.ExtensionContext) {
 	const cacheService = new CachedDataService(context.globalState);
 	const apiClient = new AcuMateApiClient();
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
+
+	AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidator');
 }
 
 

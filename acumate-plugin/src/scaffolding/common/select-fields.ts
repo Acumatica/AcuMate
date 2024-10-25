@@ -1,6 +1,7 @@
-import { QuickPickItem, window } from 'vscode';
+import { QuickPickItem, QuickPickItemKind, window } from 'vscode';
 import { CREATE_SCREEN_TITLE } from '../../constants';
 import { View } from '../../types';
+import { groupBy } from '../../utils';
 
 export async function selectFields(views: View[]): Promise<void> {
 	for await (const item of views) {
@@ -13,14 +14,21 @@ async function selectFieldsForView(view: View) {
 		return;
 	}
 
-	var fields: QuickPickItem[] = [];
-	for (const fieldName in view.fields) {
-		const v = view.fields[fieldName];
-		if (!v) {
+	const fields: QuickPickItem[] = [];
+	const groupedItems = groupBy(view.fields, 'extension');
+	for (const category in groupedItems) {
+		if (category) {
+			fields.push({label: category.substring(0, 50), description: category, kind: QuickPickItemKind.Separator });
+		}
+
+		const fieldsInCategory = groupedItems[category];
+		if (!fieldsInCategory) {
 			continue;
 		}
-			
-		fields.push({ label: v.name ?? "", description: v.displayName, detail: v.typeName });
+
+		for (const field of fieldsInCategory) {
+			fields.push({ label: field.name ?? '', description: field.displayName, detail: field.typeName });
+		}	
 	}
 	
 
@@ -31,6 +39,6 @@ async function selectFieldsForView(view: View) {
 		ignoreFocusOut: true
 	});
 
-	var map = result!.map(item => item.label);
+	const map = result!.map(item => item.label);
 	view.fields = view.fields.filter(f => f.name && map.indexOf(f.name) >= 0 ) ;
 }

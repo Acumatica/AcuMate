@@ -1,18 +1,23 @@
 import { window, QuickPickItem } from 'vscode';
-import { CREATE_SCREEN_TITLE } from '../../constants';
-import { AcuMateApiClient } from '../../api/api-service';
+import { BACKEND_ERROR_MESSAGE, CREATE_SCREEN_TITLE } from '../../constants';
 import { AcuMateContext } from '../../plugin-context';
 
 
 const placeHolder = 'Select Graph Type';
 
 export async function selectGraphType(): Promise<string | undefined> {
-	var apiClient = AcuMateContext.ApiService;
-	var graphs = await apiClient.getGraphs();
+	const apiClient = AcuMateContext.ApiService;
+	let graphs;
+	try {
+		graphs = await apiClient.getGraphs();
+	}
+	catch(error) {
+		window.showErrorMessage(`${BACKEND_ERROR_MESSAGE} ${error}`);
+	}
 	if (graphs) {
 		const result = await window.showQuickPick<QuickPickItem>(graphs.map(g => ({ label: g.name ?? "", description: g.text }) ), {
 			title: CREATE_SCREEN_TITLE,
-			placeHolder
+			placeHolder,
 		});
 
 		if (!result) {
