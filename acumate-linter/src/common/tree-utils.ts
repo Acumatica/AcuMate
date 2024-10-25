@@ -16,10 +16,16 @@ export function getGraphName(node: TSESTree.ClassDeclaration | TSESTree.Property
 	return { status: DecoratorFindResult.Found, name: propValue.value as string };
 }
 
+export interface DecoratorResult {
+	name: string;
+	args: { [name: string]: TSESTree.Node } | null;
+	decorator: TSESTree.Decorator;
+}
+
 export function getDecorator(
 	node: TSESTree.ClassDeclaration | TSESTree.PropertyDefinition,
 	name: string
-) {
+): DecoratorResult | null {
 	const decorators = node.decorators;
 	if (!decorators) {
 		return null;
@@ -27,6 +33,9 @@ export function getDecorator(
 
 	for (const decorator of decorators) {
 		if (!isCallExpression(decorator.expression)) {
+			if (isIdentifier(decorator.expression)) {
+				return { name, args: null, decorator };
+			}
 			continue;
 		}
 
@@ -55,7 +64,7 @@ export function getDecorator(
 			}
 		}
 
-		return { name, args: parsedArgs };
+		return { name, args: parsedArgs, decorator };
 	}
 	return null;
 };
