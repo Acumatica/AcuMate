@@ -3,6 +3,7 @@
   "displayName": "AcuMate",
   "description": "Acumatica Modern UI code helper",
   "repository": "https://github.com/Acumatica/AcuMate/",
+  "publisher": "acumatica",
   "icon": "images/acumate.png",
   "version": "0.0.1",
   "engines": {
