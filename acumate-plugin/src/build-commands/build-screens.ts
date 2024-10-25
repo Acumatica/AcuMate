@@ -1,7 +1,12 @@
 import { QuickPickItem, QuickPickItemKind, window } from 'vscode';
+import * as fs from 'fs';
 
 const title = 'Build Screens';
 const buildCommands = [
+    {
+        command: 'acumate.watchCurrentScreen',
+        description: 'Watch Current Screen',
+    },
     {
         command: 'acumate.buildCurrentScreenDev',
         description: 'Build Current Screen (Dev)',
@@ -49,6 +54,8 @@ const buildCommands = [
     },
 ];
 
+const getModulesCommand = 'npm run getmodules';
+
 export type CommandsCache = {
     lastEnteredNames?: string;
     lastEnteredModules?: string;
@@ -65,6 +72,7 @@ interface IBuildParameters {
     cache?: CommandsCache;
     currentScreen?: boolean;
     noPrompt?: boolean;
+    watch?: boolean;
 };
 
 export async function openBuildMenu() {
@@ -83,7 +91,7 @@ export async function openBuildMenu() {
 
 export async function buildScreens(params: IBuildParameters) {
     const terminal = window.createTerminal(title);
-    let command = 'npm run build-all';
+    let command = `npm run ${params.watch ? 'watch' : 'build'}`; // include build-all option?
     let result;
     
     if (params.devMode) {
@@ -128,7 +136,12 @@ export async function buildScreens(params: IBuildParameters) {
         command += ` -- --env modules=${result}`;
     }
 
-    terminal.sendText(`cd ${getProjectPath()}`);
+    if (!nodeModulesExists()) {
+        terminal.sendText(`cd ${getFrontendSourcesPath()}`);
+        terminal.sendText(getModulesCommand);
+    }
+
+    terminal.sendText(`cd ${getScreensSrcPath()}`);
     terminal.sendText(command);
     terminal.show();
 
@@ -157,12 +170,25 @@ export async function buildScreens(params: IBuildParameters) {
     return cache;
 }
 
-function getProjectPath(): string | undefined {
-    const screensPath = 'screen\\src\\screens\\';
+const screensPath = 'screen\\src\\screens\\';
+
+function getFrontendSourcesPath(): string | undefined {
     const openedFilePath = window.activeTextEditor?.document.uri.fsPath;
-    const projectPathArray = openedFilePath?.split(screensPath);
-    const projectPath = projectPathArray ? `${projectPathArray[0]}${screensPath}` : undefined;
-    return projectPath;
+    const pathArray = openedFilePath?.split(screensPath);
+    const path = pathArray ? pathArray[0] : undefined;
+    return path;
+}
+
+function getScreenAppPath(): string | undefined {
+    const frontendSourcesPath = getFrontendSourcesPath();
+    const path = frontendSourcesPath ? `${frontendSourcesPath}screen` : undefined;
+    return path;
+}
+
+function getScreensSrcPath(): string | undefined {
+    const frontendSourcesPath = getFrontendSourcesPath();
+    const path = frontendSourcesPath ? `${frontendSourcesPath}${screensPath}` : undefined;
+    return path;
 }
 
 function getOpenedScreenId(): string | undefined {
@@ -170,4 +196,9 @@ function getOpenedScreenId(): string | undefined {
     const openedScreenPathArray = openedFilePath?.split('\\');
     const openedScreenId = openedScreenPathArray ? openedScreenPathArray[openedScreenPathArray.length - 1].split('.')[0] : undefined;
     return openedScreenId;
+}
+
+function nodeModulesExists(): boolean {
+    const path = `${getScreenAppPath()}\\node_modules`;
+    return fs.existsSync(path);
 }

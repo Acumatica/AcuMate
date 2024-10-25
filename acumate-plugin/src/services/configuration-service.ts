@@ -35,4 +35,12 @@ export class ConfigurationService {
         return this.config.get("useAuthentification");
     }
 
+    get usePrettier() : boolean | undefined {
+        return this.config.get("usePrettier");
+    }
+
+    get clearUsages() : boolean | undefined {
+        return this.config.get("clearUsages");
+    }
+
 }
