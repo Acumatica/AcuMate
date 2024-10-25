@@ -1,4 +1,4 @@
-import { checkFileExists, createFile, runNpmCommand } from "../../utils";
+import { checkFileExists, createFile, runNpmCommand, screensPath } from "../../utils";
 import { selectActions } from "../common/select-actions";
 import { selectFields } from "../common/select-fields";
 import { selectGraphType } from "./select-graph-type";
@@ -81,7 +81,7 @@ export async function createScreen() {
         return;
     }
 
-	const folderPath = "screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId;
+	const folderPath = screensPath + screenId?.substring(0, 2) + "\\" + screenId;
 
 	if (vscode.workspace.workspaceFolders) {
 		const workspaceFolder = vscode.workspace.workspaceFolders[0];
