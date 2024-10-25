@@ -1,5 +1,5 @@
 import path from 'path';
-import { checkFileExists, createFile, tryGetGraphType } from "../../utils";
+import { checkFileExists, createFile, runNpmCommand, tryGetGraphType } from "../../utils";
 import vscode from "vscode";
 import Handlebars from 'handlebars';
 import { setScreenExtensionName } from "./set-screen-extension-name";
@@ -7,6 +7,7 @@ import { selectViews } from "../common/select-views";
 import { selectActions } from "../common/select-actions";
 import { setViewTypes } from "../common/set-view-types";
 import { selectFields } from "../common/select-fields";
+import { AcuMateContext } from '../../plugin-context';
 
 const templateSource = `
 import {
@@ -136,8 +137,18 @@ export async function createScreenExtension() {
     const uri = await createFile(folderPath, screenExtensionName + ".ts", tsCode);
 	await createFile(folderPath, screenExtensionName + ".html", htmlTemplate);
 
+    if (vscode.workspace.workspaceFolders && AcuMateContext.ConfigurationService.usePrettier) {
+		const workspaceFolder = vscode.workspace.workspaceFolders[0];
+		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, folderPath);
+
+		await runNpmCommand('prettier . --write', fileUri.fsPath);
+	}
+
 	if (uri) {
 		const document = await vscode.workspace.openTextDocument(uri);
 		await vscode.window.showTextDocument(document);
+        if (AcuMateContext.ConfigurationService.clearUsages) {
+			await vscode.commands.executeCommand(`editor.action.organizeImports`);
+		}
 	}
 }

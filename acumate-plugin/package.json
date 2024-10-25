@@ -47,6 +47,16 @@
           "type": "boolean",
           "default": true,
           "description": "Use credentials to access Acumatica backend."
+        },
+        "acuMate.usePrettier": {
+          "type": "boolean",
+          "default": true,
+          "description": "Use prettier for generated files."
+        },
+        "acuMate.clearUsages": {
+          "type": "boolean",
+          "default": true,
+          "description": "Call `organizeUsages` command for generated files."
         }
       }
     },
@@ -164,6 +174,8 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.13.0",
+    "prettier": "3.3.0",
+    "prettier-plugin-organize-attributes": "1.0.0",
     "typescript": "^5.6.3"
   },
   "dependencies": {
