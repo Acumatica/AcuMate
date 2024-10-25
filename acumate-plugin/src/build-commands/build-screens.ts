@@ -104,7 +104,7 @@ export async function buildScreens(params: IBuildParameters) {
 
     else if (params.byNames) {
         const prompt = 'Enter screen IDs separated by commas';
-        const placeHolder = 'XXXXXXXX, YYYYYYYY, ...';
+        const placeHolder = 'e.g. SM301000,AU201000,...';
         if (!params.noPrompt) {
             result = await window.showInputBox({
                 title,
@@ -121,7 +121,7 @@ export async function buildScreens(params: IBuildParameters) {
 
     else if (params.byModules) {
         const prompt = 'Enter screen modules separated by commas';
-        const placeHolder = 'XX, YY, ...';
+        const placeHolder = 'eg SO,AU,...';
         if (!params.noPrompt) {
             result = await window.showInputBox({
                 title,

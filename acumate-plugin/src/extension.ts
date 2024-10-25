@@ -23,7 +23,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	createCommands(context);
 
-	//var actionProviderDisposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
+	//const actionProviderDisposable = vscode.languages.registerCodeActionsProvider({ language: 'typescript' }, new BulbActionsProvider(), {
 	//	providedCodeActionKinds: BulbActionsProvider.providedCodeActionKinds
 	//});
 	//context.subscriptions.push(actionProviderDisposable);

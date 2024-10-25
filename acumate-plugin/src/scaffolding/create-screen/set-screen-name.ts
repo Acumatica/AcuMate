@@ -4,31 +4,21 @@ import { CREATE_SCREEN_TITLE } from '../../constants';
 const SCREEN_ID_LENGTH = 8;
 
 export async function setScreenName(value?: string) {
-	const prompt = 'Set screen ID:';
-	const placeHolder = 'XXXXXXXX';
+	const prompt = 'Set Screen ID:';
+	const placeHolder = 'e.g. SO301000';
 
 	const result = await window.showInputBox({
 		title: CREATE_SCREEN_TITLE,
 		placeHolder,
 		prompt,
         value,
+		validateInput,
 	});
 
-	if (!result) {
-		return undefined;
-	}
-
-	const validationErrors = validateScreenName(result);
-
-	if (!validationErrors) {
-		return result;
-	}
-
-	window.showErrorMessage(validationErrors);
-	return setScreenName(result);
+	return result;
 }
 
-function validateScreenName(name?: string) {
+function validateInput(name?: string) {
 	if (!name) {
 		return 'Enter Screen ID';
 	}

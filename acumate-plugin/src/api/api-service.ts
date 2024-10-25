@@ -43,7 +43,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
     }
 
     private async auth() {
-        var data = {
+        const data = {
             "name" : AcuMateContext.ConfigurationService.login,
             "password" : AcuMateContext.ConfigurationService.password,
             "tenant" : AcuMateContext.ConfigurationService.tenant

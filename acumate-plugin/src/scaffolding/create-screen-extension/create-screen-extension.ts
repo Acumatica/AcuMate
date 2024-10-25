@@ -79,8 +79,8 @@ export async function createScreenExtension() {
         return;
     }
 
-    var fileUri = activeEditor.document.uri;
-    var fileName = path.parse(activeEditor.document.fileName).name;
+    const fileUri = activeEditor.document.uri;
+    const fileName = path.parse(activeEditor.document.fileName).name;
 
     if (!fileUri.toString().includes("screen/src/screens/" + fileName?.substring(0, 2) + "/" + fileName)) {
         await vscode.window.showErrorMessage(`File ${fileName} is not a screen`, `OK`);
