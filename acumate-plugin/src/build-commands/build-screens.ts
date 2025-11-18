@@ -100,7 +100,7 @@ export async function buildScreens(params: IBuildParameters) {
     }
 
     if (params.currentScreen) {
-        command += ` -- --env screenIds=${getOpenedScreenId()}`;
+        command += ` --- --env screenIds="${getOpenedScreenId()}"`;
     }
 
     else if (params.byNames) {
@@ -117,7 +117,12 @@ export async function buildScreens(params: IBuildParameters) {
         else {
             result = params.cache?.lastEnteredNames;
         }
-        command += ` -- --env screenIds=${result}`;
+        if (result) {
+            command += ` --- --env screenIds="${result}"`;
+        }
+        else {
+            return;
+        }
     } 
 
     else if (params.byModules) {
@@ -134,7 +139,12 @@ export async function buildScreens(params: IBuildParameters) {
         else {
             result = params.cache?.lastEnteredModules;
         }
-        command += ` -- --env modules=${result}`;
+        if (result) {
+            command += ` --- --env modules="${result}"`;
+        }
+        else {
+            return;
+        }
     }
 
     if (!nodeModulesExists()) {
