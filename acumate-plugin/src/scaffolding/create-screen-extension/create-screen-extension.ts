@@ -8,6 +8,7 @@ import { selectActions } from "../common/select-actions";
 import { setViewTypes } from "../common/set-view-types";
 import { selectFields } from "../common/select-fields";
 import { AcuMateContext } from '../../plugin-context';
+import { USE_BACKEND_WARNING } from '../../constants';
 
 const templateSource = `import {
 	PXScreen,
@@ -72,6 +73,9 @@ const htmlTemplate = `<template>
 const template = Handlebars.compile(templateSource);
 
 export async function createScreenExtension() {
+	if (!AcuMateContext.ConfigurationService.useBackend) {
+		return vscode.window.showInformationMessage(USE_BACKEND_WARNING);
+	}
 
     const activeEditor = vscode.window.activeTextEditor;
     if (!activeEditor) {

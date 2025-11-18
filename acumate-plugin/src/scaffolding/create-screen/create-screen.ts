@@ -9,6 +9,7 @@ import { setViewTypes } from "../common/set-view-types";
 import vscode from "vscode";
 import Handlebars from 'handlebars';
 import { AcuMateContext } from "../../plugin-context";
+import { USE_BACKEND_WARNING } from "../../constants";
 
 const templateSource = `import {
 	PXScreen,
@@ -75,6 +76,10 @@ const htmlTemplate = `<template>
 const template = Handlebars.compile(templateSource);
 
 export async function createScreen() {
+	if (!AcuMateContext.ConfigurationService.useBackend) {
+		return vscode.window.showInformationMessage(USE_BACKEND_WARNING);
+	}
+
     const screenId = await setScreenName();
 	if (!screenId) {
         return;
