@@ -1,4 +1,6 @@
 import * as assert from 'assert';
+import * as fs from 'fs';
+import * as path from 'path';
 import { describe, it } from 'mocha';
 import {
 	getClassPropertiesFromTs,
@@ -58,5 +60,15 @@ describe('utils metadata collection', () => {
 		const { lookup, screenClasses } = buildMetadata();
 		const resolution = resolveViewBinding('missingView', screenClasses, lookup);
 		assert.strictEqual(resolution, undefined);
+	});
+
+	it('collects properties across relative imports', () => {
+		const childPath = path.resolve(__dirname, '../../../src/test/fixtures/metadata/child-maint.ts');
+		const content = fs.readFileSync(childPath, 'utf-8');
+		const classInfos = getClassPropertiesFromTs(content, childPath);
+		const child = classInfos.find(info => info.className === 'MetaChildMaint');
+		assert.ok(child, 'MetaChildMaint metadata missing');
+		assert.ok(child?.properties.has('baseView'), 'Inherited baseView not detected');
+		assert.ok(child?.properties.has('childView'), 'childView not detected');
 	});
 });
