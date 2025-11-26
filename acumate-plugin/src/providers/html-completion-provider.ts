@@ -16,13 +16,18 @@ import {
 	getAttributeContext,
 	findParentViewName,
 } from './html-shared';
+import {
+	ClientControlMetadata,
+	getClientControlsMetadata,
+} from '../services/client-controls-service';
 
 // Registers completions so HTML view bindings stay in sync with PX metadata.
 export function registerHtmlCompletionProvider(context: vscode.ExtensionContext) {
 	const provider = vscode.languages.registerCompletionItemProvider(
 		{ language: 'html', scheme: 'file' },
 		new HtmlCompletionProvider(),
-		'"'
+		'"',
+		'<'
 	);
 
 	context.subscriptions.push(provider);
@@ -34,6 +39,11 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		document: vscode.TextDocument,
 		position: vscode.Position
 	): Promise<vscode.CompletionItem[] | undefined> {
+		const controlTagItems = await this.tryProvideControlTagCompletion(document, position);
+		if (controlTagItems) {
+			return controlTagItems;
+		}
+
 		const offset = document.offsetAt(position);
 		const dom = parseDocumentDom(document.getText());
 		if (!dom) {
@@ -91,6 +101,105 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		return undefined;
+	}
+
+	private async tryProvideControlTagCompletion(
+		document: vscode.TextDocument,
+		position: vscode.Position
+	): Promise<vscode.CompletionItem[] | undefined> {
+		const tagContext = this.getTagCompletionContext(document, position);
+		if (!tagContext) {
+			return undefined;
+		}
+
+		const lowerPrefix = tagContext.tagPrefix.toLowerCase();
+		if (lowerPrefix && !lowerPrefix.startsWith('qp')) {
+			return undefined;
+		}
+
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const controls = getClientControlsMetadata({
+			startingPath: document.uri.fsPath,
+			workspaceRoots,
+		});
+		if (!controls.length) {
+			return undefined;
+		}
+
+		const filtered = controls.filter(control =>
+			!lowerPrefix || control.tagName.toLowerCase().startsWith(lowerPrefix)
+		);
+		if (!filtered.length) {
+			return undefined;
+		}
+
+		return filtered.map(control => this.createControlCompletionItem(control, tagContext.replaceRange));
+	}
+
+	private getTagCompletionContext(
+		document: vscode.TextDocument,
+		position: vscode.Position
+	): { tagPrefix: string; replaceRange: vscode.Range } | undefined {
+		const line = document.lineAt(position.line);
+		const textBeforeCursor = line.text.slice(0, position.character);
+		const match = /<\s*\/?\s*([A-Za-z0-9:-]*)$/.exec(textBeforeCursor);
+		if (!match) {
+			return undefined;
+		}
+
+		const tagPrefix = match[1] ?? '';
+		const replaceStart = position.character - tagPrefix.length;
+		const replaceRange = new vscode.Range(
+			position.line,
+			Math.max(0, replaceStart),
+			position.line,
+			position.character
+		);
+
+		return { tagPrefix, replaceRange };
+	}
+
+	private createControlCompletionItem(control: ClientControlMetadata, replaceRange: vscode.Range): vscode.CompletionItem {
+		const item = new vscode.CompletionItem(control.tagName, vscode.CompletionItemKind.Class);
+		item.kind = vscode.CompletionItemKind.Class;
+		item.range = replaceRange;
+		item.detail = control.config?.displayName ?? control.className;
+		item.documentation = this.buildControlDocumentation(control);
+		item.sortText = `0_${control.tagName}`;
+		return item;
+	}
+
+	private buildControlDocumentation(control: ClientControlMetadata): vscode.MarkdownString | undefined {
+		const sections: string[] = [];
+		if (control.description) {
+			sections.push(control.description);
+		}
+
+		const config = control.config;
+		if (config) {
+			sections.push(`**config**: \`${config.displayName}\``);
+			const properties = config.definition?.properties ?? [];
+			if (properties.length) {
+				const lines = properties.slice(0, 20).map(prop => {
+					const signature = prop.type
+						? `\`${prop.name}${prop.optional ? '?' : ''}: ${prop.type}\``
+						: `\`${prop.name}${prop.optional ? '?' : ''}\``;
+					const description = prop.description ? ` — ${prop.description}` : '';
+					return `${signature}${description}`;
+				});
+				sections.push(lines.join('\n'));
+				if (properties.length > 20) {
+					sections.push(`…${properties.length - 20} more properties`);
+				}
+			}
+		}
+
+		sections.push(`Defined in \
+\`client-controls/${control.sourcePath}\``);
+
+		const markdown = new vscode.MarkdownString(sections.join('\n\n'));
+		markdown.isTrusted = false;
+		return markdown;
 	}
 
 	// Builds the suggestion set for view.bind attributes.
