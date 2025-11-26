@@ -20,7 +20,7 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
 
   const tsContent = fs.readFileSync(tsFilePath, "utf-8");
 
-  const classProperties = getClassPropertiesFromTs(tsContent);
+  const classProperties = getClassPropertiesFromTs(tsContent, tsFilePath);
 
   // Parse the HTML content
   const handler = new DomHandler(

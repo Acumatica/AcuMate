@@ -1,4 +1,5 @@
 import vscode from 'vscode';
+import * as path from 'path';
 const jsonic = require('jsonic');
 const { exec } = require('child_process');
 const fs = require(`fs`);
@@ -60,23 +61,192 @@ export async function runNpmCommand(command: string, workingDirectory: string) {
   });
 }
 
-export function buildClassInheritance(node: ts.ClassDeclaration) {
-	if (node.heritageClauses) {
-		const inheritedClasses = node.heritageClauses
-			.map((it) => it.types
-				.filter((inner) => ts.isIdentifier(inner.expression))
-				.map((inner) => inner.expression as ts.Identifier)
-			)
-			.reduce((acc, el) => acc.concat(el), []);
+const sourceFileCache = new Map<string, ts.SourceFile>();
 
-		return inheritedClasses;
+function tryReadSourceFile(filePath: string): ts.SourceFile | undefined {
+	const normalizedPath = path.normalize(filePath);
+	const cached = sourceFileCache.get(normalizedPath);
+	if (cached) {
+		return cached;
 	}
+
+	try {
+		const content = fs.readFileSync(normalizedPath, 'utf-8');
+		const sourceFile = ts.createSourceFile(normalizedPath, content, ts.ScriptTarget.Latest, true);
+		sourceFileCache.set(normalizedPath, sourceFile);
+		return sourceFile;
+	}
+	catch {
+		return undefined;
+	}
+}
+
+function findClassDeclarationWithin(sourceFile: ts.SourceFile, className: string): ts.ClassDeclaration | undefined {
+	let target: ts.ClassDeclaration | undefined;
+
+	const visit = (node: ts.Node) => {
+		if (target) {
+			return;
+		}
+
+		if (ts.isClassDeclaration(node) && node.name?.text === className) {
+			target = node;
+			return;
+		}
+
+		ts.forEachChild(node, visit);
+	};
+
+	visit(sourceFile);
+	return target;
+}
+
+function getImportModuleSpecifier(sourceFile: ts.SourceFile, className: string): string | undefined {
+	for (const statement of sourceFile.statements) {
+		if (!ts.isImportDeclaration(statement) || !statement.importClause || !ts.isStringLiteral(statement.moduleSpecifier)) {
+			continue;
+		}
+
+		const moduleName = statement.moduleSpecifier.text;
+		const clause = statement.importClause;
+
+		if (clause.name?.text === className) {
+			return moduleName;
+		}
+
+		if (clause.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+			for (const element of clause.namedBindings.elements) {
+				if (element.name.text === className) {
+					return moduleName;
+				}
+			}
+		}
+	}
+
 	return undefined;
 }
 
-export function getClassPropertiesFromTs(tsContent: string): { className: string; type: "PXScreen" | "PXView"; properties: Set<string>; }[] {
+function resolveModulePath(sourceFilePath: string, moduleSpecifier: string): string | undefined {
+	if (!moduleSpecifier) {
+		return undefined;
+	}
+
+	if (!sourceFilePath || sourceFilePath === 'temp.ts') {
+		return undefined;
+	}
+
+	// Support only relative imports for now
+	if (moduleSpecifier.startsWith('.')) {
+		const baseDir = path.dirname(sourceFilePath);
+		const normalizedSpecifier = moduleSpecifier.replace(/\\/g, '/');
+		const targetBase = path.resolve(baseDir, normalizedSpecifier);
+		const candidateFiles = buildCandidateFilePaths(targetBase);
+		for (const candidate of candidateFiles) {
+			if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+				return candidate;
+			}
+		}
+	}
+
+	return undefined;
+}
+
+function buildCandidateFilePaths(basePath: string): string[] {
+	const extensions = ['.ts', '.tsx', '.d.ts', '.js', '.jsx', '.mjs', '.cjs', ''];
+	const candidates: string[] = [];
+
+	for (const ext of extensions) {
+		if (ext) {
+			candidates.push(`${basePath}${ext}`);
+		}
+		else {
+			candidates.push(basePath);
+		}
+	}
+
+	if (fs.existsSync(basePath) && fs.statSync(basePath).isDirectory()) {
+		for (const ext of extensions) {
+			const candidate = path.join(basePath, `index${ext}`);
+			candidates.push(candidate);
+		}
+	}
+
+	return candidates;
+}
+
+// Resolves class declarations defined locally or in imported modules so we can follow extends chains.
+function findClassDeclarationByName(sourceFile: ts.SourceFile, className: string): ts.ClassDeclaration | undefined {
+	const localMatch = findClassDeclarationWithin(sourceFile, className);
+	if (localMatch) {
+		return localMatch;
+	}
+
+	const moduleSpecifier = getImportModuleSpecifier(sourceFile, className);
+	if (!moduleSpecifier) {
+		return undefined;
+	}
+
+	const resolvedPath = resolveModulePath(sourceFile.fileName, moduleSpecifier);
+	if (!resolvedPath) {
+		return undefined;
+	}
+
+	const importedSourceFile = tryReadSourceFile(resolvedPath);
+	if (!importedSourceFile) {
+		return undefined;
+	}
+
+	return findClassDeclarationWithin(importedSourceFile, className);
+}
+
+export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<string> = new Set()) {
+	if (!node.heritageClauses) {
+		return undefined;
+	}
+
+	const inheritanceChain: ts.Identifier[] = [];
+
+	for (const clause of node.heritageClauses) {
+		const isExtendsClause = clause.token === ts.SyntaxKind.ExtendsKeyword;
+
+		for (const typeNode of clause.types) {
+			if (!ts.isIdentifier(typeNode.expression)) {
+				continue;
+			}
+
+			const identifier = typeNode.expression as ts.Identifier;
+			inheritanceChain.push(identifier);
+
+			if (!isExtendsClause) {
+				continue;
+			}
+
+			const className = identifier.text;
+			if (visited.has(className)) {
+				continue;
+			}
+
+			const parentDeclaration = findClassDeclarationByName(node.getSourceFile(), className);
+			if (!parentDeclaration) {
+				continue;
+			}
+
+			const nextVisited = new Set(visited);
+			nextVisited.add(className);
+
+			const parentChain = buildClassInheritance(parentDeclaration, nextVisited);
+			if (parentChain?.length) {
+				inheritanceChain.push(...parentChain);
+			}
+		}
+	}
+
+	return inheritanceChain.length ? inheritanceChain : undefined;
+}
+
+export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'): { className: string; type: "PXScreen" | "PXView"; properties: Set<string>; }[] {
 	const classes: { className: string, type: 'PXScreen' | 'PXView', properties: Set<string> }[] = [];
-	const sourceFile = ts.createSourceFile('temp.ts', tsContent, ts.ScriptTarget.Latest, true);
+	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
   
 	function findClassProperties(node: ts.Node) {
 	  if (ts.isClassDeclaration(node) && node.members) {

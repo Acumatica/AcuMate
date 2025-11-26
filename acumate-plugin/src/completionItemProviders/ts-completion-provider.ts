@@ -5,7 +5,7 @@ import { AcuMateContext } from '../plugin-context';
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
 
-    const sourceFile = ts.createSourceFile(`temp.ts`, document.getText(), ts.ScriptTarget.Latest, true);
+    const sourceFile = ts.createSourceFile(document.fileName, document.getText(), ts.ScriptTarget.Latest, true);
 
     let isInsideScreenClass = false;
     let isInsideViewClass = false;
