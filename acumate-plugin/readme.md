@@ -64,6 +64,12 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
    - Provides field name suggestions that automatically scope to the closest parent view binding, so only valid fields appear.  
    - Attribute parsing tolerates empty values (`view.bind=""`) to keep suggestions responsive while editing.
 
+### Quality & CI
+
+1. **Automated Tests**  
+   - Run `npm test` locally to compile, lint, and execute the VS Code integration suites (metadata, HTML providers, validator).
+   - The GitHub Actions workflow in `.github/workflows/ci.yml` mirrors this command on pushes and pull requests across Node 18.x and 20.x, ensuring extensions remain stable before merges.
+
 
 
 ## Commands
