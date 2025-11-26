@@ -285,12 +285,7 @@ function buildCandidateFilePaths(basePath: string): string[] {
 	const candidates: string[] = [];
 
 	for (const ext of extensions) {
-		if (ext) {
-			candidates.push(`${basePath}${ext}`);
-		}
-		else {
-			candidates.push(basePath);
-		}
+		candidates.push(`${basePath}${ext}`);
 	}
 
 	if (fs.existsSync(basePath) && fs.statSync(basePath).isDirectory()) {
