@@ -358,9 +358,9 @@ export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<st
 			}
 
 			const identifier = typeNode.expression as ts.Identifier;
-			inheritanceChain.push(identifier);
 
 			if (!isExtendsClause) {
+				inheritanceChain.push(identifier);
 				continue;
 			}
 
@@ -368,6 +368,8 @@ export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<st
 			if (visited.has(className)) {
 				continue;
 			}
+
+			inheritanceChain.push(identifier);
 
 			const parentDeclaration = findClassDeclarationByName(node.getSourceFile(), className);
 			if (!parentDeclaration) {
