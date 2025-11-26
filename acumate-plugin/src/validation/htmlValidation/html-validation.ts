@@ -148,7 +148,7 @@ function validateDom(
     }
 
     if (node.type === "tag" && node.name === "field" && node.attribs.name) {
-      const viewname = node.parentNode.attribs[`view.bind`];
+      const viewname = node.parentNode?.attribs?.[`view.bind`];
       const fieldName = node.attribs.name;
       const viewResolution = resolveView(viewname);
       const viewClass = viewResolution?.viewClass;
