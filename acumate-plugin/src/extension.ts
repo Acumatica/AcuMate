@@ -179,6 +179,10 @@ function createCommands(context: vscode.ExtensionContext) {
 }
 
 function createIntelliSenseProviders(context: vscode.ExtensionContext) {
+	if (!AcuMateContext.ConfigurationService.useBackend) {
+		return;
+	}
+
 	let provider = vscode.languages.registerCompletionItemProvider(
 		'typescript',
 		{
