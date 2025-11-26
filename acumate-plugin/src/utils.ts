@@ -61,7 +61,12 @@ export async function runNpmCommand(command: string, workingDirectory: string) {
   });
 }
 
-const sourceFileCache = new Map<string, ts.SourceFile>();
+type SourceFileCacheEntry = {
+	sourceFile: ts.SourceFile;
+	mtimeMs: number;
+};
+
+const sourceFileCache = new Map<string, SourceFileCacheEntry>();
 
 export type ClassPropertyKind = 'action' | 'field' | 'view' | 'viewCollection' | 'unknown';
 
@@ -186,18 +191,33 @@ function getViewReferenceFromInitializer(initializer: ts.CallExpression): string
 
 function tryReadSourceFile(filePath: string): ts.SourceFile | undefined {
 	const normalizedPath = path.normalize(filePath);
+	let stats: import('fs').Stats;
+
+	try {
+		stats = fs.statSync(normalizedPath);
+		if (!stats.isFile()) {
+			sourceFileCache.delete(normalizedPath);
+			return undefined;
+		}
+	}
+	catch {
+		sourceFileCache.delete(normalizedPath);
+		return undefined;
+	}
+
 	const cached = sourceFileCache.get(normalizedPath);
-	if (cached) {
-		return cached;
+	if (cached && cached.mtimeMs === stats.mtimeMs) {
+		return cached.sourceFile;
 	}
 
 	try {
 		const content = fs.readFileSync(normalizedPath, 'utf-8');
 		const sourceFile = ts.createSourceFile(normalizedPath, content, ts.ScriptTarget.Latest, true);
-		sourceFileCache.set(normalizedPath, sourceFile);
+		sourceFileCache.set(normalizedPath, { sourceFile, mtimeMs: stats.mtimeMs });
 		return sourceFile;
 	}
 	catch {
+		sourceFileCache.delete(normalizedPath);
 		return undefined;
 	}
 }
@@ -431,7 +451,16 @@ function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFile
 export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'): CollectedClassInfo[] {
 	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
 	if (filePath && filePath !== 'temp.ts') {
-		sourceFileCache.set(path.normalize(filePath), sourceFile);
+		const normalizedPath = path.normalize(filePath);
+		try {
+			const stats = fs.statSync(normalizedPath);
+			if (stats.isFile()) {
+				sourceFileCache.set(normalizedPath, { sourceFile, mtimeMs: stats.mtimeMs });
+			}
+		}
+		catch {
+			sourceFileCache.delete(normalizedPath);
+		}
 	}
 
 	return collectClassPropertiesFromSource(sourceFile, new Set());
