@@ -84,6 +84,10 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return this.createViewBindingCompletions(screenClasses);
 		}
 
+		if (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using') {
+			return this.createViewBindingCompletions(screenClasses);
+		}
+
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field completions are scoped to the PXView resolved from the surrounding markup.
 			const viewName = findParentViewName(elementNode);

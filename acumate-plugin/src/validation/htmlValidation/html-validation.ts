@@ -119,6 +119,27 @@ function validateDom(
       }
     }
 
+    if (node.type === "tag" && node.name === "using" && node.attribs.view) {
+      const viewName = node.attribs.view;
+      const viewResolution = resolveView(viewName);
+      const hasValidView =
+        viewResolution &&
+        viewResolution.property.viewClassName &&
+        viewResolution.viewClass &&
+        viewResolution.viewClass.type === "PXView";
+
+      if (!hasValidView) {
+        const range = getRange(content, node);
+        const diagnostic: vscode.Diagnostic = {
+          severity: vscode.DiagnosticSeverity.Warning,
+          range,
+          message: "The <using> element must reference a valid view.",
+          source: "htmlValidator",
+        };
+        diagnostics.push(diagnostic);
+      }
+    }
+
     if (node.type === "tag" && node.name === "field" && node.attribs.name) {
       const viewname = findParentViewName(node);
       const fieldName = node.attribs.name;

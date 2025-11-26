@@ -67,7 +67,7 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		const screenClasses = classInfos.filter(info => info.type === 'PXScreen');
 		// Resolved metadata lets us jump from HTML bindings directly to the backing TypeScript symbol.
 
-		if (attributeContext.attributeName === 'view.bind') {
+		if (attributeContext.attributeName === 'view.bind' || (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using')) {
 			const resolution = resolveViewBinding(attributeContext.value, screenClasses, classInfoLookup);
 			if (!resolution) {
 				return;

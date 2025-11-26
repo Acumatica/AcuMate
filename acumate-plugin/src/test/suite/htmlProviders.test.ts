@@ -49,6 +49,16 @@ describe('HTML completion provider integration', () => {
 		assert.ok(labels.includes('gridField'), 'gridField not suggested');
 	});
 
+	it('suggests view names for using view attribute', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view="ItemConfiguration"', 'view="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No view completions returned for using view attribute');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ItemConfiguration'), 'ItemConfiguration not suggested');
+	});
+
 	it('suggests field names for using containers inheriting parent views', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlCompletionProvider();
@@ -116,6 +126,19 @@ describe('HTML definition provider integration', () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlDefinitionProvider();
 		const caret = positionAt(document, 'name="CuryVatExemptTotal"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from using view attribute to PXView property/class', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'view="ItemConfiguration"', 'view="'.length + 1);
 		const definition = await provider.provideDefinition(document, caret);
 		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
 		assert.ok(locations.length >= 1, 'No definitions returned');

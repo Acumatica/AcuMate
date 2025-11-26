@@ -44,4 +44,11 @@ describe('HTML validation diagnostics', () => {
 		const fieldDiagnostics = diagnostics.filter(d => d.message.includes('<field>'));
 		assert.ok(fieldDiagnostics.length >= 1, 'Expected invalid field diagnostic for using view');
 	});
+
+	it('reports invalid view on using container', async () => {
+		const document = await openFixtureDocument('InvalidScreenUsingView.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(diagnostics.some(d => d.message.includes('<using>')), 'Expected invalid using view diagnostic');
+	});
 });
