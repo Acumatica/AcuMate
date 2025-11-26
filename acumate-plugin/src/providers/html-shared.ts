@@ -141,6 +141,16 @@ export function readAttributeAtOffset(text: string, offset: number) {
 	const boundedOffset = Math.max(0, Math.min(offset, text.length));
 
 	let cursor = boundedOffset;
+	if (cursor === text.length) {
+		cursor--;
+	}
+	if (cursor < 0) {
+		return undefined;
+	}
+	// Allow caret to sit on the closing bracket when the attribute value is empty (view.bind=>).
+	if (text[cursor] === '>') {
+		cursor--;
+	}
 	while (cursor >= 0 && text[cursor] !== '=') {
 		if (text[cursor] === '<' || text[cursor] === '>') {
 			return undefined;
@@ -166,31 +176,55 @@ export function readAttributeAtOffset(text: string, offset: number) {
 
 	const attributeName = text.substring(attrNameStart + 1, attrNameEnd + 1);
 
-	let quoteStart = cursor + 1;
-	while (quoteStart < text.length && /\s/.test(text[quoteStart])) {
-		quoteStart++;
-	}
-	if (quoteStart >= text.length || text[quoteStart] !== '"') {
-		return undefined;
+	let valueCursor = cursor + 1;
+	while (valueCursor < text.length && /\s/.test(text[valueCursor])) {
+		valueCursor++;
 	}
 
-	const valueStart = quoteStart + 1;
-	let valueEnd = valueStart;
-	while (valueEnd < text.length && text[valueEnd] !== '"') {
-		valueEnd++;
-	}
-	if (valueEnd >= text.length) {
-		return undefined;
-	}
+	let valueStart = valueCursor;
+	let valueEnd = valueCursor;
+	let value = '';
 
-	if (boundedOffset < valueStart || boundedOffset > valueEnd) {
-		// Allow caret exactly on the closing quote
-		if (boundedOffset !== valueEnd) {
+	const firstChar = text[valueCursor];
+	if (firstChar === '"' || firstChar === '\'') {
+		const quoteChar = firstChar;
+		valueStart = valueCursor + 1;
+		valueEnd = valueStart;
+		while (valueEnd < text.length && text[valueEnd] !== quoteChar) {
+			valueEnd++;
+		}
+		if (valueEnd >= text.length) {
+			// Missing closing quote: treat current caret span as the temporary end.
+			valueEnd = Math.max(valueStart, boundedOffset);
+			value = text.substring(valueStart, valueEnd);
+		} else {
+			value = text.substring(valueStart, valueEnd);
+		}
+		if (boundedOffset < valueStart) {
 			return undefined;
 		}
+		if (boundedOffset > valueEnd) {
+			// Allow caret exactly on the closing quote
+			if (boundedOffset !== valueEnd) {
+				return undefined;
+			}
+		}
+	} else {
+		// Unquoted or empty attribute values (view.bind=)
+		while (valueEnd < text.length && !/[\s>]/.test(text[valueEnd])) {
+			valueEnd++;
+		}
+		value = text.substring(valueStart, valueEnd);
+		if (boundedOffset < valueStart) {
+			return undefined;
+		}
+		if (boundedOffset > valueEnd) {
+			// Allow caret before the tag/space when value is empty.
+			if (!(value.length === 0 && boundedOffset === valueStart)) {
+				return undefined;
+			}
+		}
 	}
-
-	const value = text.substring(valueStart, valueEnd);
 
 	return {
 		attributeName,
