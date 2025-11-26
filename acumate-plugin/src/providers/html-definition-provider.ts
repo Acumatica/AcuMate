@@ -18,6 +18,7 @@ import {
 	findParentViewName,
 } from './html-shared';
 
+// Hooks VS Code so view/field bindings support "Go to Definition" directly from HTML.
 export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext) {
 	const provider = vscode.languages.registerDefinitionProvider(
 		{ language: 'html', scheme: 'file' },
@@ -28,6 +29,7 @@ export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext)
 }
 
 class HtmlDefinitionProvider implements vscode.DefinitionProvider {
+	// Resolves the active attribute and maps it to the appropriate TS symbol.
 	async provideDefinition(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Definition | undefined> {
 		const offset = document.offsetAt(position);
 		const dom = parseDocumentDom(document.getText());
@@ -105,14 +107,17 @@ class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 	}
 }
 
+// Converts a collected property back into a VS Code location for navigation.
 function createLocationFromProperty(property: ClassPropertyInfo): vscode.Location {
 	return createLocationFromTsNode(property.sourceFile, property.node);
 }
 
+// Same as above but for class declarations (view types).
 function createLocationFromClass(classInfo: CollectedClassInfo): vscode.Location {
 	return createLocationFromTsNode(classInfo.sourceFile, classInfo.node.name ?? classInfo.node);
 }
 
+// Normalizes a TS node's span to a VS Code range.
 function createLocationFromTsNode(sourceFile: ts.SourceFile, node: ts.Node): vscode.Location {
 	const start = sourceFile.getLineAndCharacterOfPosition(node.getStart());
 	const end = sourceFile.getLineAndCharacterOfPosition(node.getEnd());

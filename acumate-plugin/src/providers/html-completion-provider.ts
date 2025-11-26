@@ -17,6 +17,7 @@ import {
 	findParentViewName,
 } from './html-shared';
 
+// Registers completions so HTML view bindings stay in sync with PX metadata.
 export function registerHtmlCompletionProvider(context: vscode.ExtensionContext) {
 	const provider = vscode.languages.registerCompletionItemProvider(
 		{ language: 'html', scheme: 'file' },
@@ -28,6 +29,7 @@ export function registerHtmlCompletionProvider(context: vscode.ExtensionContext)
 }
 
 class HtmlCompletionProvider implements vscode.CompletionItemProvider {
+	// Uses the caret position to decide which suggestion set (view or field) applies.
 	async provideCompletionItems(
 		document: vscode.TextDocument,
 		position: vscode.Position
@@ -91,6 +93,7 @@ class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		return undefined;
 	}
 
+	// Builds the suggestion set for view.bind attributes.
 	private createViewBindingCompletions(screenClasses: CollectedClassInfo[]): vscode.CompletionItem[] {
 		const seen = new Set<string>();
 		const items: vscode.CompletionItem[] = [];
@@ -113,6 +116,7 @@ class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		return items;
 	}
 
+	// Builds the suggestion set for <field name="..."> attributes scoped to a PXView.
 	private createFieldCompletions(properties: Map<string, ClassPropertyInfo>): vscode.CompletionItem[] {
 		const items: vscode.CompletionItem[] = [];
 

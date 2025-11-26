@@ -9,6 +9,7 @@ export interface HtmlAttributeContext {
 	node: any;
 }
 
+// Parses HTML into a DOM tree with start/end offsets so we can map caret positions.
 export function parseDocumentDom(content: string): any[] | undefined {
 	let domTree: any[] | undefined;
 	const handler = new DomHandler(
@@ -25,6 +26,7 @@ export function parseDocumentDom(content: string): any[] | undefined {
 	return domTree;
 }
 
+// Finds the deepest DOM node that covers the provided offset.
 export function findNodeAtOffset(dom: any[], offset: number): any | undefined {
 	for (const node of dom) {
 		const start = typeof node.startIndex === 'number' ? node.startIndex : undefined;
@@ -50,6 +52,7 @@ export function findNodeAtOffset(dom: any[], offset: number): any | undefined {
 	return undefined;
 }
 
+// Walks up from text/attribute nodes until a tag node is found.
 export function elevateToElementNode(node: any): any {
 	let current: any = node;
 	while (current && current.type !== 'tag') {
@@ -58,6 +61,7 @@ export function elevateToElementNode(node: any): any {
 	return current;
 }
 
+// Determines which attribute/value the caret is in so providers know what to do.
 export function getAttributeContext(document: vscode.TextDocument, offset: number, node: any): HtmlAttributeContext | undefined {
 	const text = document.getText();
 	let rawAttr = readAttributeAtOffset(text, offset);
@@ -103,6 +107,7 @@ export function getAttributeContext(document: vscode.TextDocument, offset: numbe
 	};
 }
 
+// Backtracks from a value to infer the attribute name when the parser omitted it.
 function findAttributeNameFromOffset(text: string, valueStart: number): string | undefined {
 	let current = valueStart - 1;
 
@@ -130,6 +135,7 @@ function findAttributeNameFromOffset(text: string, valueStart: number): string |
 	return attributeName || undefined;
 }
 
+// Rough attribute parser used when htmlparser2 lacks the intermediate state we need.
 export function readAttributeAtOffset(text: string, offset: number) {
 	// Manual scan is more resilient to partially typed attributes than the parser output.
 	const boundedOffset = Math.max(0, Math.min(offset, text.length));
@@ -194,6 +200,7 @@ export function readAttributeAtOffset(text: string, offset: number) {
 	};
 }
 
+// Climbs ancestors until a view.bind is found, mirroring runtime scoping.
 export function findParentViewName(node: any): string | undefined {
 	let current = node.parent;
 	while (current) {
