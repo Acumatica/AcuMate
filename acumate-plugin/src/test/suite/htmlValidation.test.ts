@@ -81,4 +81,11 @@ describe('HTML validation diagnostics', () => {
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
 		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for double-dot extension html');
 	});
+
+	it('ignores fake fields marked unbound replace-content', async () => {
+		const document = await openFixtureDocument('TestScreenUnboundField.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for unbound replace-content fields');
+	});
 });

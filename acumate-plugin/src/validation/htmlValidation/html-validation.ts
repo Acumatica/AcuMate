@@ -138,22 +138,32 @@ function validateDom(
       }
     }
 
-    if (node.type === "tag" && node.name === "field" && node.attribs.name) {
-      const viewname = findParentViewName(node);
-      const fieldName = node.attribs.name;
-      const viewResolution = resolveView(viewname);
-      const viewClass = viewResolution?.viewClass;
-      const fieldProperty = viewClass?.properties.get(fieldName);
-      const isValidField = fieldProperty?.kind === "field";
-      if (!isValidField) {
-        const range = getRange(content, node);
-        const diagnostic = {
-          severity: vscode.DiagnosticSeverity.Warning,
-          range: range,
-          message: "The <field> element must be bound to the valid field.",
-          source: "htmlValidator",
-        };
-        diagnostics.push(diagnostic);
+    if (
+      node.type === "tag" &&
+      node.name === "field" &&
+      node.attribs.name
+    ) {
+      const isUnboundReplacement =
+        Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
+        Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
+
+      if (!isUnboundReplacement) {
+        const viewname = findParentViewName(node);
+        const fieldName = node.attribs.name;
+        const viewResolution = resolveView(viewname);
+        const viewClass = viewResolution?.viewClass;
+        const fieldProperty = viewClass?.properties.get(fieldName);
+        const isValidField = fieldProperty?.kind === "field";
+        if (!isValidField) {
+          const range = getRange(content, node);
+          const diagnostic = {
+            severity: vscode.DiagnosticSeverity.Warning,
+            range: range,
+            message: "The <field> element must be bound to the valid field.",
+            source: "htmlValidator",
+          };
+          diagnostics.push(diagnostic);
+        }
       }
     }
     // Recursively validate child nodes
