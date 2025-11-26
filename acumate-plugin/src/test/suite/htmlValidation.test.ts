@@ -36,4 +36,12 @@ describe('HTML validation diagnostics', () => {
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
 		assert.ok(diagnostics.some(d => d.message.includes('<field>')));
 	});
+
+	it('reports missing field when using container overrides view', async () => {
+		const document = await openFixtureDocument('InvalidScreenUsing.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		const fieldDiagnostics = diagnostics.filter(d => d.message.includes('<field>'));
+		assert.ok(fieldDiagnostics.length >= 1, 'Expected invalid field diagnostic for using view');
+	});
 });

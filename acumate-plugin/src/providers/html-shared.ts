@@ -236,12 +236,21 @@ export function readAttributeAtOffset(text: string, offset: number) {
 
 // Climbs ancestors until a view.bind is found, mirroring runtime scoping.
 export function findParentViewName(node: any): string | undefined {
-	let current = node.parent;
+	let current: any = node?.parent ?? node?.parentNode;
 	while (current) {
-		if (current.attribs?.['view.bind']) {
-			return current.attribs['view.bind'];
+		const viewBinding = current.attribs?.['view.bind'];
+		if (typeof viewBinding === 'string' && viewBinding.length) {
+			return viewBinding;
 		}
-		current = current.parent;
+
+		if (current.name === 'using') {
+			const usingView = current.attribs?.['view'];
+			if (typeof usingView === 'string' && usingView.length) {
+				return usingView;
+			}
+		}
+
+		current = current.parent ?? current.parentNode;
 	}
 	return undefined;
 }

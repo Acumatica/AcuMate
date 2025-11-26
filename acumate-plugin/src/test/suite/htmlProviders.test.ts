@@ -6,6 +6,7 @@ import { HtmlCompletionProvider } from '../../providers/html-completion-provider
 import { HtmlDefinitionProvider } from '../../providers/html-definition-provider';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
+const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
 	const text = document.getText();
@@ -47,6 +48,26 @@ describe('HTML completion provider integration', () => {
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('gridField'), 'gridField not suggested');
 	});
+
+	it('suggests field names for using containers inheriting parent views', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'wg-test="no-view" name="', 'wg-test="no-view" name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for using container');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('CuryVatExemptTotal'), 'CuryVatExemptTotal not suggested');
+	});
+
+	it('suggests field names for using containers that specify view attribute', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'wg-test="with-view" name="', 'wg-test="with-view" name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for using view attribute');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ConfigurationID'), 'ConfigurationID not suggested');
+	});
 });
 
 describe('HTML definition provider integration', () => {
@@ -75,6 +96,32 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
 			'Expected field definition inside TestScreen.ts'
+		);
+	});
+
+	it('navigates from field inside using container with custom view', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="ConfigurationID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from field inside using container inheriting parent view', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="CuryVatExemptTotal"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected definition inside TestScreenUsing.ts'
 		);
 	});
 });

@@ -10,6 +10,7 @@ import {
   resolveViewBinding,
   createClassInfoLookup,
 } from "../../utils";
+import { findParentViewName } from "../../providers/html-shared";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
@@ -119,7 +120,7 @@ function validateDom(
     }
 
     if (node.type === "tag" && node.name === "field" && node.attribs.name) {
-      const viewname = node.parentNode?.attribs?.[`view.bind`];
+      const viewname = findParentViewName(node);
       const fieldName = node.attribs.name;
       const viewResolution = resolveView(viewname);
       const viewClass = viewResolution?.viewClass;
