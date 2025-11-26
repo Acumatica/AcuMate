@@ -6,25 +6,57 @@ import { AcuMateContext } from "../plugin-context";
 
 export class AcuMateApiClient implements IAcuMateApiClient {
 
+    private sessionCookieHeader?: string;
+
+    private updateSessionCookies(response: Response) {
+        const cookieAccessor = response.headers as unknown as { getSetCookie?: () => string[] };
+        const cookies = cookieAccessor.getSetCookie?.();
+
+        if (!cookies?.length) {
+            this.sessionCookieHeader = undefined;
+            return;
+        }
+
+        // Keep only the key=value pairs; cookie attributes such as Expires are not needed in the header
+        this.sessionCookieHeader = cookies
+            .map(entry => entry.split(";", 1)[0]?.trim())
+            .filter(Boolean)
+            .join("; ");
+    }
+
     private async auth() {
         const data = {
             "name" : AcuMateContext.ConfigurationService.login,
             "password" : AcuMateContext.ConfigurationService.password,
             "tenant" : AcuMateContext.ConfigurationService.tenant
         };
-        return await fetch(AcuMateContext.ConfigurationService.backedUrl!+AuthEndpoint, {
+        const response = await fetch(AcuMateContext.ConfigurationService.backedUrl!+AuthEndpoint, {
             method:'POST',
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data)
         });
+
+        if (response.ok) {
+            this.updateSessionCookies(response);
+        }
+
+        return response;
     }
 
     private async logout(): Promise<void> {
+        if (!this.sessionCookieHeader) {
+            return;
+        }
+
         await fetch(AcuMateContext.ConfigurationService.backedUrl!+LogoutEndpoint, {
             method:'POST',
-            headers: { "Content-Type": "application/json" },
-            credentials: `include`
+            headers: {
+                "Content-Type": "application/json",
+                "Cookie": this.sessionCookieHeader
+            }
         });
+
+        this.sessionCookieHeader = undefined;
     }
 
     private async makeGetRequest<T>(route: string): Promise<T | undefined> {
@@ -42,10 +74,14 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             }
 
             const url = AcuMateContext.ConfigurationService.backedUrl!+route;
+            const headers: Record<string, string> = { "Content-Type": "application/json" };
+            if (this.sessionCookieHeader) {
+                headers.Cookie = this.sessionCookieHeader;
+            }
+
             const settings: RequestInit = {
                 method:'GET',
-                headers: { "Content-Type": "application/json" }
-                
+                headers
             };
             if (AcuMateContext.ConfigurationService.useAuthentification) {
                 settings.credentials = `include`;
@@ -55,6 +91,19 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             }
             const response = await fetch(url, settings);
 
+            if (!response.ok) {
+                const errorBody = await response.text().catch(() => "");
+                console.error(`GET ${url} failed with status ${response.status}: ${errorBody}`);
+                return undefined;
+            }
+
+            const contentType = response.headers.get("content-type") ?? "";
+            if (!contentType.includes("application/json")) {
+                const errorBody = await response.text().catch(() => "");
+                console.error(`GET ${url} returned non-JSON content (${contentType}): ${errorBody}`);
+                return undefined;
+            }
+
             const data = await response.json();
 
             console.log(data);
@@ -62,7 +111,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             return data as T;
         }
         catch (error) {
-            console.error('Error making POST request:', error);
+            console.error('Error making GET request:', error);
         }
         finally {
             if (AcuMateContext.ConfigurationService.useAuthentification) {
