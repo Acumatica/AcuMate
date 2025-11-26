@@ -61,7 +61,12 @@ export async function runNpmCommand(command: string, workingDirectory: string) {
   });
 }
 
-const sourceFileCache = new Map<string, ts.SourceFile>();
+type SourceFileCacheEntry = {
+	sourceFile: ts.SourceFile;
+	mtimeMs: number;
+};
+
+const sourceFileCache = new Map<string, SourceFileCacheEntry>();
 
 export type ClassPropertyKind = 'action' | 'field' | 'view' | 'viewCollection' | 'unknown';
 
@@ -120,8 +125,16 @@ function analyzePropertyDeclaration(member: ts.PropertyDeclaration): ClassProper
 		const callName = member.initializer.expression.text;
 		const viewTarget = getViewReferenceFromInitializer(member.initializer);
 		if (viewTarget && (callName === 'createSingle' || callName === 'createCollection')) {
+			const kindFromInitializer = callName === 'createSingle' ? 'view' : 'viewCollection';
+			// If kind was set from type annotation and disagrees with initializer, log a warning
+			if (propertyInfo.kind !== 'unknown' && propertyInfo.kind !== kindFromInitializer) {
+				console.warn(
+					`[acumate-plugin] Property '${propertyInfo.name}' has inconsistent kind: ` +
+					`type annotation suggests '${propertyInfo.kind}', initializer suggests '${kindFromInitializer}'.`
+				);
+			}
 			propertyInfo.viewClassName = viewTarget;
-			propertyInfo.kind = callName === 'createSingle' ? 'view' : 'viewCollection';
+			propertyInfo.kind = kindFromInitializer;
 		}
 	}
 
@@ -190,18 +203,33 @@ function getViewReferenceFromInitializer(initializer: ts.CallExpression): string
 
 function tryReadSourceFile(filePath: string): ts.SourceFile | undefined {
 	const normalizedPath = path.normalize(filePath);
+	let stats: import('fs').Stats;
+
+	try {
+		stats = fs.statSync(normalizedPath);
+		if (!stats.isFile()) {
+			sourceFileCache.delete(normalizedPath);
+			return undefined;
+		}
+	}
+	catch {
+		sourceFileCache.delete(normalizedPath);
+		return undefined;
+	}
+
 	const cached = sourceFileCache.get(normalizedPath);
-	if (cached) {
-		return cached;
+	if (cached && cached.mtimeMs === stats.mtimeMs) {
+		return cached.sourceFile;
 	}
 
 	try {
 		const content = fs.readFileSync(normalizedPath, 'utf-8');
 		const sourceFile = ts.createSourceFile(normalizedPath, content, ts.ScriptTarget.Latest, true);
-		sourceFileCache.set(normalizedPath, sourceFile);
+		sourceFileCache.set(normalizedPath, { sourceFile, mtimeMs: stats.mtimeMs });
 		return sourceFile;
 	}
 	catch {
+		sourceFileCache.delete(normalizedPath);
 		return undefined;
 	}
 }
@@ -281,16 +309,11 @@ function buildCandidateFilePaths(basePath: string): string[] {
 	const candidates: string[] = [];
 
 	for (const ext of extensions) {
-		if (ext) {
-			candidates.push(`${basePath}${ext}`);
-		}
-		else {
-			candidates.push(basePath);
-		}
+		candidates.push(`${basePath}${ext}`);
 	}
 
 	if (fs.existsSync(basePath) && fs.statSync(basePath).isDirectory()) {
-		for (const ext of extensions) {
+		for (const ext of extensions.filter(ext => ext)) {
 			const candidate = path.join(basePath, `index${ext}`);
 			candidates.push(candidate);
 		}
@@ -342,9 +365,9 @@ export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<st
 			}
 
 			const identifier = typeNode.expression as ts.Identifier;
-			inheritanceChain.push(identifier);
 
 			if (!isExtendsClause) {
+				inheritanceChain.push(identifier);
 				continue;
 			}
 
@@ -352,6 +375,8 @@ export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<st
 			if (visited.has(className)) {
 				continue;
 			}
+
+			inheritanceChain.push(identifier);
 
 			const parentDeclaration = findClassDeclarationByName(node.getSourceFile(), className);
 			if (!parentDeclaration) {
@@ -439,7 +464,16 @@ function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFile
 export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'): CollectedClassInfo[] {
 	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
 	if (filePath && filePath !== 'temp.ts') {
-		sourceFileCache.set(path.normalize(filePath), sourceFile);
+		const normalizedPath = path.normalize(filePath);
+		try {
+			const stats = fs.statSync(normalizedPath);
+			if (stats.isFile()) {
+				sourceFileCache.set(normalizedPath, { sourceFile, mtimeMs: stats.mtimeMs });
+			}
+		}
+		catch {
+			sourceFileCache.delete(normalizedPath);
+		}
 	}
 
 	return collectClassPropertiesFromSource(sourceFile, new Set());
