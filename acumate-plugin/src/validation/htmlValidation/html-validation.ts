@@ -127,8 +127,8 @@ function validateDom(
       node.name === "qp-fieldset" &&
       node.attribs[`view.bind`]
     ) {
-      const viewname = node.attribs[`view.bind`];
-      const viewResolution = resolveView(viewname);
+      const viewName = node.attribs[`view.bind`];
+      const viewResolution = resolveView(viewName);
       const hasValidView =
         viewResolution &&
         viewResolution.property.viewClassName &&
