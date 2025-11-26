@@ -4,6 +4,7 @@ export interface SO301000_PaymentLinks extends SO301000 {}
 
 export class SO301000_PaymentLinks {
 	PayLink = createSingle(CCPayLink);
+	CreateLink!: PXActionState;
 }
 
 export class CCPayLink extends PXView {

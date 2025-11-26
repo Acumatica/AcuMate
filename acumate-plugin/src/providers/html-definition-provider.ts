@@ -9,6 +9,7 @@ import {
 	createClassInfoLookup,
 	resolveViewBinding,
 	filterScreenLikeClasses,
+	collectActionProperties,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -81,6 +82,14 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return targets;
 		}
 
+		if (attributeContext.attributeName === 'state.bind') {
+			const actionProperty = findActionProperty(attributeContext.value, screenClasses);
+			if (!actionProperty) {
+				return;
+			}
+			return createLocationFromProperty(actionProperty);
+		}
+
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field names dereference through the closest parent view to locate the property in TS.
 			const viewName = findParentViewName(elementNode);
@@ -104,6 +113,14 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 
 		return undefined;
 	}
+}
+
+function findActionProperty(actionName: string | undefined, screenClasses: CollectedClassInfo[]): ClassPropertyInfo | undefined {
+	if (!actionName) {
+		return undefined;
+	}
+	const actions = collectActionProperties(screenClasses);
+	return actions.get(actionName);
 }
 
 // Converts a collected property back into a VS Code location for navigation.

@@ -8,6 +8,7 @@ import {
 	resolveViewBinding,
 	ClassPropertyInfo,
 	filterScreenLikeClasses,
+	collectActionProperties,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -85,6 +86,10 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 		if (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using') {
 			return this.createViewBindingCompletions(screenClasses);
+		}
+
+		if (attributeContext.attributeName === 'state.bind') {
+			return this.createActionCompletions(screenClasses);
 		}
 
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
@@ -242,6 +247,17 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			items.push(item);
 		}
 
+		return items;
+	}
+
+	private createActionCompletions(screenClasses: CollectedClassInfo[]): vscode.CompletionItem[] {
+		const actionMap = collectActionProperties(screenClasses);
+		const items: vscode.CompletionItem[] = [];
+		actionMap.forEach((property, name) => {
+			const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Function);
+			item.detail = property.typeName ?? 'PXActionState';
+			items.push(item);
+		});
 		return items;
 	}
 }

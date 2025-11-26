@@ -103,4 +103,14 @@ describe('HTML validation diagnostics', () => {
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
 		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for unbound replace-content fields');
 	});
+
+	it('reports invalid PXAction references in state.bind attributes', async () => {
+		const document = await openFixtureDocument('InvalidActionScreen.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('PXAction')),
+			'Expected diagnostic for invalid PXAction reference'
+		);
+	});
 });

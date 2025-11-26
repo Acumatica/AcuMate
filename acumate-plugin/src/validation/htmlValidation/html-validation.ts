@@ -9,6 +9,7 @@ import {
   getRelatedTsFiles,
   loadClassInfosFromFiles,
   filterScreenLikeClasses,
+  collectActionProperties,
 } from "../../utils";
 import { findParentViewName } from "../../providers/html-shared";
 
@@ -72,6 +73,7 @@ function validateDom(
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = filterScreenLikeClasses(classProperties);
+  const actionLookup = collectActionProperties(screenClasses);
   const viewResolutionCache = new Map<string, ViewResolution | undefined>();
 
   // Screen classes contain PXView and PXViewCollection properties. We cache resolutions so
@@ -132,6 +134,20 @@ function validateDom(
           severity: vscode.DiagnosticSeverity.Warning,
           range,
           message: "The <using> element must reference a valid view.",
+          source: "htmlValidator",
+        };
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    const actionBinding = node.attribs?.["state.bind"];
+    if (typeof actionBinding === "string" && actionBinding.length) {
+      if (!actionLookup.has(actionBinding)) {
+        const range = getRange(content, node);
+        const diagnostic: vscode.Diagnostic = {
+          severity: vscode.DiagnosticSeverity.Warning,
+          range,
+          message: "The state.bind attribute must reference a valid PXAction.",
           source: "htmlValidator",
         };
         diagnostics.push(diagnostic);

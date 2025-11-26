@@ -740,6 +740,18 @@ export function isScreenLikeClass(info: CollectedClassInfo): boolean {
 
 	return false;
 }
+
+export function collectActionProperties(classInfos: CollectedClassInfo[]): Map<string, ClassPropertyInfo> {
+	const actions = new Map<string, ClassPropertyInfo>();
+	for (const classInfo of classInfos) {
+		for (const [name, property] of classInfo.properties) {
+			if (property.kind === 'action' && !actions.has(name)) {
+				actions.set(name, property);
+			}
+		}
+	}
+	return actions;
+}
   
   
 

@@ -144,6 +144,16 @@ describe('HTML completion provider integration', () => {
 		assert.ok(labels.includes('LinkStatus'), 'LinkStatus not suggested');
 	});
 
+	it('suggests PXAction names for state.bind attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'state.bind=""', 'state.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('AddBlanketLineOK'), 'AddBlanketLineOK action not suggested');
+	});
+
 	it('suggests field names for using containers inheriting parent views', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlCompletionProvider();
@@ -308,6 +318,19 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_PaymentLinks.ts')),
 			'Expected definition inside PaymentLinks mixin file'
+		);
+	});
+
+	it('navigates from state.bind attribute to PXAction definition', async () => {
+		const document = await vscode.workspace.openTextDocument(path.join(fixturesRoot, 'TestScreen.html'));
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'state.bind="SaveAction"', 'state.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
+			'Expected action definition inside TestScreen.ts'
 		);
 	});
 });
