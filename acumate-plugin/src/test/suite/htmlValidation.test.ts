@@ -66,4 +66,19 @@ describe('HTML validation diagnostics', () => {
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
 		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for valid screen extension html');
 	});
+
+	it('accepts valid screen extension html when filename has double dot', async () => {
+		const document = await vscode.workspace.openTextDocument(
+			path.join(
+				screenFixturesRoot,
+				'SO',
+				'SO301000',
+				'extensions',
+				'SO301000_CreatePrepaymentInvoice..html'
+			)
+		);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for double-dot extension html');
+	});
 });

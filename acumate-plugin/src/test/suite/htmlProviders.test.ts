@@ -15,6 +15,13 @@ const screenExtensionHtmlPath = path.join(
 	'extensions',
 	'SO301000_AddBlanketOrderLine.html'
 );
+const screenExtensionDoubleDotHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_CreatePrepaymentInvoice..html'
+);
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
 	const text = document.getText();
@@ -86,6 +93,26 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No field completions returned for screen extension');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('BlanketLineField'), 'BlanketLineField not suggested');
+	});
+
+	it('suggests view names for screen extensions with double-dot html names', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view.bind="QuickPrepaymentInvoice"', 'view.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for double-dot extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('QuickPrepaymentInvoice'), 'QuickPrepaymentInvoice not suggested');
+	});
+
+	it('suggests field names for screen extensions with double-dot html names', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="CuryPrepaymentAmt"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for double-dot extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('CuryPrepaymentAmt'), 'CuryPrepaymentAmt not suggested');
 	});
 
 	it('suggests field names for using containers inheriting parent views', async () => {
@@ -200,6 +227,32 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_AddBlanketOrderLine.ts')),
 			'Expected field definition inside screen extension TS file'
+		);
+	});
+
+	it('navigates from double-dot extension view binding to TS property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'view.bind="QuickPrepaymentInvoice"', 'view.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_CreatePrepaymentInvoice.ts')),
+			'Expected definition inside double-dot extension TS file'
+		);
+	});
+
+	it('navigates from double-dot extension field to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="PrepaymentPct"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_CreatePrepaymentInvoice.ts')),
+			'Expected field definition inside double-dot extension TS file'
 		);
 	});
 });

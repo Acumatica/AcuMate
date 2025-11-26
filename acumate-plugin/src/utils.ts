@@ -574,8 +574,23 @@ export function groupBy<T>(array: T[], key: keyof T): Record<string, T[]> {
 }
 
 export function getCorrespondingTsFile(htmlFilePath: string) {
-  const tsFilePath = htmlFilePath.replace(/\.html$/, ".ts"); // Assumes the same name and path
-  return fs.existsSync(tsFilePath) ? tsFilePath : null;
+	const normalized = path.normalize(htmlFilePath);
+	const directCandidate = normalized.replace(/\.html$/i, '.ts');
+	if (fs.existsSync(directCandidate)) {
+		return directCandidate;
+	}
+
+	// Some extension HTML files include a double dot suffix (..html) even though the TS file only has a single dot.
+	const withoutHtml = normalized.replace(/\.html$/i, '');
+	const trimmedBase = withoutHtml.replace(/\.+$/, '');
+	if (trimmedBase && trimmedBase !== withoutHtml) {
+		const trimmedCandidate = `${trimmedBase}.ts`;
+		if (fs.existsSync(trimmedCandidate)) {
+			return trimmedCandidate;
+		}
+	}
+
+	return null;
 }
 
 export function getRelatedTsFiles(htmlFilePath: string): string[] {
