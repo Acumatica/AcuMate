@@ -121,8 +121,16 @@ function analyzePropertyDeclaration(member: ts.PropertyDeclaration): ClassProper
 		const callName = member.initializer.expression.text;
 		const viewTarget = getViewReferenceFromInitializer(member.initializer);
 		if (viewTarget && (callName === 'createSingle' || callName === 'createCollection')) {
+			const kindFromInitializer = callName === 'createSingle' ? 'view' : 'viewCollection';
+			// If kind was set from type annotation and disagrees with initializer, log a warning
+			if (propertyInfo.kind !== 'unknown' && propertyInfo.kind !== kindFromInitializer) {
+				console.warn(
+					`[acumate-plugin] Property '${propertyInfo.name}' has inconsistent kind: ` +
+					`type annotation suggests '${propertyInfo.kind}', initializer suggests '${kindFromInitializer}'.`
+				);
+			}
 			propertyInfo.viewClassName = viewTarget;
-			propertyInfo.kind = callName === 'createSingle' ? 'view' : 'viewCollection';
+			propertyInfo.kind = kindFromInitializer;
 		}
 	}
 
@@ -297,16 +305,11 @@ function buildCandidateFilePaths(basePath: string): string[] {
 	const candidates: string[] = [];
 
 	for (const ext of extensions) {
-		if (ext) {
-			candidates.push(`${basePath}${ext}`);
-		}
-		else {
-			candidates.push(basePath);
-		}
+		candidates.push(`${basePath}${ext}`);
 	}
 
 	if (fs.existsSync(basePath) && fs.statSync(basePath).isDirectory()) {
-		for (const ext of extensions) {
+		for (const ext of extensions.filter(ext => ext)) {
 			const candidate = path.join(basePath, `index${ext}`);
 			candidates.push(candidate);
 		}
