@@ -6,7 +6,9 @@ import {
   getCorrespondingTsFile,
   getLineAndColumnFromIndex,
   CollectedClassInfo,
-  ClassPropertyInfo,
+  ViewResolution,
+  resolveViewBinding,
+  createClassInfoLookup,
 } from "../../utils";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
@@ -61,13 +63,6 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   AcuMateContext.HtmlValidator.set(document.uri, diagnostics);
 }
 
-// Represents the resolved PXView property for a qp-fieldset along with the concrete PXView class.
-type ViewResolution = {
-  screenClass: CollectedClassInfo;
-  property: ClassPropertyInfo;
-  viewClass?: CollectedClassInfo;
-};
-
 // Traverses the DOM tree, resolving view bindings to PXView classes so we can validate
 // qp-fieldset nodes and their child field nodes against the TypeScript metadata.
 function validateDom(
@@ -76,9 +71,7 @@ function validateDom(
   classProperties: CollectedClassInfo[],
   content: string
 ) {
-  const classInfoMap = new Map<string, CollectedClassInfo>(
-    classProperties.map((info) => [info.className, info])
-  );
+  const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = classProperties.filter((info) => info.type === "PXScreen");
   const viewResolutionCache = new Map<string, ViewResolution | undefined>();
 
@@ -93,31 +86,9 @@ function validateDom(
       return viewResolutionCache.get(viewName);
     }
 
-    for (const screenClass of screenClasses) {
-      const property = screenClass.properties.get(viewName);
-      if (!property) {
-        continue;
-      }
-
-      if (property.kind !== "view" && property.kind !== "viewCollection") {
-        continue;
-      }
-
-      const viewClass = property.viewClassName
-        ? classInfoMap.get(property.viewClassName)
-        : undefined;
-
-      const resolution: ViewResolution = {
-        screenClass,
-        property,
-        viewClass,
-      };
-      viewResolutionCache.set(viewName, resolution);
-      return resolution;
-    }
-
-    viewResolutionCache.set(viewName, undefined);
-    return undefined;
+    const resolution = resolveViewBinding(viewName, screenClasses, classInfoMap);
+    viewResolutionCache.set(viewName, resolution);
+    return resolution;
   }
 
   // Custom validation logic goes here
