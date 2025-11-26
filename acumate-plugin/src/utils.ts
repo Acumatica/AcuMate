@@ -63,6 +63,127 @@ export async function runNpmCommand(command: string, workingDirectory: string) {
 
 const sourceFileCache = new Map<string, ts.SourceFile>();
 
+export type ClassPropertyKind = 'action' | 'field' | 'view' | 'viewCollection' | 'unknown';
+
+export interface ClassPropertyInfo {
+	name: string;
+	kind: ClassPropertyKind;
+	typeName?: string;
+	viewClassName?: string;
+}
+
+export interface ClassInheritanceInfo {
+	chain: ts.Identifier[];
+	properties: Map<string, ClassPropertyInfo>;
+}
+
+function collectDeclaredProperties(node: ts.ClassDeclaration, propertyMap: Map<string, ClassPropertyInfo>) {
+	for (const member of node.members) {
+		if (!ts.isPropertyDeclaration(member) || !member.name || !ts.isIdentifier(member.name)) {
+			continue;
+		}
+
+		const propertyInfo = analyzePropertyDeclaration(member);
+		if (propertyInfo) {
+			propertyMap.set(propertyInfo.name, propertyInfo);
+		}
+	}
+}
+
+function analyzePropertyDeclaration(member: ts.PropertyDeclaration): ClassPropertyInfo | undefined {
+	if (!member.name || !ts.isIdentifier(member.name)) {
+		return undefined;
+	}
+
+	const propertyInfo: ClassPropertyInfo = {
+		name: member.name.text,
+		kind: 'unknown'
+	};
+
+	const typeName = getTypeNameFromNode(member.type);
+	if (typeName) {
+		propertyInfo.typeName = typeName;
+		assignKindFromType(typeName, propertyInfo);
+		if (!propertyInfo.viewClassName) {
+			const viewTypeArg = getFirstTypeArgumentName(member.type);
+			if (viewTypeArg) {
+				propertyInfo.viewClassName = viewTypeArg;
+			}
+		}
+	}
+
+	if (member.initializer && ts.isCallExpression(member.initializer) && ts.isIdentifier(member.initializer.expression)) {
+		const callName = member.initializer.expression.text;
+		const viewTarget = getViewReferenceFromInitializer(member.initializer);
+		if (viewTarget && (callName === 'createSingle' || callName === 'createCollection')) {
+			propertyInfo.viewClassName = viewTarget;
+			propertyInfo.kind = callName === 'createSingle' ? 'view' : 'viewCollection';
+		}
+	}
+
+	return propertyInfo;
+}
+
+function getTypeNameFromNode(typeNode: ts.TypeNode | undefined): string | undefined {
+	if (!typeNode) {
+		return undefined;
+	}
+
+	if (ts.isTypeReferenceNode(typeNode)) {
+		const typeName = typeNode.typeName;
+		if (ts.isIdentifier(typeName)) {
+			return typeName.text;
+		}
+	}
+
+	return undefined;
+}
+
+function getFirstTypeArgumentName(typeNode: ts.TypeNode | undefined): string | undefined {
+	if (!typeNode || !ts.isTypeReferenceNode(typeNode) || !typeNode.typeArguments?.length) {
+		return undefined;
+	}
+
+	const firstArg = typeNode.typeArguments[0];
+	if (ts.isTypeReferenceNode(firstArg) && ts.isIdentifier(firstArg.typeName)) {
+		return firstArg.typeName.text;
+	}
+
+	return undefined;
+}
+
+function assignKindFromType(typeName: string, propertyInfo: ClassPropertyInfo) {
+	switch (typeName) {
+		case 'PXActionState':
+			propertyInfo.kind = 'action';
+			break;
+		case 'PXFieldState':
+			propertyInfo.kind = 'field';
+			break;
+		case 'PXView':
+			propertyInfo.kind = 'view';
+			break;
+		case 'PXViewCollection':
+			propertyInfo.kind = 'viewCollection';
+			break;
+		default:
+			break;
+	}
+}
+
+function getViewReferenceFromInitializer(initializer: ts.CallExpression): string | undefined {
+	if (!initializer.arguments.length) {
+		return undefined;
+	}
+
+	const firstArg = initializer.arguments[0];
+	if (ts.isIdentifier(firstArg)) {
+		return firstArg.text;
+	}
+
+	return undefined;
+}
+
 function tryReadSourceFile(filePath: string): ts.SourceFile | undefined {
 	const normalizedPath = path.normalize(filePath);
 	const cached = sourceFileCache.get(normalizedPath);
@@ -199,12 +320,14 @@ function findClassDeclarationByName(sourceFile: ts.SourceFile, className: string
 	return findClassDeclarationWithin(importedSourceFile, className);
 }
 
-export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<string> = new Set()) {
-	if (!node.heritageClauses) {
-		return undefined;
-	}
-
+export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<string> = new Set()): ClassInheritanceInfo {
 	const inheritanceChain: ts.Identifier[] = [];
+	const properties: Map<string, ClassPropertyInfo> = new Map<string, ClassPropertyInfo>();
+	collectDeclaredProperties(node, properties);
+
+	if (!node.heritageClauses) {
+		return { chain: inheritanceChain, properties };
+	}
 
 	for (const clause of node.heritageClauses) {
 		const isExtendsClause = clause.token === ts.SyntaxKind.ExtendsKeyword;
@@ -234,40 +357,85 @@ export function buildClassInheritance(node: ts.ClassDeclaration, visited: Set<st
 			const nextVisited = new Set(visited);
 			nextVisited.add(className);
 
-			const parentChain = buildClassInheritance(parentDeclaration, nextVisited);
-			if (parentChain?.length) {
-				inheritanceChain.push(...parentChain);
-			}
+			const parentInfo = buildClassInheritance(parentDeclaration, nextVisited);
+			inheritanceChain.push(...parentInfo.chain);
+			parentInfo.properties.forEach((propInfo, propName) => {
+				if (!properties.has(propName)) {
+					properties.set(propName, propInfo);
+				}
+			});
 		}
 	}
 
-	return inheritanceChain.length ? inheritanceChain : undefined;
+	return { chain: inheritanceChain, properties };
 }
 
-export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'): { className: string; type: "PXScreen" | "PXView"; properties: Set<string>; }[] {
-	const classes: { className: string, type: 'PXScreen' | 'PXView', properties: Set<string> }[] = [];
-	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
-  
-	function findClassProperties(node: ts.Node) {
-	  if (ts.isClassDeclaration(node) && node.members) {
-		const properties = new Set<string>();
-		node.members.forEach(member => {
-		  if (ts.isPropertyDeclaration(member) && member.name && ts.isIdentifier(member.name)) {
-			properties.add(member.name.text);
-		  }
-		});
+export type CollectedClassInfo = {
+	className: string;
+	type: "PXScreen" | "PXView" | undefined;
+	properties: Map<string, ClassPropertyInfo>;
+};
 
-		const inheritanceChain = buildClassInheritance(node);
-		const screenOrViewItem = inheritanceChain?.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
-
-		classes.push({className: node.name!.escapedText!, properties: properties, type: screenOrViewItem?.escapedText as any });
-	  }
-	  ts.forEachChild(node, findClassProperties);
+function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFiles: Set<string>): CollectedClassInfo[] {
+	const normalizedFileName = path.normalize(sourceFile.fileName);
+	if (visitedFiles.has(normalizedFileName)) {
+		return [];
 	}
-  
-	ts.forEachChild(sourceFile, findClassProperties);
+	visitedFiles.add(normalizedFileName);
+
+	const classes: CollectedClassInfo[] = [];
+
+	const visit = (node: ts.Node) => {
+		if (ts.isClassDeclaration(node) && node.name) {
+			const inheritanceInfo = buildClassInheritance(node);
+			const screenOrViewItem = inheritanceInfo.chain.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
+
+			classes.push({
+				className: node.name.escapedText.toString(),
+				properties: new Map(inheritanceInfo.properties),
+				type: screenOrViewItem?.escapedText as "PXScreen" | "PXView" | undefined
+			});
+		}
+
+		ts.forEachChild(node, visit);
+	};
+
+	visit(sourceFile);
+
+	for (const statement of sourceFile.statements) {
+		if (!ts.isImportDeclaration(statement) || !ts.isStringLiteral(statement.moduleSpecifier)) {
+			continue;
+		}
+
+		const moduleSpecifier = statement.moduleSpecifier.text;
+		if (!moduleSpecifier.startsWith('.')) {
+			continue;
+		}
+
+		const resolvedPath = resolveModulePath(sourceFile.fileName, moduleSpecifier);
+		if (!resolvedPath) {
+			continue;
+		}
+
+		const importedSourceFile = tryReadSourceFile(resolvedPath);
+		if (!importedSourceFile) {
+			continue;
+		}
+
+		classes.push(...collectClassPropertiesFromSource(importedSourceFile, visitedFiles));
+	}
+
 	return classes;
-  }
+}
+
+export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'): CollectedClassInfo[] {
+	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
+	if (filePath && filePath !== 'temp.ts') {
+		sourceFileCache.set(path.normalize(filePath), sourceFile);
+	}
+
+	return collectClassPropertiesFromSource(sourceFile, new Set());
+}
 
 export function getLineAndColumnFromIndex(text: string, index: number): { line: number; column: number; } {
 	let line = 0;

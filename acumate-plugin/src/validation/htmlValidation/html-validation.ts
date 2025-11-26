@@ -5,6 +5,8 @@ import {
   getClassPropertiesFromTs,
   getCorrespondingTsFile,
   getLineAndColumnFromIndex,
+  CollectedClassInfo,
+  ClassPropertyInfo,
 } from "../../utils";
 import { AcuMateContext } from "../../plugin-context";
 
@@ -53,16 +55,60 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   AcuMateContext.HtmlValidator.set(document.uri, diagnostics);
 }
 
+type ViewResolution = {
+  screenClass: CollectedClassInfo;
+  property: ClassPropertyInfo;
+  viewClass?: CollectedClassInfo;
+};
+
 function validateDom(
   dom: any[],
   diagnostics: vscode.Diagnostic[],
-  classProperties: {
-    className: string;
-    type: "PXScreen" | "PXView";
-    properties: Set<string>;
-  }[],
+  classProperties: CollectedClassInfo[],
   content: string
 ) {
+  const classInfoMap = new Map<string, CollectedClassInfo>(
+    classProperties.map((info) => [info.className, info])
+  );
+  const screenClasses = classProperties.filter((info) => info.type === "PXScreen");
+  const viewResolutionCache = new Map<string, ViewResolution | undefined>();
+
+  function resolveView(viewName: string | undefined): ViewResolution | undefined {
+    if (!viewName) {
+      return undefined;
+    }
+
+    if (viewResolutionCache.has(viewName)) {
+      return viewResolutionCache.get(viewName);
+    }
+
+    for (const screenClass of screenClasses) {
+      const property = screenClass.properties.get(viewName);
+      if (!property) {
+        continue;
+      }
+
+      if (property.kind !== "view" && property.kind !== "viewCollection") {
+        continue;
+      }
+
+      const viewClass = property.viewClassName
+        ? classInfoMap.get(property.viewClassName)
+        : undefined;
+
+      const resolution: ViewResolution = {
+        screenClass,
+        property,
+        viewClass,
+      };
+      viewResolutionCache.set(viewName, resolution);
+      return resolution;
+    }
+
+    viewResolutionCache.set(viewName, undefined);
+    return undefined;
+  }
+
   // Custom validation logic goes here
   dom.forEach((node) => {
     if (
@@ -71,11 +117,14 @@ function validateDom(
       node.attribs[`view.bind`]
     ) {
       const viewname = node.attribs[`view.bind`];
-      const properiesSet = classProperties
-        .filter((it) => it.type === "PXScreen")
-        .flatMap((it) => it.properties)
-        .find((it) => it.has(viewname));
-      if (!properiesSet) {
+      const viewResolution = resolveView(viewname);
+      const hasValidView =
+        viewResolution &&
+        viewResolution.property.viewClassName &&
+        viewResolution.viewClass &&
+        viewResolution.viewClass.type === "PXView";
+
+      if (!hasValidView) {
         const range = getRange(content, node);
         const diagnostic: vscode.Diagnostic = {
           severity: vscode.DiagnosticSeverity.Warning,
@@ -89,12 +138,12 @@ function validateDom(
 
     if (node.type === "tag" && node.name === "field" && node.attribs.name) {
       const viewname = node.parentNode.attribs[`view.bind`];
-      var fieldName = node.attribs.name;
-      const properiesSet = classProperties
-        .filter((it) => it.type === "PXView")
-        .flatMap((it) => it.properties)
-        .find((it) => it.has(fieldName));
-      if (!properiesSet) {
+      const fieldName = node.attribs.name;
+      const viewResolution = resolveView(viewname);
+      const viewClass = viewResolution?.viewClass;
+      const fieldProperty = viewClass?.properties.get(fieldName);
+      const isValidField = fieldProperty?.kind === "field";
+      if (!isValidField) {
         const range = getRange(content, node);
         const diagnostic = {
           severity: vscode.DiagnosticSeverity.Warning,
