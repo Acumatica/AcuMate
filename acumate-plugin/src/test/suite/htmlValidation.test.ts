@@ -82,6 +82,21 @@ describe('HTML validation diagnostics', () => {
 		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for double-dot extension html');
 	});
 
+	it('accepts html that relies on PXView mixin fields', async () => {
+		const document = await vscode.workspace.openTextDocument(
+			path.join(
+				screenFixturesRoot,
+				'SO',
+				'SO301000',
+				'extensions',
+				'SO301000_PaymentLinks.html'
+			)
+		);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for PXView mixin html');
+	});
+
 	it('ignores fake fields marked unbound replace-content', async () => {
 		const document = await openFixtureDocument('TestScreenUnboundField.html');
 		await validateHtmlFile(document);

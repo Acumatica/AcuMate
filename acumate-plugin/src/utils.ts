@@ -407,7 +407,11 @@ export type CollectedClassInfo = {
 	node: ts.ClassDeclaration;
 };
 
-function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFiles: Set<string>): CollectedClassInfo[] {
+function collectClassPropertiesFromSource(
+	sourceFile: ts.SourceFile,
+	visitedFiles: Set<string>,
+	mixinTargets: Map<string, string>
+): CollectedClassInfo[] {
 	const normalizedFileName = path.normalize(sourceFile.fileName);
 	if (visitedFiles.has(normalizedFileName)) {
 		return [];
@@ -417,6 +421,12 @@ function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFile
 	const classes: CollectedClassInfo[] = [];
 
 	const visit = (node: ts.Node) => {
+		if (ts.isInterfaceDeclaration(node)) {
+			const mixinTarget = getMixinTargetFromInterface(node);
+			if (mixinTarget) {
+				mixinTargets.set(node.name.text, mixinTarget);
+			}
+		}
 		if (ts.isClassDeclaration(node) && node.name) {
 			const inheritanceInfo = buildClassInheritance(node);
 			const screenOrViewItem = inheritanceInfo.chain.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
@@ -455,13 +465,62 @@ function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFile
 			continue;
 		}
 
-		classes.push(...collectClassPropertiesFromSource(importedSourceFile, visitedFiles));
+		classes.push(...collectClassPropertiesFromSource(importedSourceFile, visitedFiles, mixinTargets));
 	}
 
 	return classes;
 }
 
-export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'): CollectedClassInfo[] {
+function getMixinTargetFromInterface(node: ts.InterfaceDeclaration): string | undefined {
+	if (!node.heritageClauses) {
+		return undefined;
+	}
+
+	for (const clause of node.heritageClauses) {
+		if (clause.token !== ts.SyntaxKind.ExtendsKeyword) {
+			continue;
+		}
+
+		if (!clause.types.length) {
+			continue;
+		}
+
+		const firstType = clause.types[0];
+		if (ts.isExpressionWithTypeArguments(firstType) && ts.isIdentifier(firstType.expression)) {
+			return firstType.expression.text;
+		}
+	}
+
+	return undefined;
+}
+
+function applyMixinTargets(classInfos: CollectedClassInfo[], mixinTargets: Map<string, string>) {
+	if (!mixinTargets.size) {
+		return;
+	}
+
+	const lookup = new Map(classInfos.map(info => [info.className, info]));
+
+	for (const [mixinName, targetName] of mixinTargets) {
+		const mixinInfo = lookup.get(mixinName);
+		const targetInfo = lookup.get(targetName);
+		if (!mixinInfo || !targetInfo) {
+			continue;
+		}
+
+		for (const [propName, propInfo] of mixinInfo.properties) {
+			if (!targetInfo.properties.has(propName)) {
+				targetInfo.properties.set(propName, propInfo);
+			}
+		}
+	}
+}
+
+export function getClassPropertiesFromTs(
+	tsContent: string,
+	filePath = 'temp.ts',
+	mixinAccumulator?: Map<string, string>
+): CollectedClassInfo[] {
 	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
 	if (filePath && filePath !== 'temp.ts') {
 		const normalizedPath = path.normalize(filePath);
@@ -476,7 +535,12 @@ export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'
 		}
 	}
 
-	return collectClassPropertiesFromSource(sourceFile, new Set());
+	const mixinTargets = mixinAccumulator ?? new Map<string, string>();
+	const classInfos = collectClassPropertiesFromSource(sourceFile, new Set(), mixinTargets);
+	if (!mixinAccumulator) {
+		applyMixinTargets(classInfos, mixinTargets);
+	}
+	return classInfos;
 }
 
 export function createClassInfoLookup(classInfos: CollectedClassInfo[]): Map<string, CollectedClassInfo> {
@@ -633,6 +697,7 @@ function tryGetScreenTsFromExtension(htmlFilePath: string): string | undefined {
 export function loadClassInfosFromFiles(tsFilePaths: string[]): CollectedClassInfo[] {
 	const results: CollectedClassInfo[] = [];
 	const visited = new Set<string>();
+	const mixinTargets = new Map<string, string>();
 
 	for (const filePath of tsFilePaths) {
 		const normalized = path.normalize(filePath);
@@ -647,13 +712,14 @@ export function loadClassInfosFromFiles(tsFilePaths: string[]): CollectedClassIn
 
 		try {
 			const tsContent = fs.readFileSync(normalized, 'utf-8');
-			results.push(...getClassPropertiesFromTs(tsContent, normalized));
+			results.push(...getClassPropertiesFromTs(tsContent, normalized, mixinTargets));
 		}
 		catch {
 			// Ignore unreadable files; diagnostics/completions will simply lack metadata.
 		}
 	}
 
+	applyMixinTargets(results, mixinTargets);
 	return results;
 }
 

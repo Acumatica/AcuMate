@@ -1,0 +1,15 @@
+<template>
+	<qp-fieldset id="PaymentLinksA" view.bind="CurrentDocument">
+		<field name="ProcessingCenterID"></field>
+		<field name="DeliveryMethod"></field>
+		<using view="PayLink">
+			<field name="Url"></field>
+			<field name="LinkStatus"></field>
+		</using>
+	</qp-fieldset>
+	<qp-fieldset id="PaymentLinksB" view.bind="CurrentDocument">
+		<field name="fakeButton" unbound replace-content>
+			<qp-button id="fakeButton" state.bind="CreateLink"></qp-button>
+		</field>
+	</qp-fieldset>
+</template>

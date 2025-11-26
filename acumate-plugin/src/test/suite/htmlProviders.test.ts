@@ -22,6 +22,13 @@ const screenExtensionDoubleDotHtmlPath = path.join(
 	'extensions',
 	'SO301000_CreatePrepaymentInvoice..html'
 );
+const screenPaymentLinksHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_PaymentLinks.html'
+);
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
 	const text = document.getText();
@@ -113,6 +120,28 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No field completions returned for double-dot extension');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('CuryPrepaymentAmt'), 'CuryPrepaymentAmt not suggested');
+	});
+
+	it('suggests fields injected into PXView mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="ProcessingCenterID"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for mixin fields');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ProcessingCenterID'), 'ProcessingCenterID not suggested');
+		assert.ok(labels.includes('DeliveryMethod'), 'DeliveryMethod not suggested');
+	});
+
+	it('suggests fields from using views defined in mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="Url"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for mixin view fields');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('Url'), 'Url not suggested');
+		assert.ok(labels.includes('LinkStatus'), 'LinkStatus not suggested');
 	});
 
 	it('suggests field names for using containers inheriting parent views', async () => {
@@ -253,6 +282,32 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_CreatePrepaymentInvoice.ts')),
 			'Expected field definition inside double-dot extension TS file'
+		);
+	});
+
+	it('navigates from mixin field to its TypeScript definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="ProcessingCenterID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_PaymentLinks.ts')),
+			'Expected definition inside PaymentLinks mixin file'
+		);
+	});
+
+	it('navigates from using mixin view to TypeScript definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="Url"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_PaymentLinks.ts')),
+			'Expected definition inside PaymentLinks mixin file'
 		);
 	});
 });

@@ -2,6 +2,11 @@ export class SO301000BaseView extends PXView {
 	BaseField!: PXFieldState;
 }
 
+export class SOOrder extends PXView {
+	BaseOrderField!: PXFieldState;
+}
+
 export class SO301000 extends PXScreen {
 	BaseView!: PXView<SO301000BaseView>;
+	CurrentDocument!: PXView<SOOrder>;
 }
