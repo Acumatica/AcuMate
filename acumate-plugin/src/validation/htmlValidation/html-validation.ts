@@ -8,8 +8,12 @@ import {
   CollectedClassInfo,
   ClassPropertyInfo,
 } from "../../utils";
+
+// The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
+// and then uses that metadata when validating the HTML DOM.
 import { AcuMateContext } from "../../plugin-context";
 
+// Entrypoint invoked by the extension whenever an HTML file should be validated.
 export async function validateHtmlFile(document: vscode.TextDocument) {
   const diagnostics: vscode.Diagnostic[] = [];
   const filePath = document.uri.fsPath;
@@ -22,6 +26,8 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
 
   const tsContent = fs.readFileSync(tsFilePath, "utf-8");
 
+  // Each CollectedClassInfo entry represents a TypeScript class along with a map of its
+  // properties (PXActionState, PXView, PXViewCollection, PXFieldState) including inherited ones.
   const classProperties = getClassPropertiesFromTs(tsContent, tsFilePath);
 
   // Parse the HTML content
@@ -55,12 +61,15 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   AcuMateContext.HtmlValidator.set(document.uri, diagnostics);
 }
 
+// Represents the resolved PXView property for a qp-fieldset along with the concrete PXView class.
 type ViewResolution = {
   screenClass: CollectedClassInfo;
   property: ClassPropertyInfo;
   viewClass?: CollectedClassInfo;
 };
 
+// Traverses the DOM tree, resolving view bindings to PXView classes so we can validate
+// qp-fieldset nodes and their child field nodes against the TypeScript metadata.
 function validateDom(
   dom: any[],
   diagnostics: vscode.Diagnostic[],
@@ -73,6 +82,8 @@ function validateDom(
   const screenClasses = classProperties.filter((info) => info.type === "PXScreen");
   const viewResolutionCache = new Map<string, ViewResolution | undefined>();
 
+  // Screen classes contain PXView and PXViewCollection properties. We cache resolutions so
+  // repeated use of the same view name does not require scanning every screen class again.
   function resolveView(viewName: string | undefined): ViewResolution | undefined {
     if (!viewName) {
       return undefined;
@@ -161,6 +172,7 @@ function validateDom(
   });
 }
 
+// Converts parser indices into VS Code ranges for diagnostics.
 function getRange(content: string, node: any) {
   const startPosition = getLineAndColumnFromIndex(content, node.startIndex);
   const endPosition = getLineAndColumnFromIndex(content, node.endIndex);
