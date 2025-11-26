@@ -116,8 +116,16 @@ function analyzePropertyDeclaration(member: ts.PropertyDeclaration): ClassProper
 		const callName = member.initializer.expression.text;
 		const viewTarget = getViewReferenceFromInitializer(member.initializer);
 		if (viewTarget && (callName === 'createSingle' || callName === 'createCollection')) {
+			const kindFromInitializer = callName === 'createSingle' ? 'view' : 'viewCollection';
+			// If kind was set from type annotation and disagrees with initializer, log a warning
+			if (propertyInfo.kind !== 'unknown' && propertyInfo.kind !== kindFromInitializer) {
+				console.warn(
+					`[acumate-plugin] Property '${propertyInfo.name}' has inconsistent kind: ` +
+					`type annotation suggests '${propertyInfo.kind}', initializer suggests '${kindFromInitializer}'.`
+				);
+			}
 			propertyInfo.viewClassName = viewTarget;
-			propertyInfo.kind = callName === 'createSingle' ? 'view' : 'viewCollection';
+			propertyInfo.kind = kindFromInitializer;
 		}
 	}
 
