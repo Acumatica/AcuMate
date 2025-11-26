@@ -577,6 +577,88 @@ export function getCorrespondingTsFile(htmlFilePath: string) {
   const tsFilePath = htmlFilePath.replace(/\.html$/, ".ts"); // Assumes the same name and path
   return fs.existsSync(tsFilePath) ? tsFilePath : null;
 }
+
+export function getRelatedTsFiles(htmlFilePath: string): string[] {
+	const related = new Set<string>();
+	const direct = getCorrespondingTsFile(htmlFilePath);
+	if (direct) {
+		related.add(path.normalize(direct));
+	}
+
+	const screenTs = tryGetScreenTsFromExtension(htmlFilePath);
+	if (screenTs) {
+		related.add(path.normalize(screenTs));
+	}
+
+	return [...related];
+}
+
+function tryGetScreenTsFromExtension(htmlFilePath: string): string | undefined {
+	const normalized = path.normalize(htmlFilePath);
+	const lowerNormalized = normalized.toLowerCase();
+	const marker = `${path.sep}extensions${path.sep}`.toLowerCase();
+	const markerIndex = lowerNormalized.lastIndexOf(marker);
+	if (markerIndex === -1) {
+		return undefined;
+	}
+
+	const screenDir = normalized.substring(0, markerIndex);
+	if (!screenDir) {
+		return undefined;
+	}
+	const screenName = path.basename(screenDir);
+	if (!screenName) {
+		return undefined;
+	}
+
+	const candidate = path.join(screenDir, `${screenName}.ts`);
+	return fs.existsSync(candidate) ? candidate : undefined;
+}
+
+export function loadClassInfosFromFiles(tsFilePaths: string[]): CollectedClassInfo[] {
+	const results: CollectedClassInfo[] = [];
+	const visited = new Set<string>();
+
+	for (const filePath of tsFilePaths) {
+		const normalized = path.normalize(filePath);
+		if (visited.has(normalized)) {
+			continue;
+		}
+		visited.add(normalized);
+
+		if (!fs.existsSync(normalized)) {
+			continue;
+		}
+
+		try {
+			const tsContent = fs.readFileSync(normalized, 'utf-8');
+			results.push(...getClassPropertiesFromTs(tsContent, normalized));
+		}
+		catch {
+			// Ignore unreadable files; diagnostics/completions will simply lack metadata.
+		}
+	}
+
+	return results;
+}
+
+export function filterScreenLikeClasses(classInfos: CollectedClassInfo[]): CollectedClassInfo[] {
+	return classInfos.filter(isScreenLikeClass);
+}
+
+export function isScreenLikeClass(info: CollectedClassInfo): boolean {
+	if (info.type === 'PXScreen') {
+		return true;
+	}
+
+	for (const property of info.properties.values()) {
+		if (property.kind === 'view' || property.kind === 'viewCollection') {
+			return true;
+		}
+	}
+
+	return false;
+}
   
   
 

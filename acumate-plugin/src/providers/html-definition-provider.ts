@@ -1,14 +1,14 @@
 import vscode from 'vscode';
 import ts from 'typescript';
-const fs = require('fs');
 
 import {
-	getCorrespondingTsFile,
-	getClassPropertiesFromTs,
+	getRelatedTsFiles,
+	loadClassInfosFromFiles,
 	CollectedClassInfo,
 	ClassPropertyInfo,
 	createClassInfoLookup,
 	resolveViewBinding,
+	filterScreenLikeClasses,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -52,19 +52,18 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return;
 		}
 
-		const tsFilePath = getCorrespondingTsFile(document.uri.fsPath);
-		if (!tsFilePath || !fs.existsSync(tsFilePath)) {
+		const tsFilePaths = getRelatedTsFiles(document.uri.fsPath);
+		if (!tsFilePaths.length) {
 			return;
 		}
 
-		const tsContent = fs.readFileSync(tsFilePath, 'utf-8');
-		const classInfos = getClassPropertiesFromTs(tsContent, tsFilePath);
+		const classInfos = loadClassInfosFromFiles(tsFilePaths);
 		if (!classInfos.length) {
 			return;
 		}
 
 		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = classInfos.filter(info => info.type === 'PXScreen');
+		const screenClasses = filterScreenLikeClasses(classInfos);
 		// Resolved metadata lets us jump from HTML bindings directly to the backing TypeScript symbol.
 
 		if (attributeContext.attributeName === 'view.bind' || (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using')) {

@@ -7,6 +7,14 @@ import { HtmlDefinitionProvider } from '../../providers/html-definition-provider
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
+const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
+const screenExtensionHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_AddBlanketOrderLine.html'
+);
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
 	const text = document.getText();
@@ -57,6 +65,27 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No view completions returned for using view attribute');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('ItemConfiguration'), 'ItemConfiguration not suggested');
+	});
+
+	it('suggests view names for screen extensions', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view.bind="BaseView"', 'view.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for screen extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('BlanketSplits'), 'BlanketSplits not suggested');
+		assert.ok(labels.includes('BaseView'), 'BaseView not suggested');
+	});
+
+	it('suggests field names for screen extension views', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="BlanketLineField"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for screen extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('BlanketLineField'), 'BlanketLineField not suggested');
 	});
 
 	it('suggests field names for using containers inheriting parent views', async () => {
@@ -145,6 +174,32 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
 			'Expected definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from extension view binding to TS property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'view.bind="BlanketSplits"', 'view.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_AddBlanketOrderLine.ts')),
+			'Expected definition inside screen extension TS file'
+		);
+	});
+
+	it('navigates from extension field to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="BlanketLineField"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_AddBlanketOrderLine.ts')),
+			'Expected field definition inside screen extension TS file'
 		);
 	});
 });

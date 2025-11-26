@@ -1,13 +1,13 @@
 import vscode from 'vscode';
-const fs = require('fs');
 
 import {
-	getCorrespondingTsFile,
-	getClassPropertiesFromTs,
+	getRelatedTsFiles,
+	loadClassInfosFromFiles,
 	CollectedClassInfo,
 	createClassInfoLookup,
 	resolveViewBinding,
 	ClassPropertyInfo,
+	filterScreenLikeClasses,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -65,19 +65,18 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return undefined;
 		}
 
-		const tsFilePath = getCorrespondingTsFile(document.uri.fsPath);
-		if (!tsFilePath || !fs.existsSync(tsFilePath)) {
+		const tsFilePaths = getRelatedTsFiles(document.uri.fsPath);
+		if (!tsFilePaths.length) {
 			return undefined;
 		}
 
-		const tsContent = fs.readFileSync(tsFilePath, 'utf-8');
-		const classInfos = getClassPropertiesFromTs(tsContent, tsFilePath);
+		const classInfos = loadClassInfosFromFiles(tsFilePaths);
 		if (!classInfos.length) {
 			return undefined;
 		}
 
 		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = classInfos.filter(info => info.type === 'PXScreen');
+		const screenClasses = filterScreenLikeClasses(classInfos);
 		// Completions are sourced from the same metadata as validation/definitions to keep behavior consistent.
 
 		if (attributeContext.attributeName === 'view.bind') {

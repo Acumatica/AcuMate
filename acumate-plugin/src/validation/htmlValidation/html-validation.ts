@@ -1,14 +1,14 @@
 import vscode from "vscode";
 import { Parser, DomHandler } from "htmlparser2";
-const fs = require(`fs`);
 import {
-  getClassPropertiesFromTs,
-  getCorrespondingTsFile,
   getLineAndColumnFromIndex,
   CollectedClassInfo,
   ViewResolution,
   resolveViewBinding,
   createClassInfoLookup,
+  getRelatedTsFiles,
+  loadClassInfosFromFiles,
+  filterScreenLikeClasses,
 } from "../../utils";
 import { findParentViewName } from "../../providers/html-shared";
 
@@ -22,16 +22,14 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   const filePath = document.uri.fsPath;
   const content = document.getText();
 
-  const tsFilePath = getCorrespondingTsFile(filePath);
-  if (!tsFilePath) {
+  const tsFilePaths = getRelatedTsFiles(filePath);
+  if (!tsFilePaths.length) {
     return;
   }
 
-  const tsContent = fs.readFileSync(tsFilePath, "utf-8");
-
   // Each CollectedClassInfo entry represents a TypeScript class along with a map of its
   // properties (PXActionState, PXView, PXViewCollection, PXFieldState) including inherited ones.
-  const classProperties = getClassPropertiesFromTs(tsContent, tsFilePath);
+  const classProperties = loadClassInfosFromFiles(tsFilePaths);
 
   // Parse the HTML content
   const handler = new DomHandler(
@@ -73,7 +71,7 @@ function validateDom(
   content: string
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
-  const screenClasses = classProperties.filter((info) => info.type === "PXScreen");
+  const screenClasses = filterScreenLikeClasses(classProperties);
   const viewResolutionCache = new Map<string, ViewResolution | undefined>();
 
   // Screen classes contain PXView and PXViewCollection properties. We cache resolutions so

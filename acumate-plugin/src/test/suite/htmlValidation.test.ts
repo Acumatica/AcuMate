@@ -6,6 +6,14 @@ import { validateHtmlFile } from '../../validation/htmlValidation/html-validatio
 import { AcuMateContext } from '../../plugin-context';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
+const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
+const screenExtensionFixture = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_AddBlanketOrderLine.html'
+);
 
 async function openFixtureDocument(fileName: string) {
 	const fullPath = path.join(fixturesRoot, fileName);
@@ -50,5 +58,12 @@ describe('HTML validation diagnostics', () => {
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
 		assert.ok(diagnostics.some(d => d.message.includes('<using>')), 'Expected invalid using view diagnostic');
+	});
+
+	it('accepts valid screen extension html by combining screen metadata', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for valid screen extension html');
 	});
 });
