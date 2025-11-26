@@ -55,6 +55,15 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
      - View names to confirm they are accurate according to the TypeScript definitions.
    - Integrates Acumatica-specific validation rules for ESLint, ensuring that code quality standards are met and enforced across both Visual Studio Code and Visual Studio.
 
+2. **Go To Definition inside HTML**  
+   - Navigate directly from `view.bind` attributes to the corresponding PXView declaration and backing view class.  
+   - Jump from `<field name="...">` elements to the exact field property on the resolved PXView, even when the HTML attribute is still being typed.
+
+3. **Context-Aware HTML Completions**  
+   - Offers IntelliSense suggestions for available `view.bind` values sourced from the PXScreen metadata.  
+   - Provides field name suggestions that automatically scope to the closest parent view binding, so only valid fields appear.  
+   - Attribute parsing tolerates empty values (`view.bind=""`) to keep suggestions responsive while editing.
+
 
 
 ## Commands
