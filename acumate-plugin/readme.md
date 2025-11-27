@@ -49,11 +49,13 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
 
 ### HTML Features
 
-1. **HTML Validation Against TypeScript Code**  
-   - Ensures HTML code aligns with TypeScript by validating:
-     - Field names against the TypeScript code.
-     - View names to confirm they are accurate according to the TypeScript definitions.
-   - Integrates Acumatica-specific validation rules for ESLint, ensuring that code quality standards are met and enforced across both Visual Studio Code and Visual Studio.
+1. **HTML Validation Against TypeScript + Client Metadata**  
+   - Confirms `view.bind` and `<using view="">` references resolve to real PXView/PXViewCollection properties, including inherited and mixin-provided bindings.
+   - Verifies `<field name="...">` entries against the PXView resolved from the surrounding markup and ignores deliberate `unbound replace-content` placeholders.
+   - Validates `state.bind` attributes point to PXAction members, and `qp-field control-state.bind` values follow the `<view>.<field>` format with existing fields.
+   - Enforces Acumatica-specific constructs: required qp-include parameters, rejection of undeclared include attributes, and qp-template name checks sourced from ScreenTemplates metadata.
+   - Leverages client-controls config schemas to inspect `config.bind` JSON on qp-* controls, reporting malformed JSON, missing required properties, and unknown keys before runtime.
+   - Integrates these diagnostics with ESLint + VS Code so warnings surface consistently in editors and CI.
 
 2. **Go To Definition inside HTML**  
    - Navigate directly from `view.bind` attributes to the corresponding PXView declaration and backing view class.  
