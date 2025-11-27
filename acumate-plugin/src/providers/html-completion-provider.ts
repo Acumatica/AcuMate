@@ -99,6 +99,10 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return this.createActionCompletions(screenClasses);
 		}
 
+		if (attributeContext.attributeName === 'control-state.bind' && attributeContext.tagName === 'qp-field') {
+			return this.createControlStateCompletions(attributeContext.value, screenClasses, classInfoLookup);
+		}
+
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field completions are scoped to the PXView resolved from the surrounding markup.
 			const viewName = findParentViewName(elementNode);
@@ -388,5 +392,52 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			items.push(item);
 		});
 		return items;
+	}
+
+	private createControlStateCompletions(
+		currentValue: string | undefined,
+		screenClasses: CollectedClassInfo[],
+		classInfoLookup: Map<string, CollectedClassInfo>
+	): vscode.CompletionItem[] | undefined {
+		const normalizedPrefix = (currentValue ?? '').trim().toLowerCase();
+		const seenViews = new Set<string>();
+		const seenPairs = new Set<string>();
+		const items: vscode.CompletionItem[] = [];
+
+		for (const screenClass of screenClasses) {
+			for (const [propertyName, property] of screenClass.properties) {
+				if ((property.kind !== 'view' && property.kind !== 'viewCollection') || seenViews.has(propertyName)) {
+					continue;
+				}
+				seenViews.add(propertyName);
+				const resolution = resolveViewBinding(propertyName, screenClasses, classInfoLookup);
+				const viewClass = resolution?.viewClass;
+				if (!viewClass) {
+					continue;
+				}
+
+				for (const [fieldName, fieldProperty] of viewClass.properties) {
+					if (fieldProperty.kind !== 'field') {
+						continue;
+					}
+					const label = `${propertyName}.${fieldName}`;
+					if (seenPairs.has(label)) {
+						continue;
+					}
+					seenPairs.add(label);
+
+					if (normalizedPrefix && !label.toLowerCase().startsWith(normalizedPrefix)) {
+						continue;
+					}
+
+					const item = new vscode.CompletionItem(label, vscode.CompletionItemKind.Property);
+					item.detail = fieldProperty.typeName ?? 'PXFieldState';
+					item.sortText = `0_${label}`;
+					items.push(item);
+				}
+			}
+		}
+
+		return items.length ? items : undefined;
 	}
 }

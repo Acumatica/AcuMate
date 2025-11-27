@@ -168,6 +168,16 @@ function validateDom(
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
+      node.name === "qp-field" &&
+      typeof node.attribs?.["control-state.bind"] === "string" &&
+      node.attribs["control-state.bind"].length
+    ) {
+      validateControlStateBinding(node.attribs["control-state.bind"], node);
+    }
+
+    if (
+      hasScreenMetadata &&
+      node.type === "tag" &&
       node.name === "field" &&
       node.attribs.name
     ) {
@@ -199,6 +209,54 @@ function validateDom(
       validateDom((<any>node).children, diagnostics, classProperties, content, htmlFilePath, workspaceRoots);
     }
   });
+
+  function validateControlStateBinding(bindingValue: string, node: any) {
+    const parts = bindingValue.split(".");
+    const range = getRange(content, node);
+    if (parts.length !== 2) {
+      diagnostics.push({
+        severity: vscode.DiagnosticSeverity.Warning,
+        range,
+        message: "The control-state.bind attribute must use the <view>.<field> format.",
+        source: "htmlValidator",
+      });
+      return;
+    }
+
+    const viewName = parts[0]?.trim();
+    const fieldName = parts[1]?.trim();
+    if (!viewName || !fieldName) {
+      diagnostics.push({
+        severity: vscode.DiagnosticSeverity.Warning,
+        range,
+        message: "The control-state.bind attribute must include both a view and field name.",
+        source: "htmlValidator",
+      });
+      return;
+    }
+
+    const viewResolution = resolveView(viewName);
+    const viewClass = viewResolution?.viewClass;
+    if (!viewClass) {
+      diagnostics.push({
+        severity: vscode.DiagnosticSeverity.Warning,
+        range,
+        message: `The control-state.bind attribute references unknown view "${viewName}".`,
+        source: "htmlValidator",
+      });
+      return;
+    }
+
+    const fieldProperty = viewClass.properties.get(fieldName);
+    if (!fieldProperty || fieldProperty.kind !== "field") {
+      diagnostics.push({
+        severity: vscode.DiagnosticSeverity.Warning,
+        range,
+        message: `The control-state.bind attribute references unknown field "${fieldName}" on view "${viewName}".`,
+        source: "htmlValidator",
+      });
+    }
+  }
 }
 
 function validateIncludeNode(

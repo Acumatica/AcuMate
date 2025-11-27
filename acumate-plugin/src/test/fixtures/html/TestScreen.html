@@ -2,5 +2,7 @@
 	<qp-fieldset id="Form" view.bind="mainView">
 		<field name="customerName"></field>
 	</qp-fieldset>
+	<qp-field id="CompletionField" control-state.bind=""></qp-field>
+	<qp-field id="BoundField" control-state.bind="mainView.customerName"></qp-field>
 	<qp-button state.bind="SaveAction"></qp-button>
 </qp-root>

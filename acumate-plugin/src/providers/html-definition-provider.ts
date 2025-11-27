@@ -100,6 +100,19 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return createLocationFromProperty(actionProperty);
 		}
 
+		if (attributeContext.attributeName === 'control-state.bind' && attributeContext.tagName === 'qp-field') {
+			const parsed = parseControlStateBinding(attributeContext.value);
+			if (!parsed) {
+				return;
+			}
+			const resolution = resolveViewBinding(parsed.viewName, screenClasses, classInfoLookup);
+			const fieldProperty = resolution?.viewClass?.properties.get(parsed.fieldName);
+			if (!fieldProperty || fieldProperty.kind !== 'field') {
+				return;
+			}
+			return createLocationFromProperty(fieldProperty);
+		}
+
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field names dereference through the closest parent view to locate the property in TS.
 			const viewName = findParentViewName(elementNode);
@@ -131,6 +144,22 @@ function findActionProperty(actionName: string | undefined, screenClasses: Colle
 	}
 	const actions = collectActionProperties(screenClasses);
 	return actions.get(actionName);
+}
+
+function parseControlStateBinding(value: string | undefined): { viewName: string; fieldName: string } | undefined {
+	if (!value) {
+		return undefined;
+	}
+	const parts = value.split('.');
+	if (parts.length !== 2) {
+		return undefined;
+	}
+	const viewName = parts[0]?.trim();
+	const fieldName = parts[1]?.trim();
+	if (!viewName || !fieldName) {
+		return undefined;
+	}
+	return { viewName, fieldName };
 }
 
 // Converts a collected property back into a VS Code location for navigation.

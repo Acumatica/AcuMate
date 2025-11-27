@@ -140,4 +140,33 @@ describe('HTML validation diagnostics', () => {
 			'Expected diagnostic for unknown qp-include parameter'
 		);
 	});
+
+	it('accepts qp-field control-state bindings when view + field exist', async () => {
+		const document = await openFixtureDocument('TestScreen.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('control-state.bind')).length,
+			0,
+			'Expected no control-state diagnostics for valid markup'
+		);
+	});
+
+	it('reports malformed qp-field control-state bindings', async () => {
+		const document = await openFixtureDocument('TestScreenInvalidControlState.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('<view>.<field> format')),
+			'Expected diagnostic for malformed control-state format'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('unknown view')),
+			'Expected diagnostic for missing control-state view'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('unknown field')),
+			'Expected diagnostic for missing control-state field'
+		);
+	});
 });

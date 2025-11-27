@@ -185,6 +185,16 @@ describe('HTML completion provider integration', () => {
 		assert.ok(labels.includes('override-fieldname'), 'override-fieldname not suggested');
 		assert.ok(labels.includes('override-wg-container'), 'override-wg-container not suggested');
 	});
+
+	it('suggests view + field pairs for control-state.bind', async () => {
+		const document = await vscode.workspace.openTextDocument(path.join(fixturesRoot, 'TestScreen.html'));
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'control-state.bind=""', 'control-state.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for control-state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('mainView.customerName'), 'mainView.customerName not suggested');
+	});
 });
 
 describe('HTML definition provider integration', () => {
@@ -360,6 +370,19 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('form-contact-document.html')),
 			'Expected navigation to include template file'
+		);
+	});
+
+	it('navigates from control-state.bind to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(path.join(fixturesRoot, 'TestScreen.html'));
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'control-state.bind="mainView.customerName"', 'control-state.bind="'.length + 'mainView.'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
+			'Expected control-state definition inside TestScreen.ts'
 		);
 	});
 });
