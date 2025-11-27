@@ -1,4 +1,4 @@
-export const GraphAPIRoute = "ui/graphs";
+export const GraphAPIRoute = "ui/graph";
 export const GraphAPIStructureRoute = "ui/graph/";
 export const AuthEndpoint = "entity/auth/login";
 export const LogoutEndpoint = "entity/auth/logout";

@@ -47,6 +47,10 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
 4. **Snippets**  
    - **Event Hook Creation**: Quickly add event hooks to TypeScript code with built-in snippets.
 
+5. **Graph Metadata Assistance**  
+   - When `acuMate.useBackend` is enabled, AcuMate queries the connected site for the list of available graphs and surfaces them as completions inside the `@graphInfo` decorator's `graphType` value.  
+   - The same metadata powers TypeScript diagnostics, warning when a `graphType` string does not match any graph returned by the backend so you can catch typos before running the UI.
+
 ### HTML Features
 
 1. **HTML Validation Against TypeScript + Client Metadata**  

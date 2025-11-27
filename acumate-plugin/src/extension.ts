@@ -15,6 +15,7 @@ const fs = require(`fs`);
 import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
 import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
+import { registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -29,6 +30,7 @@ export function activate(context: vscode.ExtensionContext) {
 	// HTML providers share the same metadata to supply navigation + IntelliSense inside markup.
 	registerHtmlDefinitionProvider(context);
 	registerHtmlCompletionProvider(context);
+	registerGraphInfoValidation(context);
 
 }
 
@@ -196,7 +198,9 @@ function createIntelliSenseProviders(context: vscode.ExtensionContext) {
 				return provideTSCompletionItems(document, position, token, context);
 			},
 		},
-		'.' // Optional: Trigger completion when typing a specific character (e.g., '.')
+		'.',
+		'"',
+		"'"
 	);
 
 	context.subscriptions.push(provider);

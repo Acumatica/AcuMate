@@ -11,3 +11,4 @@ declare namespace PXFieldOptions {
 
 declare function createSingle<T>(ctor: new () => T): PXView<T>;
 declare function createCollection<T>(ctor: new () => T): PXViewCollection<T>;
+declare function graphInfo(options: any): ClassDecorator;

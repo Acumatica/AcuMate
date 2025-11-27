@@ -2,10 +2,17 @@ import vscode from 'vscode';
 import ts from 'typescript';
 import { buildClassInheritance, tryGetGraphType } from '../utils';
 import { AcuMateContext } from '../plugin-context';
+import { getAvailableGraphs } from '../services/graph-metadata-service';
+import { getGraphTypeLiteralAtPosition } from '../typescript/graph-info-utils';
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
 
     const sourceFile = ts.createSourceFile(document.fileName, document.getText(), ts.ScriptTarget.Latest, true);
+
+    const graphTypeCompletions = await provideGraphTypeCompletions(document, position, sourceFile);
+    if (graphTypeCompletions?.length) {
+        return graphTypeCompletions;
+    }
 
     let isInsideScreenClass = false;
     let isInsideViewClass = false;
@@ -131,3 +138,52 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
     // Return an array of suggestions
     return suggestions;
 };
+
+async function provideGraphTypeCompletions(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    sourceFile: ts.SourceFile
+): Promise<vscode.CompletionItem[] | undefined> {
+    const offset = document.offsetAt(position);
+    const literalInfo = getGraphTypeLiteralAtPosition(sourceFile, offset);
+    if (!literalInfo) {
+        return undefined;
+    }
+
+    const graphs = await getAvailableGraphs();
+    if (!graphs?.length) {
+        return undefined;
+    }
+
+    const range = getStringContentRange(document, literalInfo.literal);
+    const items: vscode.CompletionItem[] = [];
+    for (const graph of graphs) {
+        if (!graph?.name) {
+            continue;
+        }
+        const item = new vscode.CompletionItem(graph.name, vscode.CompletionItemKind.Class);
+        item.detail = graph.text ?? graph.name;
+        item.insertText = graph.name;
+        item.range = range;
+        item.sortText = graph.name.toLowerCase();
+        items.push(item);
+    }
+
+    return items.length ? items : undefined;
+}
+
+function getStringContentRange(document: vscode.TextDocument, literal: ts.StringLiteralLike): vscode.Range {
+    const text = literal.getText();
+    if (text.length >= 2) {
+        const firstChar = text[0];
+        const lastChar = text[text.length - 1];
+        const matchingQuote = firstChar === lastChar && (firstChar === '"' || firstChar === "'" || firstChar === '`');
+        if (matchingQuote) {
+            const start = document.positionAt(literal.getStart() + 1);
+            const end = document.positionAt(Math.max(literal.getStart() + 1, literal.getEnd() - 1));
+            return new vscode.Range(start, end);
+        }
+    }
+
+    return new vscode.Range(document.positionAt(literal.getStart()), document.positionAt(literal.getEnd()));
+}
