@@ -7,23 +7,30 @@ import { AcuMateContext } from '../../plugin-context';
 import { collectGraphInfoDiagnostics } from '../../validation/tsValidation/graph-info-validation';
 import { IAcuMateApiClient } from '../../api/acu-mate-api-client';
 import { GraphModel } from '../../model/graph-model';
+import { GraphStructure } from '../../model/graph-structure';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/typescript');
 const completionFixture = path.join(fixturesRoot, 'GraphInfoScreen.ts');
 const invalidFixture = path.join(fixturesRoot, 'GraphInfoScreenInvalid.ts');
 const validFixture = path.join(fixturesRoot, 'GraphInfoScreenValid.ts');
+const mismatchFixture = path.join(fixturesRoot, 'GraphInfoScreenMismatch.ts');
+const matchFixture = path.join(fixturesRoot, 'GraphInfoScreenMatch.ts');
+
+const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
 
 const sampleGraphs: GraphModel[] = [
-	{ name: 'PX.SM.ProjectNewUiFrontendFileMaintenance', text: 'Frontend Maint' }
+	{ name: backendGraphName, text: 'Frontend Maint' }
 ];
 
 class MockApiClient implements IAcuMateApiClient {
+	constructor(private readonly structures: Record<string, GraphStructure | undefined> = {}) {}
+
 	async getGraphs(): Promise<GraphModel[] | undefined> {
 		return sampleGraphs;
 	}
 
-	async getGraphStructure(): Promise<any> {
-		return undefined;
+	async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
+		return this.structures[graphName];
 	}
 }
 
@@ -56,5 +63,31 @@ describe('graphInfo decorator assistance', () => {
 		const document = await vscode.workspace.openTextDocument(validFixture);
 		const diagnostics = await collectGraphInfoDiagnostics(document, [{ name: 'PX.ValidGraph' }]);
 		assert.strictEqual(diagnostics.length, 0, 'expected no diagnostics for valid graphType');
+	});
+
+	it('validates PXScreen views and actions against backend metadata', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'SaveAction' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const mismatchDocument = await vscode.workspace.openTextDocument(mismatchFixture);
+		const mismatchDiagnostics = await collectGraphInfoDiagnostics(mismatchDocument, sampleGraphs);
+		assert.ok(
+			mismatchDiagnostics.some(diag => diag.message.includes('view "WrongView"')),
+			'should detect missing backend view'
+		);
+		assert.ok(
+			mismatchDiagnostics.some(diag => diag.message.includes('action "WrongAction"')),
+			'should detect missing backend action'
+		);
+
+		const matchDocument = await vscode.workspace.openTextDocument(matchFixture);
+		const matchDiagnostics = await collectGraphInfoDiagnostics(matchDocument, sampleGraphs);
+		assert.strictEqual(matchDiagnostics.length, 0, 'expected no diagnostics when view/action names match backend metadata');
 	});
 });
