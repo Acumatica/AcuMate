@@ -75,6 +75,8 @@ export interface ClassPropertyInfo {
 	kind: ClassPropertyKind;
 	typeName?: string;
 	viewClassName?: string;
+	sourceFile: ts.SourceFile;
+	node: ts.PropertyDeclaration;
 }
 
 export interface ClassInheritanceInfo {
@@ -102,7 +104,9 @@ function analyzePropertyDeclaration(member: ts.PropertyDeclaration): ClassProper
 
 	const propertyInfo: ClassPropertyInfo = {
 		name: member.name.text,
-		kind: 'unknown'
+		kind: 'unknown',
+		sourceFile: member.getSourceFile(),
+		node: member
 	};
 
 	const typeName = getTypeNameFromNode(member.type);
@@ -399,6 +403,8 @@ export type CollectedClassInfo = {
 	className: string;
 	type: "PXScreen" | "PXView" | undefined;
 	properties: Map<string, ClassPropertyInfo>;
+	sourceFile: ts.SourceFile;
+	node: ts.ClassDeclaration;
 };
 
 function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFiles: Set<string>): CollectedClassInfo[] {
@@ -418,7 +424,9 @@ function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFile
 			classes.push({
 				className: node.name.escapedText.toString(),
 				properties: new Map(inheritanceInfo.properties),
-				type: screenOrViewItem?.escapedText as "PXScreen" | "PXView" | undefined
+				type: screenOrViewItem?.escapedText as "PXScreen" | "PXView" | undefined,
+				sourceFile: sourceFile,
+				node
 			});
 		}
 
@@ -469,6 +477,42 @@ export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'
 	}
 
 	return collectClassPropertiesFromSource(sourceFile, new Set());
+}
+
+export function createClassInfoLookup(classInfos: CollectedClassInfo[]): Map<string, CollectedClassInfo> {
+	return new Map(classInfos.map(info => [info.className, info]));
+}
+
+export interface ViewResolution {
+	screenClass: CollectedClassInfo;
+	property: ClassPropertyInfo;
+	viewClass?: CollectedClassInfo;
+}
+
+export function resolveViewBinding(
+	viewName: string | undefined,
+	screenClasses: CollectedClassInfo[],
+	classInfoLookup: Map<string, CollectedClassInfo>
+): ViewResolution | undefined {
+	if (!viewName) {
+		return undefined;
+	}
+
+	for (const screenClass of screenClasses) {
+		const property = screenClass.properties.get(viewName);
+		if (!property) {
+			continue;
+		}
+
+		if (property.kind !== 'view' && property.kind !== 'viewCollection') {
+			continue;
+		}
+
+		const viewClass = property.viewClassName ? classInfoLookup.get(property.viewClassName) : undefined;
+		return { screenClass, property, viewClass };
+	}
+
+	return undefined;
 }
 
 export function getLineAndColumnFromIndex(text: string, index: number): { line: number; column: number; } {

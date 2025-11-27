@@ -13,6 +13,8 @@ import { createScreenExtension } from './scaffolding/create-screen-extension/cre
 import { provideTSCompletionItems } from './completionItemProviders/ts-completion-provider';
 const fs = require(`fs`);
 import { validateHtmlFile } from './validation/htmlValidation/html-validation';
+import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
+import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -23,6 +25,10 @@ export function activate(context: vscode.ExtensionContext) {
 	createCommands(context);
 
 	createHtmlDiagnostics();
+
+	// HTML providers share the same metadata to supply navigation + IntelliSense inside markup.
+	registerHtmlDefinitionProvider(context);
+	registerHtmlCompletionProvider(context);
 
 }
 
