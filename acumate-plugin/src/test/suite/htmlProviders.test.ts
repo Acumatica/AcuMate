@@ -9,6 +9,7 @@ const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
 const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
+const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -205,6 +206,17 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No completions returned for control-state.bind');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('mainView.customerName'), 'mainView.customerName not suggested');
+	});
+
+	it('suggests config properties for client controls', async () => {
+		const document = await vscode.workspace.openTextDocument(configCompletionPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, "config.bind='{  }'", "config.bind='{ ".length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for config.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('enabled'), 'enabled config property not suggested');
+		assert.ok(labels.includes('dialogResult'), 'dialogResult config property not suggested');
 	});
 });
 

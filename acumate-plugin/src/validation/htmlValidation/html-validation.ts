@@ -10,10 +10,12 @@ import {
   loadClassInfosFromFiles,
   filterScreenLikeClasses,
   collectActionProperties,
+  parseConfigObject,
 } from "../../utils";
 import { findParentViewName } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
+import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
@@ -38,6 +40,9 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   const screenTemplateNames = new Set(
     getScreenTemplates({ startingPath: filePath, workspaceRoots })
   );
+  const controlMetadata = new Map(
+    getClientControlsMetadata({ startingPath: filePath, workspaceRoots }).map((control) => [control.tagName, control])
+  );
 
   const handler = new DomHandler(
     (error, dom): void => {
@@ -59,7 +64,8 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           content,
           filePath,
           workspaceRoots,
-          screenTemplateNames
+          screenTemplateNames,
+          controlMetadata
         );
       }
     },
@@ -86,7 +92,8 @@ function validateDom(
   content: string,
   htmlFilePath: string,
   workspaceRoots: string[] | undefined,
-  screenTemplateNames: Set<string>
+  screenTemplateNames: Set<string>,
+  controlMetadata: Map<string, ClientControlMetadata>
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = filterScreenLikeClasses(classProperties);
@@ -198,6 +205,14 @@ function validateDom(
     }
 
     if (
+      node.type === "tag" &&
+      typeof node.attribs?.["config.bind"] === "string" &&
+      node.attribs["config.bind"].length
+    ) {
+      validateConfigBinding(node.attribs["config.bind"], node);
+    }
+
+    if (
       hasScreenMetadata &&
       node.type === "tag" &&
       node.name === "field" &&
@@ -235,7 +250,8 @@ function validateDom(
         content,
         htmlFilePath,
         workspaceRoots,
-        screenTemplateNames
+        screenTemplateNames,
+        controlMetadata
       );
     }
   });
@@ -252,6 +268,54 @@ function validateDom(
         message: `The qp-template name "${templateName}" is not one of the predefined screen templates.`,
         source: "htmlValidator",
       });
+    }
+  }
+
+  function validateConfigBinding(bindingValue: string, node: any) {
+    const trimmed = bindingValue.trim();
+    if (!trimmed.startsWith("{")) {
+      return;
+    }
+
+    const control = controlMetadata.get(node.name);
+    const definition = control?.config?.definition;
+    if (!definition) {
+      return;
+    }
+
+    const configObject = parseConfigObject(bindingValue);
+    const range = getRange(content, node);
+    if (!configObject) {
+      diagnostics.push({
+        severity: vscode.DiagnosticSeverity.Warning,
+        range,
+        message: `The ${node.name} config.bind value must be valid JSON matching ${definition.typeName}.`,
+        source: "htmlValidator",
+      });
+      return;
+    }
+
+    const providedKeys = new Set(Object.keys(configObject));
+    for (const property of definition.properties) {
+      if (!property.optional && !providedKeys.has(property.name)) {
+        diagnostics.push({
+          severity: vscode.DiagnosticSeverity.Warning,
+          range,
+          message: `The ${node.name} config.bind is missing required property "${property.name}".`,
+          source: "htmlValidator",
+        });
+      }
+    }
+
+    for (const key of providedKeys) {
+      if (!definition.properties.some((property) => property.name === key)) {
+        diagnostics.push({
+          severity: vscode.DiagnosticSeverity.Warning,
+          range,
+          message: `The ${node.name} config.bind property "${key}" is not defined by ${definition.typeName}.`,
+          source: "htmlValidator",
+        });
+      }
     }
   }
 

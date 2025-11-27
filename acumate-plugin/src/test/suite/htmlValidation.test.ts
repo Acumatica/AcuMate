@@ -190,4 +190,29 @@ describe('HTML validation diagnostics', () => {
 			'Expected diagnostic for missing control-state field'
 		);
 	});
+
+	it('accepts qp-button config.bind when config matches schema', async () => {
+		const document = await openFixtureDocument('TestConfigBindingValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for valid config.bind');
+	});
+
+	it('reports qp-button config.bind issues from control metadata', async () => {
+		const document = await openFixtureDocument('TestConfigBindingInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('missing required property "enabled"')),
+			'Expected diagnostic for missing required config property'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('property "bogus"')),
+			'Expected diagnostic for unknown config property'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('must be valid JSON')),
+			'Expected diagnostic for invalid config JSON'
+		);
+	});
 });

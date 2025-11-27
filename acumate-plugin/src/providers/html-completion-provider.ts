@@ -9,6 +9,7 @@ import {
 	ClassPropertyInfo,
 	filterScreenLikeClasses,
 	collectActionProperties,
+	extractConfigPropertyNames,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -75,6 +76,11 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return templateCompletions;
 		}
 
+		const configCompletions = this.tryProvideConfigBindCompletions(document, position, elementNode, attributeContext);
+		if (configCompletions) {
+			return configCompletions;
+		}
+
 		if (!attributeContext) {
 			return undefined;
 		}
@@ -126,6 +132,77 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		return undefined;
+	}
+
+	private tryProvideConfigBindCompletions(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		elementNode: any,
+		attributeContext: ReturnType<typeof getAttributeContext>
+	): vscode.CompletionItem[] | undefined {
+		if (
+			!attributeContext ||
+			attributeContext.attributeName !== 'config.bind' ||
+			!attributeContext.valueRange.contains(position)
+		) {
+			return undefined;
+		}
+
+		const currentValue = attributeContext.value ?? '';
+		const trimmedValue = currentValue.trimLeft();
+		if (trimmedValue && !trimmedValue.startsWith('{')) {
+			return undefined;
+		}
+
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const controls = getClientControlsMetadata({
+			startingPath: document.uri.fsPath,
+			workspaceRoots,
+		});
+		const control = controls.find(ctrl => ctrl.tagName === elementNode.name);
+		const configDefinition = control?.config?.definition;
+		if (!configDefinition) {
+			return undefined;
+		}
+
+		const existingKeys = new Set(extractConfigPropertyNames(currentValue));
+		const insertRange = new vscode.Range(position, position);
+		const items: vscode.CompletionItem[] = [];
+		for (const property of configDefinition.properties) {
+			if (existingKeys.has(property.name)) {
+				continue;
+			}
+
+			const item = new vscode.CompletionItem(property.name, vscode.CompletionItemKind.Property);
+			item.sortText = `${property.optional ? '1' : '0'}_${property.name}`;
+			item.detail = property.type ?? 'config property';
+			if (property.description) {
+				item.documentation = property.description;
+			}
+			item.range = insertRange;
+			item.insertText = this.createConfigPropertySnippet(property.name, property.type);
+			items.push(item);
+		}
+
+		return items.length ? items : undefined;
+	}
+
+	private createConfigPropertySnippet(name: string, type?: string): vscode.SnippetString {
+		const normalizedType = type?.toLowerCase() ?? '';
+		let placeholder: string;
+		if (normalizedType.includes('bool')) {
+			placeholder = '${1:true}';
+		}
+		else if (/(number|int|decimal|double|float)/.test(normalizedType)) {
+			placeholder = '${1:0}';
+		}
+		else if (normalizedType.includes('string') || normalizedType.includes('text')) {
+			placeholder = '"${1}"';
+		}
+		else {
+			placeholder = '${1:null}';
+		}
+		return new vscode.SnippetString(`"${name}": ${placeholder}`);
 	}
 
 	private async tryProvideControlTagCompletion(
