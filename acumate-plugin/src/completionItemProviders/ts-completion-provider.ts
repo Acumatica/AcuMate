@@ -5,7 +5,7 @@ import { AcuMateContext } from '../plugin-context';
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
 
-    const sourceFile = ts.createSourceFile(`temp.ts`, document.getText(), ts.ScriptTarget.Latest, true);
+    const sourceFile = ts.createSourceFile(document.fileName, document.getText(), ts.ScriptTarget.Latest, true);
 
     let isInsideScreenClass = false;
     let isInsideViewClass = false;
@@ -14,8 +14,8 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
     // Walk through the AST to find the specified class and check the position
     function findClassAndCheckPosition(node: ts.Node) {
         if (ts.isClassDeclaration(node) && node.name) {
-            const inheritanceChain = buildClassInheritance(node);
-            const screenOrViewItem = inheritanceChain?.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
+            const inheritanceInfo = buildClassInheritance(node);
+            const screenOrViewItem = inheritanceInfo.chain.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
             if (screenOrViewItem) {
                 const { line: startLine } = document.positionAt(node.getStart(sourceFile));
                 const { line: endLine } = document.positionAt(node.getEnd());
