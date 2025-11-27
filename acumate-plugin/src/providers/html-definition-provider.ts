@@ -10,6 +10,7 @@ import {
 	resolveViewBinding,
 	filterScreenLikeClasses,
 	collectActionProperties,
+	filterClassesBySource,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -73,8 +74,13 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return;
 		}
 
+		const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
+		if (!relevantClassInfos.length) {
+			return;
+		}
+
 		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = filterScreenLikeClasses(classInfos);
+		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
 		// Resolved metadata lets us jump from HTML bindings directly to the backing TypeScript symbol.
 
 		if (attributeContext.attributeName === 'view.bind' || (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using')) {

@@ -753,6 +753,15 @@ export function collectActionProperties(classInfos: CollectedClassInfo[]): Map<s
 	return actions;
 }
 
+export function filterClassesBySource(classInfos: CollectedClassInfo[], filePaths: string[]): CollectedClassInfo[] {
+	if (!filePaths.length) {
+		return [];
+	}
+
+	const allowed = new Set(filePaths.map(filePath => path.normalize(filePath)));
+	return classInfos.filter(info => allowed.has(path.normalize(info.sourceFile.fileName)));
+}
+
 export function parseConfigObject(rawValue: string | undefined): Record<string, unknown> | undefined {
 	if (!rawValue) {
 		return undefined;

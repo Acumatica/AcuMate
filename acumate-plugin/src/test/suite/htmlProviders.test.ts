@@ -9,6 +9,7 @@ const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
 const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
+const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
@@ -61,6 +62,17 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No completions returned');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('formView'), 'formView not suggested');
+	});
+
+	it('does not suggest views declared only in imported files', async () => {
+		const document = await vscode.workspace.openTextDocument(importedFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view.bind="Document"', 'view.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'Expected host view completions');
+		const labels = completions.map(item => item.label);
+		assert.ok(!labels.includes('Document'), 'Imported view name should not be suggested');
+		assert.ok(labels.includes('Actual'), 'Actual host view should be suggested');
 	});
 
 	it('suggests field names scoped to parent view', async () => {

@@ -38,6 +38,16 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(diagnostics.some(d => d.message.includes('qp-fieldset')));
 	});
 
+	it('ignores views declared only in imported files', async () => {
+		const document = await openFixtureDocument('TestScreenImported.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('qp-fieldset')),
+			'Expected diagnostic when view.bind references view outside owning screen files'
+		);
+	});
+
 	it('reports missing field name', async () => {
 		const document = await openFixtureDocument('InvalidScreen.html');
 		await validateHtmlFile(document);

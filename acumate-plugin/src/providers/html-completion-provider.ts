@@ -10,6 +10,7 @@ import {
 	filterScreenLikeClasses,
 	collectActionProperties,
 	extractConfigPropertyNames,
+	filterClassesBySource,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -95,8 +96,13 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return undefined;
 		}
 
+		const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
+		if (!relevantClassInfos.length) {
+			return undefined;
+		}
+
 		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = filterScreenLikeClasses(classInfos);
+		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
 		// Completions are sourced from the same metadata as validation/definitions to keep behavior consistent.
 
 		if (attributeContext.attributeName === 'view.bind') {

@@ -11,6 +11,7 @@ import {
   filterScreenLikeClasses,
   collectActionProperties,
   parseConfigObject,
+  filterClassesBySource,
 } from "../../utils";
 import { findParentViewName } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
@@ -34,6 +35,7 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   // Each CollectedClassInfo entry represents a TypeScript class along with a map of its
   // properties (PXActionState, PXView, PXViewCollection, PXFieldState) including inherited ones.
   const classProperties = tsFilePaths.length ? loadClassInfosFromFiles(tsFilePaths) : [];
+  const relevantClassInfos = filterClassesBySource(classProperties, tsFilePaths);
 
   // Parse the HTML content
   const workspaceRoots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath);
@@ -61,6 +63,7 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           dom,
           diagnostics,
           classProperties,
+          relevantClassInfos,
           content,
           filePath,
           workspaceRoots,
@@ -89,6 +92,7 @@ function validateDom(
   dom: any[],
   diagnostics: vscode.Diagnostic[],
   classProperties: CollectedClassInfo[],
+  relevantClassInfos: CollectedClassInfo[],
   content: string,
   htmlFilePath: string,
   workspaceRoots: string[] | undefined,
@@ -96,7 +100,7 @@ function validateDom(
   controlMetadata: Map<string, ClientControlMetadata>
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
-  const screenClasses = filterScreenLikeClasses(classProperties);
+  const screenClasses = filterScreenLikeClasses(relevantClassInfos);
   const actionLookup = collectActionProperties(screenClasses);
   const hasScreenMetadata = screenClasses.length > 0;
   const canValidateActions = classProperties.length > 0;
@@ -247,6 +251,7 @@ function validateDom(
         (<any>node).children,
         diagnostics,
         classProperties,
+        relevantClassInfos,
         content,
         htmlFilePath,
         workspaceRoots,
