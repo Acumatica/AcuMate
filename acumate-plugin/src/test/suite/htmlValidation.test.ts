@@ -113,4 +113,31 @@ describe('HTML validation diagnostics', () => {
 			'Expected diagnostic for invalid PXAction reference'
 		);
 	});
+
+	it('accepts qp-include markup when required parameters are satisfied', async () => {
+		const document = await openFixtureDocument('TestIncludeHost.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for valid qp-include');
+	});
+
+	it('reports missing required qp-include parameters', async () => {
+		const document = await openFixtureDocument('TestIncludeHostMissingParam.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('missing required parameter "contact-view"')),
+			'Expected diagnostic for missing qp-include parameter'
+		);
+	});
+
+	it('reports qp-include attributes that are not declared by the include file', async () => {
+		const document = await openFixtureDocument('TestIncludeHostUnknownParam.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('not defined by the include template')),
+			'Expected diagnostic for unknown qp-include parameter'
+		);
+	});
 });

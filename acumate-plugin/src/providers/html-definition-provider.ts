@@ -18,6 +18,7 @@ import {
 	getAttributeContext,
 	findParentViewName,
 } from './html-shared';
+import { resolveIncludeFilePath } from '../services/include-service';
 
 // Hooks VS Code so view/field bindings support "Go to Definition" directly from HTML.
 export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext) {
@@ -51,6 +52,15 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		const attributeContext = getAttributeContext(document, offset, elementNode);
 		if (!attributeContext) {
 			return;
+		}
+
+		if (attributeContext.attributeName === 'url' && attributeContext.tagName === 'qp-include') {
+			const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+			const includePath = resolveIncludeFilePath(attributeContext.value, document.uri.fsPath, workspaceRoots);
+			if (!includePath) {
+				return;
+			}
+			return new vscode.Location(vscode.Uri.file(includePath), new vscode.Position(0, 0));
 		}
 
 		const tsFilePaths = getRelatedTsFiles(document.uri.fsPath);

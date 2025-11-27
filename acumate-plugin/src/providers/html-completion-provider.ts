@@ -21,6 +21,7 @@ import {
 	ClientControlMetadata,
 	getClientControlsMetadata,
 } from '../services/client-controls-service';
+import { getIncludeMetadata, IncludeMetadata } from '../services/include-service';
 
 // Registers completions so HTML view bindings stay in sync with PX metadata.
 export function registerHtmlCompletionProvider(context: vscode.ExtensionContext) {
@@ -28,7 +29,8 @@ export function registerHtmlCompletionProvider(context: vscode.ExtensionContext)
 		{ language: 'html', scheme: 'file' },
 		new HtmlCompletionProvider(),
 		'"',
-		'<'
+		'<',
+		' '
 	);
 
 	context.subscriptions.push(provider);
@@ -62,6 +64,11 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		const attributeContext = getAttributeContext(document, offset, elementNode);
+		const includeCompletions = this.tryProvideIncludeCompletions(document, position, elementNode, attributeContext);
+		if (includeCompletions) {
+			return includeCompletions;
+		}
+
 		if (!attributeContext) {
 			return undefined;
 		}
@@ -142,6 +149,128 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		return filtered.map(control => this.createControlCompletionItem(control, tagContext.replaceRange));
+	}
+
+	private tryProvideIncludeCompletions(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		elementNode: any,
+		attributeContext: ReturnType<typeof getAttributeContext>
+	): vscode.CompletionItem[] | undefined {
+		if (elementNode.name !== 'qp-include') {
+			return undefined;
+		}
+
+		const includeUrl = elementNode.attribs?.url;
+		if (typeof includeUrl !== 'string' || !includeUrl.length) {
+			return undefined;
+		}
+
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const metadata = getIncludeMetadata({
+			includeUrl,
+			sourceHtmlPath: document.uri.fsPath,
+			workspaceRoots,
+		});
+		if (!metadata || metadata.parameters.length === 0) {
+			return undefined;
+		}
+
+		if (!attributeContext) {
+			const nameContext = this.getIncludeAttributeNameContext(document, position, elementNode);
+			if (!nameContext) {
+				return undefined;
+			}
+			return this.createIncludeAttributeCompletions(metadata, elementNode, nameContext);
+		}
+
+		return undefined;
+	}
+
+	private getIncludeAttributeNameContext(
+		document: vscode.TextDocument,
+		position: vscode.Position,
+		elementNode: any
+	): { prefix: string; replaceRange: vscode.Range } | undefined {
+		if (typeof elementNode.startIndex !== 'number') {
+			return undefined;
+		}
+
+		const offset = document.offsetAt(position);
+		const text = document.getText();
+		const tagStart = elementNode.startIndex;
+		const tagEnd = text.indexOf('>', tagStart);
+		if (tagEnd === -1 || offset > tagEnd) {
+			return undefined;
+		}
+
+		if (this.isInsideAttributeValue(text, tagStart, offset)) {
+			return undefined;
+		}
+
+		const segment = text.slice(tagStart, offset);
+		const match = /([A-Za-z0-9_.:-]*)$/u.exec(segment);
+		if (!match) {
+			return undefined;
+		}
+
+		const prefix = match[1] ?? '';
+		const replaceStart = offset - prefix.length;
+		const replaceRange = new vscode.Range(document.positionAt(replaceStart), document.positionAt(offset));
+		return { prefix, replaceRange };
+	}
+
+	private isInsideAttributeValue(text: string, tagStart: number, offset: number): boolean {
+		let quote: string | undefined;
+		for (let index = tagStart; index < offset; index++) {
+			const char = text[index];
+			if (!quote && (char === '"' || char === "'")) {
+				quote = char;
+				continue;
+			}
+			if (quote && char === quote) {
+				quote = undefined;
+			}
+		}
+		return Boolean(quote);
+	}
+
+	private createIncludeAttributeCompletions(
+		metadata: IncludeMetadata,
+		elementNode: any,
+		context: { prefix: string; replaceRange: vscode.Range }
+	): vscode.CompletionItem[] | undefined {
+		const existingAttributes = new Set(Object.keys(elementNode.attribs ?? {}));
+		const prefixLower = context.prefix.toLowerCase();
+		const items: vscode.CompletionItem[] = [];
+
+		for (const parameter of metadata.parameters) {
+			if (existingAttributes.has(parameter.name)) {
+				continue;
+			}
+
+			if (prefixLower && !parameter.name.toLowerCase().startsWith(prefixLower)) {
+				continue;
+			}
+
+			const item = new vscode.CompletionItem(parameter.name, vscode.CompletionItemKind.Property);
+			item.range = context.replaceRange;
+			item.sortText = `${parameter.required ? '0' : '1'}_${parameter.name}`;
+			item.detail = parameter.required ? 'Required include parameter' : 'Include parameter';
+			if (parameter.defaultValue) {
+				item.documentation = new vscode.MarkdownString(`Default: \`${parameter.defaultValue}\``);
+			}
+
+			item.insertText = this.createIncludeParameterSnippet(parameter);
+			items.push(item);
+		}
+
+		return items.length ? items : undefined;
+	}
+
+	private createIncludeParameterSnippet(parameter: IncludeMetadata['parameters'][number]): vscode.SnippetString {
+		const placeholder = parameter.defaultValue ? `\${1:${parameter.defaultValue}}` : '${1}';
+		return new vscode.SnippetString(`${parameter.name}="${placeholder}"`);
 	}
 
 	private getTagCompletionContext(

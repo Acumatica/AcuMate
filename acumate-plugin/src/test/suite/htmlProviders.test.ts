@@ -7,6 +7,7 @@ import { HtmlDefinitionProvider } from '../../providers/html-definition-provider
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
+const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -173,6 +174,17 @@ describe('HTML completion provider integration', () => {
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('ConfigurationID'), 'ConfigurationID not suggested');
 	});
+
+	it('suggests qp-include parameters declared by referenced file', async () => {
+		const document = await vscode.workspace.openTextDocument(includeHostPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, '	></qp-include>', 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No parameter completions returned for qp-include');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('override-fieldname'), 'override-fieldname not suggested');
+		assert.ok(labels.includes('override-wg-container'), 'override-wg-container not suggested');
+	});
 });
 
 describe('HTML definition provider integration', () => {
@@ -331,6 +343,23 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
 			'Expected action definition inside TestScreen.ts'
+		);
+	});
+
+	it('navigates from qp-include url to referenced file', async () => {
+		const document = await vscode.workspace.openTextDocument(includeHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'url="src/test/fixtures/includes/form-contact-document.html"',
+			'url="'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('form-contact-document.html')),
+			'Expected navigation to include template file'
 		);
 	});
 });
