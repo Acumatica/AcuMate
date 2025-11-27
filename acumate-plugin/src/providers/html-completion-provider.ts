@@ -21,6 +21,7 @@ import {
 	ClientControlMetadata,
 	getClientControlsMetadata,
 } from '../services/client-controls-service';
+import { getScreenTemplates } from '../services/screen-template-service';
 import { getIncludeMetadata, IncludeMetadata } from '../services/include-service';
 
 // Registers completions so HTML view bindings stay in sync with PX metadata.
@@ -67,6 +68,11 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		const includeCompletions = this.tryProvideIncludeCompletions(document, position, elementNode, attributeContext);
 		if (includeCompletions) {
 			return includeCompletions;
+		}
+
+		const templateCompletions = this.tryProvideTemplateNameCompletions(document, attributeContext);
+		if (templateCompletions) {
+			return templateCompletions;
 		}
 
 		if (!attributeContext) {
@@ -189,6 +195,34 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		return undefined;
+	}
+
+	private tryProvideTemplateNameCompletions(
+		document: vscode.TextDocument,
+		attributeContext: ReturnType<typeof getAttributeContext>
+	): vscode.CompletionItem[] | undefined {
+		if (!attributeContext || attributeContext.attributeName !== 'name' || attributeContext.tagName !== 'qp-template') {
+			return undefined;
+		}
+
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const templates = getScreenTemplates({ startingPath: document.uri.fsPath, workspaceRoots });
+		if (!templates.length) {
+			return undefined;
+		}
+
+		const prefix = (attributeContext.value ?? '').toLowerCase();
+		const items: vscode.CompletionItem[] = [];
+		for (const templateName of templates) {
+			if (prefix && !templateName.toLowerCase().startsWith(prefix)) {
+				continue;
+			}
+			const item = new vscode.CompletionItem(templateName, vscode.CompletionItemKind.EnumMember);
+			item.detail = 'qp-template';
+			items.push(item);
+		}
+
+		return items.length ? items : undefined;
 	}
 
 	private getIncludeAttributeNameContext(

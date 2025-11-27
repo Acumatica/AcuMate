@@ -13,6 +13,7 @@ import {
 } from "../../utils";
 import { findParentViewName } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
+import { getScreenTemplates } from "../../services/screen-template-service";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
@@ -34,6 +35,9 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
 
   // Parse the HTML content
   const workspaceRoots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath);
+  const screenTemplateNames = new Set(
+    getScreenTemplates({ startingPath: filePath, workspaceRoots })
+  );
 
   const handler = new DomHandler(
     (error, dom): void => {
@@ -48,7 +52,15 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
       } else {
         // Custom validation logic
         // Custom validation logic goes here
-        validateDom(dom, diagnostics, classProperties, content, filePath, workspaceRoots);
+        validateDom(
+          dom,
+          diagnostics,
+          classProperties,
+          content,
+          filePath,
+          workspaceRoots,
+          screenTemplateNames
+        );
       }
     },
     {
@@ -73,7 +85,8 @@ function validateDom(
   classProperties: CollectedClassInfo[],
   content: string,
   htmlFilePath: string,
-  workspaceRoots: string[] | undefined
+  workspaceRoots: string[] | undefined,
+  screenTemplateNames: Set<string>
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = filterScreenLikeClasses(classProperties);
@@ -166,6 +179,15 @@ function validateDom(
     }
 
     if (
+      node.type === "tag" &&
+      node.name === "qp-template" &&
+      typeof node.attribs?.name === "string" &&
+      node.attribs.name.length
+    ) {
+      validateTemplateName(node.attribs.name, node);
+    }
+
+    if (
       hasScreenMetadata &&
       node.type === "tag" &&
       node.name === "qp-field" &&
@@ -206,9 +228,33 @@ function validateDom(
     }
     // Recursively validate child nodes
     if ((<any>node).children) {
-      validateDom((<any>node).children, diagnostics, classProperties, content, htmlFilePath, workspaceRoots);
+      validateDom(
+        (<any>node).children,
+        diagnostics,
+        classProperties,
+        content,
+        htmlFilePath,
+        workspaceRoots,
+        screenTemplateNames
+      );
     }
   });
+  function validateTemplateName(templateName: string, node: any) {
+    if (!screenTemplateNames.size) {
+      return;
+    }
+
+    if (!screenTemplateNames.has(templateName)) {
+      const range = getRange(content, node);
+      diagnostics.push({
+        severity: vscode.DiagnosticSeverity.Warning,
+        range,
+        message: `The qp-template name "${templateName}" is not one of the predefined screen templates.`,
+        source: "htmlValidator",
+      });
+    }
+  }
+
 
   function validateControlStateBinding(bindingValue: string, node: any) {
     const parts = bindingValue.split(".");

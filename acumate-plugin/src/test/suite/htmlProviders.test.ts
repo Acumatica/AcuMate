@@ -7,6 +7,7 @@ import { HtmlDefinitionProvider } from '../../providers/html-definition-provider
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
+const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
@@ -184,6 +185,16 @@ describe('HTML completion provider integration', () => {
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('override-fieldname'), 'override-fieldname not suggested');
 		assert.ok(labels.includes('override-wg-container'), 'override-wg-container not suggested');
+	});
+
+	it('suggests qp-template names sourced from ScreenTemplates', async () => {
+		const document = await vscode.workspace.openTextDocument(qpTemplateFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name=""', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for qp-template name');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('17-17-14'), '17-17-14 template not suggested');
 	});
 
 	it('suggests view + field pairs for control-state.bind', async () => {

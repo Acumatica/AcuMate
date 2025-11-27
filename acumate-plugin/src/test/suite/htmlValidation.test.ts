@@ -141,6 +141,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('accepts qp-template name values defined by ScreenTemplates', async () => {
+		const document = await openFixtureDocument('TestQpTemplate.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('qp-template name')).length,
+			0,
+			'Expected no qp-template diagnostics for valid names'
+		);
+	});
+
+	it('reports qp-template names that are not registered', async () => {
+		const document = await openFixtureDocument('TestQpTemplateInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('qp-template name')),
+			'Expected diagnostic for invalid qp-template name'
+		);
+	});
+
 	it('accepts qp-field control-state bindings when view + field exist', async () => {
 		const document = await openFixtureDocument('TestScreen.html');
 		await validateHtmlFile(document);
