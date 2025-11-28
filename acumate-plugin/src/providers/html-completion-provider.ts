@@ -28,7 +28,7 @@ export function registerHtmlCompletionProvider(context: vscode.ExtensionContext)
 	context.subscriptions.push(provider);
 }
 
-class HtmlCompletionProvider implements vscode.CompletionItemProvider {
+export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 	// Uses the caret position to decide which suggestion set (view or field) applies.
 	async provideCompletionItems(
 		document: vscode.TextDocument,

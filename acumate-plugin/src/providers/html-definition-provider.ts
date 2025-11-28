@@ -28,7 +28,7 @@ export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext)
 	context.subscriptions.push(provider);
 }
 
-class HtmlDefinitionProvider implements vscode.DefinitionProvider {
+export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 	// Resolves the active attribute and maps it to the appropriate TS symbol.
 	async provideDefinition(document: vscode.TextDocument, position: vscode.Position): Promise<vscode.Definition | undefined> {
 		const offset = document.offsetAt(position);
