@@ -175,7 +175,7 @@ function validateDom(
           const diagnostic = {
             severity: vscode.DiagnosticSeverity.Warning,
             range: range,
-            message: "The <field> element must be bound to the valid field.",
+            message: "The <field> element must be bound to a valid field.",
             source: "htmlValidator",
           };
           diagnostics.push(diagnostic);
