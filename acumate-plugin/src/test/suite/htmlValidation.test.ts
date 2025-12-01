@@ -145,6 +145,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('accepts qp-panel footer buttons that bind to the panel view actions', async () => {
+		const document = await openFixtureDocument('TestPanelActionValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute must reference a valid PXAction')).length,
+			0,
+			'Expected no invalid PXAction diagnostics when binding to qp-panel view actions'
+		);
+	});
+
+	it('reports qp-panel footer buttons that reference unknown view actions', async () => {
+		const document = await openFixtureDocument('TestPanelActionInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('state.bind attribute must reference a valid PXAction')),
+			'Expected invalid PXAction diagnostic when qp-panel footer button references unknown action'
+		);
+	});
+
 	it('accepts qp-include markup when required parameters are satisfied', async () => {
 		const document = await openFixtureDocument('TestIncludeHost.html');
 		await validateHtmlFile(document);

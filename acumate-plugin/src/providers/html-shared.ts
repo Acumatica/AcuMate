@@ -243,6 +243,13 @@ export function findParentViewName(node: any): string | undefined {
 			return viewBinding;
 		}
 
+		if (current.name === 'qp-panel') {
+			const panelId = current.attribs?.['id'];
+			if (typeof panelId === 'string' && panelId.trim().length) {
+				return panelId.trim();
+			}
+		}
+
 		if (current.name === 'using') {
 			const usingView = current.attribs?.['view'];
 			if (typeof usingView === 'string' && usingView.length) {

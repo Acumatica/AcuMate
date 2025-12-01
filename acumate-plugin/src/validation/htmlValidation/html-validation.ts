@@ -68,7 +68,8 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           filePath,
           workspaceRoots,
           screenTemplateNames,
-          controlMetadata
+          controlMetadata,
+          undefined
         );
       }
     },
@@ -97,7 +98,8 @@ function validateDom(
   htmlFilePath: string,
   workspaceRoots: string[] | undefined,
   screenTemplateNames: Set<string>,
-  controlMetadata: Map<string, ClientControlMetadata>
+  controlMetadata: Map<string, ClientControlMetadata>,
+  panelViewContext?: CollectedClassInfo
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = filterScreenLikeClasses(relevantClassInfos);
@@ -124,6 +126,7 @@ function validateDom(
 
   // Custom validation logic goes here
   dom.forEach((node) => {
+    let nextPanelViewContext = panelViewContext;
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
@@ -162,6 +165,8 @@ function validateDom(
             message: "The <qp-panel> id must reference a valid view.",
             source: "htmlValidator",
           });
+        } else if (viewResolution.viewClass) {
+          nextPanelViewContext = viewResolution.viewClass;
         }
       }
     }
@@ -189,7 +194,8 @@ function validateDom(
 
     const actionBinding = node.attribs?.["state.bind"];
     if (canValidateActions && typeof actionBinding === "string" && actionBinding.length) {
-      if (!actionLookup.has(actionBinding)) {
+      const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
+      if (!actionLookup.has(actionBinding) && !panelHasAction) {
         const range = getRange(content, node);
         const diagnostic: vscode.Diagnostic = {
           severity: vscode.DiagnosticSeverity.Warning,
@@ -272,7 +278,8 @@ function validateDom(
         htmlFilePath,
         workspaceRoots,
         screenTemplateNames,
-        controlMetadata
+        controlMetadata,
+        nextPanelViewContext
       );
     }
   });
