@@ -159,13 +159,17 @@ function validateDom(
       node.name === "field" &&
       node.attribs.name
     ) {
+      const viewSpecified = node.attribs.name.includes(".");
+      const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
+      
+
       const isUnboundReplacement =
         Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
         Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
 
       if (!isUnboundReplacement) {
-        const viewname = findParentViewName(node);
-        const fieldName = node.attribs.name;
+        const viewname = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
+        const fieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
         const viewResolution = resolveView(viewname);
         const viewClass = viewResolution?.viewClass;
         const fieldProperty = viewClass?.properties.get(fieldName);
