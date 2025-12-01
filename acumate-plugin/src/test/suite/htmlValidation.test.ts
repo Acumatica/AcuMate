@@ -281,6 +281,23 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('accepts field control-type values defined by client controls metadata', async () => {
+		const document = await openFixtureDocument('TestControlTypeValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for known control-type values');
+	});
+
+	it('reports field control-type values that are not recognized', async () => {
+		const document = await openFixtureDocument('TestControlTypeInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('control-type value')),
+			'Expected diagnostic for unknown control-type value'
+		);
+	});
+
 	it('validates customization selectors against the base screen HTML', async () => {
 		const document = await vscode.workspace.openTextDocument(screenSelectorExtensionFixture);
 		await validateHtmlFile(document);

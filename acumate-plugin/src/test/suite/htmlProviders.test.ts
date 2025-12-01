@@ -12,6 +12,7 @@ const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
 const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
+const controlTypeCompletionPath = path.join(fixturesRoot, 'TestControlTypeCompletion.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -231,6 +232,16 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No completions returned for control-state.bind');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('mainView.customerName'), 'mainView.customerName not suggested');
+	});
+
+	it('suggests qp-control names for control-type attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(controlTypeCompletionPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'control-type=""', 'control-type="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for control-type');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('qp-drop-down'), 'qp-drop-down not suggested for control-type');
 	});
 
 	it('suggests config properties for client controls', async () => {

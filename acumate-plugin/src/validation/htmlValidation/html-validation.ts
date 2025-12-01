@@ -51,7 +51,7 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
     getScreenTemplates({ startingPath: filePath, workspaceRoots })
   );
   const controlMetadata = new Map(
-    getClientControlsMetadata({ startingPath: filePath, workspaceRoots }).map((control) => [control.tagName, control])
+    getClientControlsMetadata({ startingPath: filePath, workspaceRoots }).map((control) => [control.tagName.toLowerCase(), control])
   );
   const baseScreenDocument = getBaseScreenDocument(filePath);
 
@@ -254,6 +254,14 @@ function validateDom(
     }
 
     if (
+      node.type === "tag" &&
+      (node.name === "field" || node.name === "qp-field") &&
+      typeof node.attribs?.["control-type"] === "string"
+    ) {
+      validateControlTypeAttribute(node);
+    }
+
+    if (
       hasScreenMetadata &&
       node.type === "tag" &&
       node.name === "field" &&
@@ -407,7 +415,8 @@ function validateDom(
       return;
     }
 
-    const control = controlMetadata.get(node.name);
+    const controlName = typeof node.name === "string" ? node.name.toLowerCase() : undefined;
+    const control = controlName ? controlMetadata.get(controlName) : undefined;
     const definition = control?.config?.definition;
     if (!definition) {
       return;
@@ -447,6 +456,36 @@ function validateDom(
         });
       }
     }
+  }
+
+  function validateControlTypeAttribute(node: any) {
+    if (!controlMetadata.size) {
+      return;
+    }
+
+    const rawValue = node.attribs?.["control-type"];
+    if (typeof rawValue !== "string") {
+      return;
+    }
+
+    const normalizedValue = rawValue.trim();
+    if (!normalizedValue.length) {
+      return;
+    }
+
+    const metadata = controlMetadata.get(normalizedValue.toLowerCase());
+    if (metadata) {
+      return;
+    }
+
+    const range =
+      getAttributeValueRange(content, node, "control-type", rawValue) ?? getRange(content, node);
+    diagnostics.push({
+      severity: vscode.DiagnosticSeverity.Warning,
+      range,
+      message: `The control-type value "${normalizedValue}" does not match any known qp-controls.`,
+      source: "htmlValidator",
+    });
   }
 
 

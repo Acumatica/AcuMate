@@ -82,6 +82,11 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return configCompletions;
 		}
 
+		const controlTypeCompletions = this.tryProvideControlTypeCompletions(document, elementNode, attributeContext);
+		if (controlTypeCompletions) {
+			return controlTypeCompletions;
+		}
+
 		if (!attributeContext) {
 			return undefined;
 		}
@@ -209,6 +214,46 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			placeholder = '${1:null}';
 		}
 		return new vscode.SnippetString(`"${name}": ${placeholder}`);
+	}
+
+	private tryProvideControlTypeCompletions(
+		document: vscode.TextDocument,
+		elementNode: any,
+		attributeContext: ReturnType<typeof getAttributeContext>
+	): vscode.CompletionItem[] | undefined {
+		if (
+			!attributeContext ||
+			attributeContext.attributeName !== 'control-type' ||
+			(attributeContext.tagName !== 'field' && attributeContext.tagName !== 'qp-field')
+		) {
+			return undefined;
+		}
+
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const controls = getClientControlsMetadata({
+			startingPath: document.uri.fsPath,
+			workspaceRoots,
+		});
+		if (!controls.length) {
+			return undefined;
+		}
+
+		const prefix = (attributeContext.value ?? '').toLowerCase();
+		const items: vscode.CompletionItem[] = [];
+		for (const control of controls) {
+			if (prefix && !control.tagName.toLowerCase().startsWith(prefix)) {
+				continue;
+			}
+
+			const item = new vscode.CompletionItem(control.tagName, vscode.CompletionItemKind.EnumMember);
+			item.sortText = `0_${control.tagName}`;
+			item.detail = control.config?.displayName ?? control.className;
+			item.documentation = this.buildControlDocumentation(control);
+			item.range = attributeContext.valueRange;
+			items.push(item);
+		}
+
+		return items.length ? items : undefined;
 	}
 
 	private async tryProvideControlTagCompletion(
