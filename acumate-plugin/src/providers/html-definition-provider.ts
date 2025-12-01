@@ -11,6 +11,7 @@ import {
 	filterScreenLikeClasses,
 	collectActionProperties,
 	filterClassesBySource,
+	getLineAndColumnFromIndex,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -20,6 +21,12 @@ import {
 	findParentViewName,
 } from './html-shared';
 import { resolveIncludeFilePath } from '../services/include-service';
+import {
+	getBaseScreenDocument,
+	isCustomizationSelectorAttribute,
+	queryBaseScreenElements,
+	BaseScreenDocument,
+} from '../services/screen-html-service';
 
 // Hooks VS Code so view/field bindings support "Go to Definition" directly from HTML.
 export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext) {
@@ -62,6 +69,41 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 				return;
 			}
 			return new vscode.Location(vscode.Uri.file(includePath), new vscode.Position(0, 0));
+		}
+
+		if (isCustomizationSelectorAttribute(attributeContext.attributeName)) {
+			const baseScreenDocument = getBaseScreenDocument(document.uri.fsPath);
+			if (!baseScreenDocument) {
+				return;
+			}
+
+			const selector = attributeContext.value?.trim();
+			if (!selector) {
+				return;
+			}
+
+			const { nodes, error } = queryBaseScreenElements(baseScreenDocument, selector);
+			if (error || !nodes.length) {
+				return;
+			}
+
+			const locations: vscode.Location[] = [];
+			const seen = new Set<number>();
+			for (const nodeCandidate of nodes) {
+				const startIndex = typeof nodeCandidate.startIndex === 'number' ? nodeCandidate.startIndex : undefined;
+				if (startIndex === undefined || seen.has(startIndex)) {
+					continue;
+				}
+				seen.add(startIndex);
+				const location = createLocationFromHtmlNode(baseScreenDocument, nodeCandidate);
+				if (location) {
+					locations.push(location);
+				}
+			}
+
+			if (locations.length) {
+				return locations;
+			}
 		}
 
 		const tsFilePaths = getRelatedTsFiles(document.uri.fsPath);
@@ -166,6 +208,22 @@ function parseControlStateBinding(value: string | undefined): { viewName: string
 		return undefined;
 	}
 	return { viewName, fieldName };
+}
+
+function createLocationFromHtmlNode(document: BaseScreenDocument, node: any): vscode.Location | undefined {
+	if (typeof node.startIndex !== 'number' || typeof node.endIndex !== 'number') {
+		return undefined;
+	}
+
+	const start = getLineAndColumnFromIndex(document.content, node.startIndex);
+	const end = getLineAndColumnFromIndex(document.content, node.endIndex);
+	return new vscode.Location(
+		vscode.Uri.file(document.filePath),
+		new vscode.Range(
+			new vscode.Position(start.line, start.column),
+			new vscode.Position(end.line, end.column)
+		)
+	);
 }
 
 // Converts a collected property back into a VS Code location for navigation.

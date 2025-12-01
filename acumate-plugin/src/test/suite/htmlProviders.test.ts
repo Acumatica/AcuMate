@@ -34,6 +34,13 @@ const screenPaymentLinksHtmlPath = path.join(
 	'extensions',
 	'SO301000_PaymentLinks.html'
 );
+const screenSelectorHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_FieldSelectors.html'
+);
 
 before(function () {
 	this.timeout(20000);
@@ -411,6 +418,23 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('form-contact-document.html')),
 			'Expected navigation to include template file'
+		);
+	});
+
+	it('navigates from customization selector attributes to base screen HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			"before=\"#fsOrderTotals-Totals [name='CuryGoodsExtPriceTotal']\"",
+			"before=\"".length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for customization selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000.html')),
+			'Expected navigation to base screen HTML'
 		);
 	});
 

@@ -1,3 +1,4 @@
+import path from "path";
 import vscode from "vscode";
 import { Parser, DomHandler } from "htmlparser2";
 import {
@@ -17,6 +18,7 @@ import { findParentViewName } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
+import { getBaseScreenDocument, isCustomizationSelectorAttribute, queryBaseScreenElements, BaseScreenDocument } from "../../services/screen-html-service";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
@@ -45,6 +47,7 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   const controlMetadata = new Map(
     getClientControlsMetadata({ startingPath: filePath, workspaceRoots }).map((control) => [control.tagName, control])
   );
+  const baseScreenDocument = getBaseScreenDocument(filePath);
 
   const handler = new DomHandler(
     (error, dom): void => {
@@ -69,6 +72,7 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           workspaceRoots,
           screenTemplateNames,
           controlMetadata,
+          baseScreenDocument,
           undefined
         );
       }
@@ -99,6 +103,7 @@ function validateDom(
   workspaceRoots: string[] | undefined,
   screenTemplateNames: Set<string>,
   controlMetadata: Map<string, ClientControlMetadata>,
+  baseScreenDocument: BaseScreenDocument | undefined,
   panelViewContext?: CollectedClassInfo
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
@@ -238,6 +243,10 @@ function validateDom(
       validateConfigBinding(node.attribs["config.bind"], node);
     }
 
+    if (node.type === "tag" && node.name === "field") {
+      validateFieldCustomizationSelectors(node);
+    }
+
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
@@ -279,6 +288,7 @@ function validateDom(
         workspaceRoots,
         screenTemplateNames,
         controlMetadata,
+        baseScreenDocument,
         nextPanelViewContext
       );
     }
@@ -296,6 +306,54 @@ function validateDom(
         message: `The qp-template name "${templateName}" is not one of the predefined screen templates.`,
         source: "htmlValidator",
       });
+    }
+  }
+
+  function validateFieldCustomizationSelectors(node: any) {
+    if (!baseScreenDocument) {
+      return;
+    }
+
+    if (!node.attribs) {
+      return;
+    }
+
+    for (const [attributeName, attributeValue] of Object.entries(node.attribs)) {
+      if (!isCustomizationSelectorAttribute(attributeName)) {
+        continue;
+      }
+
+      if (typeof attributeValue !== "string") {
+        continue;
+      }
+
+      const trimmedValue = attributeValue.trim();
+      if (!trimmedValue.length) {
+        continue;
+      }
+
+      const range =
+        getAttributeValueRange(content, node, attributeName, attributeValue) ?? getRange(content, node);
+      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, trimmedValue);
+      if (error) {
+        diagnostics.push({
+          severity: vscode.DiagnosticSeverity.Warning,
+          range,
+          message: `The ${attributeName} selector "${attributeValue}" is not a valid CSS selector (${error}).`,
+          source: "htmlValidator",
+        });
+        continue;
+      }
+
+      if (!nodes.length) {
+        const baseName = path.basename(baseScreenDocument.filePath);
+        diagnostics.push({
+          severity: vscode.DiagnosticSeverity.Warning,
+          range,
+          message: `The ${attributeName} selector "${attributeValue}" does not match any elements in ${baseName}.`,
+          source: "htmlValidator",
+        });
+      }
     }
   }
 
@@ -467,6 +525,90 @@ function shouldIgnoreIncludeAttribute(attributeName: string): boolean {
   }
 
   return false;
+}
+
+function getAttributeValueRange(
+  content: string,
+  node: any,
+  attributeName: string,
+  attributeValue: string
+): vscode.Range | undefined {
+  if (typeof node.startIndex !== "number" || typeof node.endIndex !== "number") {
+    return undefined;
+  }
+
+  const sliceStart = node.startIndex;
+  const sliceEnd = node.endIndex;
+  const slice = content.substring(sliceStart, sliceEnd + 1);
+  const lowerSlice = slice.toLowerCase();
+  const lowerAttr = attributeName.toLowerCase();
+  let searchIndex = 0;
+
+  while (searchIndex < lowerSlice.length) {
+    const attrIndex = lowerSlice.indexOf(lowerAttr, searchIndex);
+    if (attrIndex === -1) {
+      break;
+    }
+
+    const precedingChar = attrIndex > 0 ? lowerSlice[attrIndex - 1] : undefined;
+    if (precedingChar && /[A-Za-z0-9_.:-]/.test(precedingChar)) {
+      searchIndex = attrIndex + lowerAttr.length;
+      continue;
+    }
+
+    let cursor = attrIndex + lowerAttr.length;
+    while (cursor < slice.length && /\s/.test(slice[cursor])) {
+      cursor++;
+    }
+
+    if (cursor >= slice.length || slice[cursor] !== "=") {
+      searchIndex = attrIndex + lowerAttr.length;
+      continue;
+    }
+
+    cursor++;
+    while (cursor < slice.length && /\s/.test(slice[cursor])) {
+      cursor++;
+    }
+
+    if (cursor >= slice.length) {
+      break;
+    }
+
+    let valueStart = cursor;
+    let valueEnd = cursor;
+    if (slice[cursor] === '"' || slice[cursor] === "'") {
+      const quote = slice[cursor];
+      valueStart = cursor + 1;
+      valueEnd = valueStart;
+      while (valueEnd < slice.length && slice[valueEnd] !== quote) {
+        valueEnd++;
+      }
+      if (valueEnd >= slice.length) {
+        valueEnd = slice.length;
+      }
+    } else {
+      while (valueEnd < slice.length && !/[\s>]/.test(slice[valueEnd])) {
+        valueEnd++;
+      }
+    }
+
+    const candidate = slice.substring(valueStart, valueEnd);
+    if (candidate === attributeValue) {
+      const absoluteStart = sliceStart + valueStart;
+      const absoluteEnd = sliceStart + valueEnd;
+      const startPosition = getLineAndColumnFromIndex(content, absoluteStart);
+      const endPosition = getLineAndColumnFromIndex(content, absoluteEnd);
+      return new vscode.Range(
+        new vscode.Position(startPosition.line, startPosition.column),
+        new vscode.Position(endPosition.line, endPosition.column)
+      );
+    }
+
+    searchIndex = valueEnd + 1;
+  }
+
+  return undefined;
 }
 
 // Converts parser indices into VS Code ranges for diagnostics.

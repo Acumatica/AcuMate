@@ -15,6 +15,13 @@ const screenExtensionFixture = path.join(
 	'extensions',
 	'SO301000_AddBlanketOrderLine.html'
 );
+const screenSelectorExtensionFixture = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_FieldSelectors.html'
+);
 
 async function openFixtureDocument(fileName: string) {
 	const fullPath = path.join(fixturesRoot, fileName);
@@ -271,6 +278,20 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('must be valid JSON')),
 			'Expected diagnostic for invalid config JSON'
+		);
+	});
+
+	it('validates customization selectors against the base screen HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('does not match any elements')),
+			'Expected diagnostic when selector does not resolve in base screen HTML'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('not a valid CSS selector')),
+			'Expected diagnostic for invalid CSS selector'
 		);
 	});
 });
