@@ -149,7 +149,7 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		const currentValue = attributeContext.value ?? '';
-		const trimmedValue = currentValue.trimLeft();
+		const trimmedValue = currentValue.trimStart();
 		if (trimmedValue && !trimmedValue.startsWith('{')) {
 			return undefined;
 		}
