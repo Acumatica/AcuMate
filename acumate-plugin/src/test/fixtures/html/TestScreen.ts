@@ -6,4 +6,5 @@ export class HtmlTestCustomerView extends PXView {
 export class HtmlTestMaint extends PXScreen {
 	mainView!: PXView<HtmlTestCustomerView>;
 	gridView!: PXViewCollection<HtmlTestCustomerView>;
+	SaveAction!: PXActionState;
 }

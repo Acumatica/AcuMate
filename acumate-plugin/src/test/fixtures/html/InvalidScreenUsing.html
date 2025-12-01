@@ -1,0 +1,12 @@
+<qp-root>
+	<qp-fieldset id="TaxTotals" view.bind="CurrentDocument">
+		<using wg-container="CurrentDocument_formVATTotals">
+			<field name="UnknownCurrentField"></field>
+		</using>
+	</qp-fieldset>
+	<qp-fieldset id="ProdItemSelectedSource" view.bind="ProdItemSelected">
+		<using wg-container="ItemConfiguration_FVConfigure" view="ItemConfiguration">
+			<field name="UnknownConfigField"></field>
+		</using>
+	</qp-fieldset>
+</qp-root>

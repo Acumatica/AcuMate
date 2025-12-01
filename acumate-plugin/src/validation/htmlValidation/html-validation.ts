@@ -1,15 +1,17 @@
 import vscode from "vscode";
 import { Parser, DomHandler } from "htmlparser2";
-const fs = require(`fs`);
 import {
-  getClassPropertiesFromTs,
-  getCorrespondingTsFile,
   getLineAndColumnFromIndex,
   CollectedClassInfo,
   ViewResolution,
   resolveViewBinding,
   createClassInfoLookup,
+  getRelatedTsFiles,
+  loadClassInfosFromFiles,
+  filterScreenLikeClasses,
+  collectActionProperties,
 } from "../../utils";
+import { findParentViewName } from "../../providers/html-shared";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
@@ -21,16 +23,14 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   const filePath = document.uri.fsPath;
   const content = document.getText();
 
-  const tsFilePath = getCorrespondingTsFile(filePath);
-  if (!tsFilePath) {
+  const tsFilePaths = getRelatedTsFiles(filePath);
+  if (!tsFilePaths.length) {
     return;
   }
 
-  const tsContent = fs.readFileSync(tsFilePath, "utf-8");
-
   // Each CollectedClassInfo entry represents a TypeScript class along with a map of its
   // properties (PXActionState, PXView, PXViewCollection, PXFieldState) including inherited ones.
-  const classProperties = getClassPropertiesFromTs(tsContent, tsFilePath);
+  const classProperties = loadClassInfosFromFiles(tsFilePaths);
 
   // Parse the HTML content
   const handler = new DomHandler(
@@ -72,7 +72,8 @@ function validateDom(
   content: string
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
-  const screenClasses = classProperties.filter((info) => info.type === "PXScreen");
+  const screenClasses = filterScreenLikeClasses(classProperties);
+  const actionLookup = collectActionProperties(screenClasses);
   const viewResolutionCache = new Map<string, ViewResolution | undefined>();
 
   // Screen classes contain PXView and PXViewCollection properties. We cache resolutions so
@@ -118,24 +119,71 @@ function validateDom(
       }
     }
 
-    if (node.type === "tag" && node.name === "field" && node.attribs.name) {
-      const viewSpecified = node.attribs.name.includes(".");
-      const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
-      const viewname = viewSpecified ? viewFromNameAttribute : node.parentNode?.attribs?.[`view.bind`];
-      const fieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
-      const viewResolution = resolveView(viewname);
-      const viewClass = viewResolution?.viewClass;
-      const fieldProperty = viewClass?.properties.get(fieldName);
-      const isValidField = fieldProperty?.kind === "field";
-      if (!isValidField) {
+    if (node.type === "tag" && node.name === "using" && node.attribs.view) {
+      const viewName = node.attribs.view;
+      const viewResolution = resolveView(viewName);
+      const hasValidView =
+        viewResolution &&
+        viewResolution.property.viewClassName &&
+        viewResolution.viewClass &&
+        viewResolution.viewClass.type === "PXView";
+
+      if (!hasValidView) {
         const range = getRange(content, node);
-        const diagnostic = {
+        const diagnostic: vscode.Diagnostic = {
           severity: vscode.DiagnosticSeverity.Warning,
-          range: range,
-          message: "The <field> element must be bound to the valid field.",
+          range,
+          message: "The <using> element must reference a valid view.",
           source: "htmlValidator",
         };
         diagnostics.push(diagnostic);
+      }
+    }
+
+    const actionBinding = node.attribs?.["state.bind"];
+    if (typeof actionBinding === "string" && actionBinding.length) {
+      if (!actionLookup.has(actionBinding)) {
+        const range = getRange(content, node);
+        const diagnostic: vscode.Diagnostic = {
+          severity: vscode.DiagnosticSeverity.Warning,
+          range,
+          message: "The state.bind attribute must reference a valid PXAction.",
+          source: "htmlValidator",
+        };
+        diagnostics.push(diagnostic);
+      }
+    }
+
+    if (
+      node.type === "tag" &&
+      node.name === "field" &&
+      node.attribs.name
+    ) {
+      const viewSpecified = node.attribs.name.includes(".");
+      const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
+      
+
+      const isUnboundReplacement =
+        Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
+        Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
+
+      if (!isUnboundReplacement) {
+        const viewname = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
+        const fieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
+        const viewResolution = resolveView(viewname);
+        const viewClass = viewResolution?.viewClass;
+        const fieldProperty = viewClass?.properties.get(fieldName);
+        const isValidField = fieldProperty?.kind === "field";
+        if (!isValidField) {
+          const range = getRange(content, node);
+          const diagnostic = {
+            severity: vscode.DiagnosticSeverity.Warning,
+            range: range,
+            message: "The <field> element must be bound to a valid field.",
+            source: "htmlValidator",
+          };
+          diagnostics.push(diagnostic);
+        }
       }
     }
     // Recursively validate child nodes

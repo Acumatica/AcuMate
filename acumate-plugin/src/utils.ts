@@ -407,7 +407,11 @@ export type CollectedClassInfo = {
 	node: ts.ClassDeclaration;
 };
 
-function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFiles: Set<string>): CollectedClassInfo[] {
+function collectClassPropertiesFromSource(
+	sourceFile: ts.SourceFile,
+	visitedFiles: Set<string>,
+	mixinTargets: Map<string, string>
+): CollectedClassInfo[] {
 	const normalizedFileName = path.normalize(sourceFile.fileName);
 	if (visitedFiles.has(normalizedFileName)) {
 		return [];
@@ -417,6 +421,12 @@ function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFile
 	const classes: CollectedClassInfo[] = [];
 
 	const visit = (node: ts.Node) => {
+		if (ts.isInterfaceDeclaration(node)) {
+			const mixinTarget = getMixinTargetFromInterface(node);
+			if (mixinTarget) {
+				mixinTargets.set(node.name.text, mixinTarget);
+			}
+		}
 		if (ts.isClassDeclaration(node) && node.name) {
 			const inheritanceInfo = buildClassInheritance(node);
 			const screenOrViewItem = inheritanceInfo.chain.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
@@ -455,13 +465,62 @@ function collectClassPropertiesFromSource(sourceFile: ts.SourceFile, visitedFile
 			continue;
 		}
 
-		classes.push(...collectClassPropertiesFromSource(importedSourceFile, visitedFiles));
+		classes.push(...collectClassPropertiesFromSource(importedSourceFile, visitedFiles, mixinTargets));
 	}
 
 	return classes;
 }
 
-export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'): CollectedClassInfo[] {
+function getMixinTargetFromInterface(node: ts.InterfaceDeclaration): string | undefined {
+	if (!node.heritageClauses) {
+		return undefined;
+	}
+
+	for (const clause of node.heritageClauses) {
+		if (clause.token !== ts.SyntaxKind.ExtendsKeyword) {
+			continue;
+		}
+
+		if (!clause.types.length) {
+			continue;
+		}
+
+		const firstType = clause.types[0];
+		if (ts.isExpressionWithTypeArguments(firstType) && ts.isIdentifier(firstType.expression)) {
+			return firstType.expression.text;
+		}
+	}
+
+	return undefined;
+}
+
+function applyMixinTargets(classInfos: CollectedClassInfo[], mixinTargets: Map<string, string>) {
+	if (!mixinTargets.size) {
+		return;
+	}
+
+	const lookup = new Map(classInfos.map(info => [info.className, info]));
+
+	for (const [mixinName, targetName] of mixinTargets) {
+		const mixinInfo = lookup.get(mixinName);
+		const targetInfo = lookup.get(targetName);
+		if (!mixinInfo || !targetInfo) {
+			continue;
+		}
+
+		for (const [propName, propInfo] of mixinInfo.properties) {
+			if (!targetInfo.properties.has(propName)) {
+				targetInfo.properties.set(propName, propInfo);
+			}
+		}
+	}
+}
+
+export function getClassPropertiesFromTs(
+	tsContent: string,
+	filePath = 'temp.ts',
+	mixinAccumulator?: Map<string, string>
+): CollectedClassInfo[] {
 	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
 	if (filePath && filePath !== 'temp.ts') {
 		const normalizedPath = path.normalize(filePath);
@@ -476,7 +535,12 @@ export function getClassPropertiesFromTs(tsContent: string, filePath = 'temp.ts'
 		}
 	}
 
-	return collectClassPropertiesFromSource(sourceFile, new Set());
+	const mixinTargets = mixinAccumulator ?? new Map<string, string>();
+	const classInfos = collectClassPropertiesFromSource(sourceFile, new Set(), mixinTargets);
+	if (!mixinAccumulator) {
+		applyMixinTargets(classInfos, mixinTargets);
+	}
+	return classInfos;
 }
 
 export function createClassInfoLookup(classInfos: CollectedClassInfo[]): Map<string, CollectedClassInfo> {
@@ -574,8 +638,119 @@ export function groupBy<T>(array: T[], key: keyof T): Record<string, T[]> {
 }
 
 export function getCorrespondingTsFile(htmlFilePath: string) {
-  const tsFilePath = htmlFilePath.replace(/\.html$/, ".ts"); // Assumes the same name and path
-  return fs.existsSync(tsFilePath) ? tsFilePath : null;
+	const normalized = path.normalize(htmlFilePath);
+	const directCandidate = normalized.replace(/\.html$/i, '.ts');
+	if (fs.existsSync(directCandidate)) {
+		return directCandidate;
+	}
+
+	// Some extension HTML files include a double dot suffix (..html) even though the TS file only has a single dot.
+	const withoutHtml = normalized.replace(/\.html$/i, '');
+	const trimmedBase = withoutHtml.replace(/\.+$/, '');
+	if (trimmedBase && trimmedBase !== withoutHtml) {
+		const trimmedCandidate = `${trimmedBase}.ts`;
+		if (fs.existsSync(trimmedCandidate)) {
+			return trimmedCandidate;
+		}
+	}
+
+	return null;
+}
+
+export function getRelatedTsFiles(htmlFilePath: string): string[] {
+	const related = new Set<string>();
+	const direct = getCorrespondingTsFile(htmlFilePath);
+	if (direct) {
+		related.add(path.normalize(direct));
+	}
+
+	const screenTs = tryGetScreenTsFromExtension(htmlFilePath);
+	if (screenTs) {
+		related.add(path.normalize(screenTs));
+	}
+
+	return [...related];
+}
+
+function tryGetScreenTsFromExtension(htmlFilePath: string): string | undefined {
+	const normalized = path.normalize(htmlFilePath);
+	const lowerNormalized = normalized.toLowerCase();
+	const marker = `${path.sep}extensions${path.sep}`.toLowerCase();
+	const markerIndex = lowerNormalized.lastIndexOf(marker);
+	if (markerIndex === -1) {
+		return undefined;
+	}
+
+	const screenDir = normalized.substring(0, markerIndex);
+	if (!screenDir) {
+		return undefined;
+	}
+	const screenName = path.basename(screenDir);
+	if (!screenName) {
+		return undefined;
+	}
+
+	const candidate = path.join(screenDir, `${screenName}.ts`);
+	return fs.existsSync(candidate) ? candidate : undefined;
+}
+
+export function loadClassInfosFromFiles(tsFilePaths: string[]): CollectedClassInfo[] {
+	const results: CollectedClassInfo[] = [];
+	const visited = new Set<string>();
+	const mixinTargets = new Map<string, string>();
+
+	for (const filePath of tsFilePaths) {
+		const normalized = path.normalize(filePath);
+		if (visited.has(normalized)) {
+			continue;
+		}
+		visited.add(normalized);
+
+		if (!fs.existsSync(normalized)) {
+			continue;
+		}
+
+		try {
+			const tsContent = fs.readFileSync(normalized, 'utf-8');
+			results.push(...getClassPropertiesFromTs(tsContent, normalized, mixinTargets));
+		}
+		catch {
+			// Ignore unreadable files; diagnostics/completions will simply lack metadata.
+		}
+	}
+
+	applyMixinTargets(results, mixinTargets);
+	return results;
+}
+
+export function filterScreenLikeClasses(classInfos: CollectedClassInfo[]): CollectedClassInfo[] {
+	return classInfos.filter(isScreenLikeClass);
+}
+
+export function isScreenLikeClass(info: CollectedClassInfo): boolean {
+	if (info.type === 'PXScreen') {
+		return true;
+	}
+
+	for (const property of info.properties.values()) {
+		if (property.kind === 'view' || property.kind === 'viewCollection') {
+			return true;
+		}
+	}
+
+	return false;
+}
+
+export function collectActionProperties(classInfos: CollectedClassInfo[]): Map<string, ClassPropertyInfo> {
+	const actions = new Map<string, ClassPropertyInfo>();
+	for (const classInfo of classInfos) {
+		for (const [name, property] of classInfo.properties) {
+			if (property.kind === 'action' && !actions.has(name)) {
+				actions.set(name, property);
+			}
+		}
+	}
+	return actions;
 }
   
   

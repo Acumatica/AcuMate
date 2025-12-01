@@ -1,14 +1,15 @@
 import vscode from 'vscode';
 import ts from 'typescript';
-const fs = require('fs');
 
 import {
-	getCorrespondingTsFile,
-	getClassPropertiesFromTs,
+	getRelatedTsFiles,
+	loadClassInfosFromFiles,
 	CollectedClassInfo,
 	ClassPropertyInfo,
 	createClassInfoLookup,
 	resolveViewBinding,
+	filterScreenLikeClasses,
+	collectActionProperties,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -52,22 +53,21 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return;
 		}
 
-		const tsFilePath = getCorrespondingTsFile(document.uri.fsPath);
-		if (!tsFilePath || !fs.existsSync(tsFilePath)) {
+		const tsFilePaths = getRelatedTsFiles(document.uri.fsPath);
+		if (!tsFilePaths.length) {
 			return;
 		}
 
-		const tsContent = fs.readFileSync(tsFilePath, 'utf-8');
-		const classInfos = getClassPropertiesFromTs(tsContent, tsFilePath);
+		const classInfos = loadClassInfosFromFiles(tsFilePaths);
 		if (!classInfos.length) {
 			return;
 		}
 
 		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = classInfos.filter(info => info.type === 'PXScreen');
+		const screenClasses = filterScreenLikeClasses(classInfos);
 		// Resolved metadata lets us jump from HTML bindings directly to the backing TypeScript symbol.
 
-		if (attributeContext.attributeName === 'view.bind') {
+		if (attributeContext.attributeName === 'view.bind' || (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using')) {
 			const resolution = resolveViewBinding(attributeContext.value, screenClasses, classInfoLookup);
 			if (!resolution) {
 				return;
@@ -80,6 +80,14 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			}
 
 			return targets;
+		}
+
+		if (attributeContext.attributeName === 'state.bind') {
+			const actionProperty = findActionProperty(attributeContext.value, screenClasses);
+			if (!actionProperty) {
+				return;
+			}
+			return createLocationFromProperty(actionProperty);
 		}
 
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
@@ -105,6 +113,14 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 
 		return undefined;
 	}
+}
+
+function findActionProperty(actionName: string | undefined, screenClasses: CollectedClassInfo[]): ClassPropertyInfo | undefined {
+	if (!actionName) {
+		return undefined;
+	}
+	const actions = collectActionProperties(screenClasses);
+	return actions.get(actionName);
 }
 
 // Converts a collected property back into a VS Code location for navigation.

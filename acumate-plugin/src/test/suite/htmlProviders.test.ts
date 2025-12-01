@@ -6,6 +6,29 @@ import { HtmlCompletionProvider } from '../../providers/html-completion-provider
 import { HtmlDefinitionProvider } from '../../providers/html-definition-provider';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
+const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
+const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
+const screenExtensionHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_AddBlanketOrderLine.html'
+);
+const screenExtensionDoubleDotHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_CreatePrepaymentInvoice..html'
+);
+const screenPaymentLinksHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_PaymentLinks.html'
+);
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
 	const text = document.getText();
@@ -47,6 +70,109 @@ describe('HTML completion provider integration', () => {
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('gridField'), 'gridField not suggested');
 	});
+
+	it('suggests view names for using view attribute', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view="ItemConfiguration"', 'view="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No view completions returned for using view attribute');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ItemConfiguration'), 'ItemConfiguration not suggested');
+	});
+
+	it('suggests view names for screen extensions', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view.bind="BaseView"', 'view.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for screen extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('BlanketSplits'), 'BlanketSplits not suggested');
+		assert.ok(labels.includes('BaseView'), 'BaseView not suggested');
+	});
+
+	it('suggests field names for screen extension views', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="BlanketLineField"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for screen extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('BlanketLineField'), 'BlanketLineField not suggested');
+	});
+
+	it('suggests view names for screen extensions with double-dot html names', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view.bind="QuickPrepaymentInvoice"', 'view.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for double-dot extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('QuickPrepaymentInvoice'), 'QuickPrepaymentInvoice not suggested');
+	});
+
+	it('suggests field names for screen extensions with double-dot html names', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="CuryPrepaymentAmt"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for double-dot extension');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('CuryPrepaymentAmt'), 'CuryPrepaymentAmt not suggested');
+	});
+
+	it('suggests fields injected into PXView mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="ProcessingCenterID"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for mixin fields');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ProcessingCenterID'), 'ProcessingCenterID not suggested');
+		assert.ok(labels.includes('DeliveryMethod'), 'DeliveryMethod not suggested');
+	});
+
+	it('suggests fields from using views defined in mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="Url"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for mixin view fields');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('Url'), 'Url not suggested');
+		assert.ok(labels.includes('LinkStatus'), 'LinkStatus not suggested');
+	});
+
+	it('suggests PXAction names for state.bind attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'state.bind=""', 'state.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('AddBlanketLineOK'), 'AddBlanketLineOK action not suggested');
+	});
+
+	it('suggests field names for using containers inheriting parent views', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'wg-test="no-view" name="', 'wg-test="no-view" name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for using container');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('CuryVatExemptTotal'), 'CuryVatExemptTotal not suggested');
+	});
+
+	it('suggests field names for using containers that specify view attribute', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'wg-test="with-view" name="', 'wg-test="with-view" name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for using view attribute');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ConfigurationID'), 'ConfigurationID not suggested');
+	});
 });
 
 describe('HTML definition provider integration', () => {
@@ -75,6 +201,136 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
 			'Expected field definition inside TestScreen.ts'
+		);
+	});
+
+	it('navigates from field inside using container with custom view', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="ConfigurationID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from field inside using container inheriting parent view', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="CuryVatExemptTotal"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from using view attribute to PXView property/class', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'view="ItemConfiguration"', 'view="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from extension view binding to TS property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'view.bind="BlanketSplits"', 'view.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_AddBlanketOrderLine.ts')),
+			'Expected definition inside screen extension TS file'
+		);
+	});
+
+	it('navigates from extension field to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="BlanketLineField"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_AddBlanketOrderLine.ts')),
+			'Expected field definition inside screen extension TS file'
+		);
+	});
+
+	it('navigates from double-dot extension view binding to TS property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'view.bind="QuickPrepaymentInvoice"', 'view.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_CreatePrepaymentInvoice.ts')),
+			'Expected definition inside double-dot extension TS file'
+		);
+	});
+
+	it('navigates from double-dot extension field to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="PrepaymentPct"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_CreatePrepaymentInvoice.ts')),
+			'Expected field definition inside double-dot extension TS file'
+		);
+	});
+
+	it('navigates from mixin field to its TypeScript definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="ProcessingCenterID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_PaymentLinks.ts')),
+			'Expected definition inside PaymentLinks mixin file'
+		);
+	});
+
+	it('navigates from using mixin view to TypeScript definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenPaymentLinksHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="Url"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_PaymentLinks.ts')),
+			'Expected definition inside PaymentLinks mixin file'
+		);
+	});
+
+	it('navigates from state.bind attribute to PXAction definition', async () => {
+		const document = await vscode.workspace.openTextDocument(path.join(fixturesRoot, 'TestScreen.html'));
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'state.bind="SaveAction"', 'state.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
+			'Expected action definition inside TestScreen.ts'
 		);
 	});
 });

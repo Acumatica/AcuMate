@@ -1,0 +1,20 @@
+<qp-root>
+	<qp-fieldset id="TaxTotals" view.bind="CurrentDocument">
+		<using wg-container="CurrentDocument_formVATTotals">
+			<field wg-test="no-view" name=""></field>
+			<field name="CuryVatExemptTotal"></field>
+		</using>
+		<using wg-container="CurrentDocument_formOrderTotals">
+			<field name="CuryTaxTotal"></field>
+		</using>
+	</qp-fieldset>
+	<qp-fieldset id="ProdItemSelectedSource" view.bind="ProdItemSelected">
+		<field name="DetailSource"></field>
+		<field name="BOMEffDate"></field>
+		<using wg-container="ItemConfiguration_FVConfigure" view="ItemConfiguration">
+			<field wg-test="with-view" name=""></field>
+			<field name="ConfigurationID"></field>
+			<field name="Revision"></field>
+		</using>
+	</qp-fieldset>
+</qp-root>
