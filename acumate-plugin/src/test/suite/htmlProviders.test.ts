@@ -1,9 +1,10 @@
 import * as path from 'path';
 import * as assert from 'assert';
-import { describe, it } from 'mocha';
+import { before, describe, it } from 'mocha';
 import vscode from 'vscode';
 import { HtmlCompletionProvider } from '../../providers/html-completion-provider';
 import { HtmlDefinitionProvider } from '../../providers/html-definition-provider';
+import { ensureClientControlsFixtures } from '../utils/clientControlsFixtures';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
@@ -33,6 +34,11 @@ const screenPaymentLinksHtmlPath = path.join(
 	'extensions',
 	'SO301000_PaymentLinks.html'
 );
+
+before(function () {
+	this.timeout(20000);
+	return ensureClientControlsFixtures();
+});
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
 	const text = document.getText();

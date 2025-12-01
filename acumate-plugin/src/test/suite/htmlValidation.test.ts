@@ -4,6 +4,7 @@ import { describe, it, beforeEach, before } from 'mocha';
 import vscode from 'vscode';
 import { validateHtmlFile } from '../../validation/htmlValidation/html-validation';
 import { AcuMateContext } from '../../plugin-context';
+import { ensureClientControlsFixtures } from '../utils/clientControlsFixtures';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
@@ -21,6 +22,11 @@ async function openFixtureDocument(fileName: string) {
 }
 
 describe('HTML validation diagnostics', () => {
+	before(function () {
+		this.timeout(20000);
+		return ensureClientControlsFixtures();
+	});
+
 	before(() => {
 		if (!AcuMateContext.HtmlValidator) {
 			AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidatorTest');

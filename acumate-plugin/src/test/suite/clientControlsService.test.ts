@@ -1,7 +1,8 @@
 import * as assert from 'assert';
 import * as path from 'path';
-import { describe, it } from 'mocha';
+import { before, describe, it } from 'mocha';
 import { getClientControlsMetadata } from '../../services/client-controls-service';
+import { ensureClientControlsFixtures } from '../utils/clientControlsFixtures';
 
 describe('client-controls metadata discovery', () => {
 const nodeModulesProjectRoot = path.resolve(__dirname, '../../../src/test/fixtures/client-controls-project');
@@ -9,6 +10,11 @@ const nodeModulesHtmlPath = path.join(nodeModulesProjectRoot, 'src', 'screens', 
 
 	const inlineProjectRoot = path.resolve(__dirname, '../../../src/test/fixtures/client-controls-inline-project');
 	const inlineHtmlPath = path.join(inlineProjectRoot, 'src', 'screens', 'Sample', 'Sample.html');
+
+	before(function () {
+		this.timeout(20000);
+		return ensureClientControlsFixtures();
+	});
 
 	it('collects qp-* custom elements with config info from node_modules package', () => {
 		const controls = getClientControlsMetadata({
@@ -34,5 +40,7 @@ function assertBarcodeControl(controls: ReturnType<typeof getClientControlsMetad
 	const definition = barcode?.config?.definition;
 	assert.ok(definition, 'Config definition should be resolved');
 	const propNames = definition?.properties.map(prop => prop.name) ?? [];
-	assert.ok(propNames.includes('beepOnScan'));
+	assert.ok(propNames.includes('soundControl'));
+	assert.ok(propNames.includes('soundPath'));
 }
+
