@@ -1,17 +1,8 @@
 <template>
-	<div id="fsOrderTotals-Totals" class="totals">
-		<fieldset>
-			<field name="CuryGoodsExtPriceTotal"></field>
-		</fieldset>
-	</div>
-	<div id="fsCalculatedAmounts-Totals" class="totals">
-		<fieldset>
-			<field name="BlanketOpenQty"></field>
-		</fieldset>
-	</div>
-	<div id="selectorTarget">
-		<section class="slot">
-			<field name="SlotField" data-role="slot-item"></field>
-		</section>
-	</div>
+	<qp-fieldset id="fsOrderTotals-Totals" view.bind="CurrentDocument">
+		<field name="CuryGoodsExtPriceTotal"></field>
+	</qp-fieldset>
+	<qp-fieldset id="fsCalculatedAmounts-Totals" view.bind="CurrentDocument">
+		<field name="BlanketOpenQty"></field>
+	</qp-fieldset>
 </template>

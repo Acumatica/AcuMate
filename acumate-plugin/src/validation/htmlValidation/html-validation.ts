@@ -18,7 +18,13 @@ import { findParentViewName } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
-import { getBaseScreenDocument, isCustomizationSelectorAttribute, queryBaseScreenElements, BaseScreenDocument } from "../../services/screen-html-service";
+import {
+  getBaseScreenDocument,
+  isCustomizationSelectorAttribute,
+  queryBaseScreenElements,
+  BaseScreenDocument,
+  getCustomizationSelectorAttributes,
+} from "../../services/screen-html-service";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
@@ -258,9 +264,12 @@ function validateDom(
         Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
 
       if (!isUnboundReplacement) {
-        const viewname = findParentViewName(node);
+        let viewName = findParentViewName(node);
+        if (!viewName) {
+          viewName = getViewNameFromCustomizationSelectors(node);
+        }
         const fieldName = node.attribs.name;
-        const viewResolution = resolveView(viewname);
+        const viewResolution = resolveView(viewName);
         const viewClass = viewResolution?.viewClass;
         const fieldProperty = viewClass?.properties.get(fieldName);
         const isValidField = fieldProperty?.kind === "field";
@@ -269,7 +278,9 @@ function validateDom(
           const diagnostic = {
             severity: vscode.DiagnosticSeverity.Warning,
             range: range,
-            message: "The <field> element must be bound to the valid field.",
+            message: viewName
+              ? `The field "${fieldName}" is not defined on view "${viewName}".`
+              : "The <field> element must be bound to the valid field.",
             source: "htmlValidator",
           };
           diagnostics.push(diagnostic);
@@ -314,35 +325,18 @@ function validateDom(
       return;
     }
 
-    if (!node.attribs) {
-      return;
-    }
-
-    for (const [attributeName, attributeValue] of Object.entries(node.attribs)) {
-      if (!isCustomizationSelectorAttribute(attributeName)) {
-        continue;
-      }
-
-      if (typeof attributeValue !== "string") {
-        continue;
-      }
-
-      const trimmedValue = attributeValue.trim();
-      if (!trimmedValue.length) {
-        continue;
-      }
-
+    forEachCustomizationSelector(node, (attributeName, rawValue, normalizedValue) => {
       const range =
-        getAttributeValueRange(content, node, attributeName, attributeValue) ?? getRange(content, node);
-      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, trimmedValue);
+        getAttributeValueRange(content, node, attributeName, rawValue) ?? getRange(content, node);
+      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
       if (error) {
         diagnostics.push({
           severity: vscode.DiagnosticSeverity.Warning,
           range,
-          message: `The ${attributeName} selector "${attributeValue}" is not a valid CSS selector (${error}).`,
+          message: `The ${attributeName} selector "${rawValue}" is not a valid CSS selector (${error}).`,
           source: "htmlValidator",
         });
-        continue;
+        return;
       }
 
       if (!nodes.length) {
@@ -350,10 +344,60 @@ function validateDom(
         diagnostics.push({
           severity: vscode.DiagnosticSeverity.Warning,
           range,
-          message: `The ${attributeName} selector "${attributeValue}" does not match any elements in ${baseName}.`,
+          message: `The ${attributeName} selector "${rawValue}" does not match any elements in ${baseName}.`,
           source: "htmlValidator",
         });
       }
+    });
+  }
+
+  function getViewNameFromCustomizationSelectors(node: any): string | undefined {
+    if (!baseScreenDocument) {
+      return undefined;
+    }
+
+    let selectorViewName: string | undefined;
+    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
+      if (selectorViewName) {
+        return;
+      }
+
+      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
+      if (error || !nodes.length) {
+        return;
+      }
+
+      for (const target of nodes) {
+        const candidateViewName = findParentViewName(target);
+        if (candidateViewName) {
+          selectorViewName = candidateViewName;
+          return;
+        }
+      }
+    });
+
+    return selectorViewName;
+  }
+
+  function forEachCustomizationSelector(
+    node: any,
+    callback: (attributeName: string, rawValue: string, normalizedValue: string) => void
+  ) {
+    if (!node?.attribs) {
+      return;
+    }
+
+    for (const [attributeName, attributeValue] of Object.entries(node.attribs)) {
+      if (!isCustomizationSelectorAttribute(attributeName) || typeof attributeValue !== "string") {
+        continue;
+      }
+
+      const normalizedValue = attributeValue.trim();
+      if (!normalizedValue.length) {
+        continue;
+      }
+
+      callback(attributeName, attributeValue, normalizedValue);
     }
   }
 

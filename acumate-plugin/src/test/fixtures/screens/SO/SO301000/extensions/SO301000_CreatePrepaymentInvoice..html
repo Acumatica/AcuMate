@@ -1,6 +1,16 @@
 <template>
-	<qp-fieldset id="QuickPrepayment" view.bind="QuickPrepaymentInvoice">
-		<field name="PrepaymentPct"></field>
-		<field name="CuryPrepaymentAmt"></field>
-	</qp-fieldset>
+	<qp-panel id="QuickPrepaymentInvoice" caption="Create Prepayment Invoice" auto-repaint="true">
+		<qp-template id="form-QuickPrepaymentInvoice" name="1" wg-container="QuickPrepaymentInvoice_CreatePrepaymentInvoiceFormView">
+			<qp-fieldset id="panel-QuickPrepaymentInvoice" slot="A" view.bind="QuickPrepaymentInvoice">
+				<field name="PrepaymentPct"></field>
+				<field name="CuryPrepaymentAmt">
+					<qp-field id="fieldCuryID" control-state.bind="QuickPrepaymentInvoice.CuryID" class="no-label"></qp-field>
+				</field>
+			</qp-fieldset>
+		</qp-template>
+		<footer id="footer-QuickPrepaymentInvoice">
+			<qp-button id="buttonCreate-QuickPrepaymentInvoice" dialog-result="OK" caption="Create" state.bind="CreatePrepaymentInvoiceOK"></qp-button>
+			<qp-button id="buttonCancel-QuickPrepaymentInvoice" dialog-result="Cancel"></qp-button>
+		</footer>
+	</qp-panel>
 </template>

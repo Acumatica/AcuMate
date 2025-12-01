@@ -4,6 +4,7 @@ export interface SO301000_CreatePrepaymentInvoice extends SO301000 {}
 
 export class SO301000_CreatePrepaymentInvoice {
 	QuickPrepaymentInvoice = createSingle(SOQuickPrepaymentInvoice);
+	CreatePrepaymentInvoiceOK!: PXActionState;
 }
 
 export class SOQuickPrepaymentInvoice extends PXView {

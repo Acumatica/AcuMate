@@ -26,6 +26,7 @@ import {
 	isCustomizationSelectorAttribute,
 	queryBaseScreenElements,
 	BaseScreenDocument,
+	getCustomizationSelectorAttributes,
 } from '../services/screen-html-service';
 
 // Hooks VS Code so view/field bindings support "Go to Definition" directly from HTML.
@@ -62,6 +63,8 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return;
 		}
 
+		const baseScreenDocument = getBaseScreenDocument(document.uri.fsPath);
+
 		if (attributeContext.attributeName === 'url' && attributeContext.tagName === 'qp-include') {
 			const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
 			const includePath = resolveIncludeFilePath(attributeContext.value, document.uri.fsPath, workspaceRoots);
@@ -72,7 +75,6 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		if (isCustomizationSelectorAttribute(attributeContext.attributeName)) {
-			const baseScreenDocument = getBaseScreenDocument(document.uri.fsPath);
 			if (!baseScreenDocument) {
 				return;
 			}
@@ -140,6 +142,25 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return targets;
 		}
 
+		if (attributeContext.attributeName === 'id' && attributeContext.tagName === 'qp-panel') {
+			const panelViewName = attributeContext.value?.trim();
+			if (!panelViewName) {
+				return;
+			}
+
+			const resolution = resolveViewBinding(panelViewName, screenClasses, classInfoLookup);
+			if (!resolution) {
+				return;
+			}
+
+			const targets: vscode.Location[] = [];
+			targets.push(createLocationFromProperty(resolution.property));
+			if (resolution.viewClass) {
+				targets.push(createLocationFromClass(resolution.viewClass));
+			}
+			return targets;
+		}
+
 		if (attributeContext.attributeName === 'state.bind') {
 			const actionProperty = findActionProperty(attributeContext.value, screenClasses);
 			if (!actionProperty) {
@@ -163,7 +184,10 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field names dereference through the closest parent view to locate the property in TS.
-			const viewName = findParentViewName(elementNode);
+			let viewName = findParentViewName(elementNode);
+			if (!viewName) {
+				viewName = getViewNameFromCustomizationSelectors(attributeContext.node, baseScreenDocument);
+			}
 			if (!viewName) {
 				return;
 			}
@@ -224,6 +248,45 @@ function createLocationFromHtmlNode(document: BaseScreenDocument, node: any): vs
 			new vscode.Position(end.line, end.column)
 		)
 	);
+}
+
+function getViewNameFromCustomizationSelectors(
+	node: any,
+	baseDocument: BaseScreenDocument | undefined
+): string | undefined {
+	if (!baseDocument?.dom?.length) {
+		return undefined;
+	}
+
+	const attributes = node?.attribs;
+	if (!attributes) {
+		return undefined;
+	}
+
+	for (const attributeName of getCustomizationSelectorAttributes()) {
+		const rawValue = attributes[attributeName];
+		if (typeof rawValue !== 'string') {
+			continue;
+		}
+		const normalizedValue = rawValue.trim();
+		if (!normalizedValue.length) {
+			continue;
+		}
+
+		const { nodes, error } = queryBaseScreenElements(baseDocument, normalizedValue);
+		if (error || !nodes.length) {
+			continue;
+		}
+
+		for (const candidate of nodes) {
+			const viewName = findParentViewName(candidate);
+			if (viewName) {
+				return viewName;
+			}
+		}
+	}
+
+	return undefined;
 }
 
 // Converts a collected property back into a VS Code location for navigation.

@@ -438,6 +438,32 @@ describe('HTML definition provider integration', () => {
 		);
 	});
 
+	it('navigates from selector-injected field name to TS definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="AMCuryEstimateTotal"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for selector field');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000.ts')),
+			'Expected field definition inside base screen TS file'
+		);
+	});
+
+	it('navigates from qp-panel id to PXView definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'id="QuickPrepaymentInvoice"', 'id="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-panel id');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_CreatePrepaymentInvoice.ts')),
+			'Expected navigation to screen extension TS file'
+		);
+	});
+
 	it('navigates from control-state.bind to PXField property', async () => {
 		const document = await vscode.workspace.openTextDocument(path.join(fixturesRoot, 'TestScreen.html'));
 		const provider = new HtmlDefinitionProvider();

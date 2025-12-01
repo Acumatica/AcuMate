@@ -65,14 +65,14 @@ describe('HTML validation diagnostics', () => {
 		const document = await openFixtureDocument('InvalidScreen.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
-		assert.ok(diagnostics.some(d => d.message.includes('<field>')));
+		assert.ok(diagnostics.some(d => d.message.includes('field "')));
 	});
 
 	it('reports missing field when using container overrides view', async () => {
 		const document = await openFixtureDocument('InvalidScreenUsing.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
-		const fieldDiagnostics = diagnostics.filter(d => d.message.includes('<field>'));
+		const fieldDiagnostics = diagnostics.filter(d => d.message.includes('field "'));
 		assert.ok(fieldDiagnostics.length >= 1, 'Expected invalid field diagnostic for using view');
 	});
 
@@ -292,6 +292,20 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('not a valid CSS selector')),
 			'Expected diagnostic for invalid CSS selector'
+		);
+	});
+
+	it('derives view metadata from selector targets when <field> lacks a parent view', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('"AMUnknownField"')),
+			'Expected diagnostic referencing unknown selector field name'
+		);
+		assert.ok(
+			!diagnostics.some(d => d.message.includes('"AMCuryEstimateTotal"')),
+			'Valid selector field should not produce field diagnostics'
 		);
 	});
 });
