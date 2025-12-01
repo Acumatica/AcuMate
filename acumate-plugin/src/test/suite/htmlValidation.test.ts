@@ -124,6 +124,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('accepts qp-panel ids that map to known views', async () => {
+		const document = await openFixtureDocument('TestPanelValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('<qp-panel> id')).length,
+			0,
+			'Expected no diagnostics for qp-panel ids bound to known views'
+		);
+	});
+
+	it('reports qp-panel ids that do not resolve to views', async () => {
+		const document = await openFixtureDocument('TestPanelInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('<qp-panel> id must reference a valid view')),
+			'Expected diagnostic for qp-panel id that does not match a view'
+		);
+	});
+
 	it('accepts qp-include markup when required parameters are satisfied', async () => {
 		const document = await openFixtureDocument('TestIncludeHost.html');
 		await validateHtmlFile(document);

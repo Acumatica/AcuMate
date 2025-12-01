@@ -150,6 +150,22 @@ function validateDom(
       }
     }
 
+    if (hasScreenMetadata && node.type === "tag" && node.name === "qp-panel") {
+      const panelId = typeof node.attribs?.id === "string" ? node.attribs.id.trim() : "";
+      if (panelId.length) {
+        const viewResolution = resolveView(panelId);
+        if (!viewResolution) {
+          const range = getRange(content, node);
+          diagnostics.push({
+            severity: vscode.DiagnosticSeverity.Warning,
+            range,
+            message: "The <qp-panel> id must reference a valid view.",
+            source: "htmlValidator",
+          });
+        }
+      }
+    }
+
     if (hasScreenMetadata && node.type === "tag" && node.name === "using" && node.attribs.view) {
       const viewName = node.attribs.view;
       const viewResolution = resolveView(viewName);
