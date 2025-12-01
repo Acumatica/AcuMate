@@ -119,8 +119,9 @@ function validateDom(
     }
 
     if (node.type === "tag" && node.name === "field" && node.attribs.name) {
-      const viewname = node.parentNode?.attribs?.[`view.bind`];
-      const fieldName = node.attribs.name;
+      const viewSpecified = node.attribs.name.includes(".");
+      const viewname = viewSpecified ? node.attribs.name.split(".")[0] : node.parentNode?.attribs?.[`view.bind`];
+      const fieldName = viewSpecified ? node.attribs.name.split(".")[1] : node.attribs.name;
       const viewResolution = resolveView(viewname);
       const viewClass = viewResolution?.viewClass;
       const fieldProperty = viewClass?.properties.get(fieldName);
