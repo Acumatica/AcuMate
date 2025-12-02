@@ -289,16 +289,20 @@ function validateDom(
       node.name === "field" &&
       node.attribs.name
     ) {
+      const viewSpecified = node.attribs.name.includes(".");
+      const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
+      
+
       const isUnboundReplacement =
         Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
         Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
 
       if (!isUnboundReplacement) {
-        let viewName = findParentViewName(node);
+        let viewName = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
         if (!viewName) {
           viewName = getViewNameFromCustomizationSelectors(node);
         }
-        const fieldName = node.attribs.name;
+        const fieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
         const viewResolution = resolveView(viewName);
         const viewClass = viewResolution?.viewClass;
         const fieldProperty = viewClass?.properties.get(fieldName);
@@ -311,7 +315,7 @@ function validateDom(
             range,
             viewName
               ? `The field "${fieldName}" is not defined on view "${viewName}".`
-              : "The <field> element must be bound to the valid field."
+              : "The <field> element must be bound to a valid field."
           );
         }
       }
