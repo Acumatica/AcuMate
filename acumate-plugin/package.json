@@ -169,6 +169,7 @@
   "devDependencies": {
     "@types/mocha": "^10.0.9",
     "@types/node": "20.x",
+    "@types/sinon": "^21.0.0",
     "@types/vscode": "^1.54.0",
     "@typescript-eslint/eslint-plugin": "^8.10.0",
     "@typescript-eslint/parser": "^8.7.0",
@@ -176,11 +177,12 @@
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.13.0",
     "glob": "^10.4.5",
+    "sinon": "^21.0.0",
     "tar": "^7.5.2"
   },
   "dependencies": {
-    "handlebars": "^4.7.8",
     "css-select": "^5.1.0",
+    "handlebars": "^4.7.8",
     "htmlparser2": "^9.1.0",
     "jsonic": "^1.0.1",
     "prettier": "3.3.0",
