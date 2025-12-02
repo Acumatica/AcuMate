@@ -15,6 +15,7 @@ const invalidFixture = path.join(fixturesRoot, 'GraphInfoScreenInvalid.ts');
 const validFixture = path.join(fixturesRoot, 'GraphInfoScreenValid.ts');
 const mismatchFixture = path.join(fixturesRoot, 'GraphInfoScreenMismatch.ts');
 const matchFixture = path.join(fixturesRoot, 'GraphInfoScreenMatch.ts');
+const caseInsensitiveFixture = path.join(fixturesRoot, 'GraphInfoScreenCaseInsensitive.ts');
 
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
 
@@ -89,5 +90,24 @@ describe('graphInfo decorator assistance', () => {
 		const matchDocument = await vscode.workspace.openTextDocument(matchFixture);
 		const matchDiagnostics = await collectGraphInfoDiagnostics(matchDocument, sampleGraphs);
 		assert.strictEqual(matchDiagnostics.length, 0, 'expected no diagnostics when view/action names match backend metadata');
+	});
+
+	it('treats backend metadata names case-insensitively', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				document: { name: 'document' }
+			},
+			actions: [{ name: 'overrideblankettaxzone' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const caseDocument = await vscode.workspace.openTextDocument(caseInsensitiveFixture);
+		const diagnostics = await collectGraphInfoDiagnostics(caseDocument, sampleGraphs);
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			'expected no diagnostics when backend metadata differs by casing only'
+		);
 	});
 });

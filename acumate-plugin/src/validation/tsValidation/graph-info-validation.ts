@@ -122,17 +122,14 @@ function compareScreenDeclarationsWithGraph(
 	graphName: string
 ): vscode.Diagnostic[] {
 	const diagnostics: vscode.Diagnostic[] = [];
-	const backendViewNames = new Set(Object.keys(structure.views ?? {}));
-	const backendActionNames = new Set(
-		(structure.actions ?? [])
-			.map(action => action.name)
-			.filter((name): name is string => Boolean(name))
-	);
+	const backendViewNames = collectNormalizedViewNames(structure.views);
+	const backendActionNames = collectNormalizedActionNames(structure.actions);
 
 	for (const screenClass of screenClasses) {
 		for (const property of screenClass.properties.values()) {
-			if ((property.kind === 'view' || property.kind === 'viewCollection') && property.name) {
-				if (!backendViewNames.has(property.name)) {
+			const propertyName = normalizeMetaName(property.name);
+			if ((property.kind === 'view' || property.kind === 'viewCollection') && propertyName) {
+				if (!backendViewNames.has(propertyName)) {
 					diagnostics.push(
 						createPropertyDiagnostic(
 							document,
@@ -144,8 +141,8 @@ function compareScreenDeclarationsWithGraph(
 				continue;
 			}
 
-			if (property.kind === 'action' && property.name) {
-				if (!backendActionNames.has(property.name)) {
+			if (property.kind === 'action' && propertyName) {
+				if (!backendActionNames.has(propertyName)) {
 					diagnostics.push(
 						createPropertyDiagnostic(
 							document,
@@ -159,6 +156,52 @@ function compareScreenDeclarationsWithGraph(
 	}
 
 	return diagnostics;
+}
+
+function normalizeMetaName(value: string | undefined): string | undefined {
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+
+	const normalized = value.trim().toLowerCase();
+	return normalized.length ? normalized : undefined;
+}
+
+function collectNormalizedViewNames(views: GraphStructure['views']): Set<string> {
+	const names = new Set<string>();
+	if (!views) {
+		return names;
+	}
+
+	for (const [key, view] of Object.entries(views)) {
+		const normalizedKey = normalizeMetaName(key);
+		if (normalizedKey) {
+			names.add(normalizedKey);
+		}
+
+		const normalizedName = normalizeMetaName(view?.name);
+		if (normalizedName) {
+			names.add(normalizedName);
+		}
+	}
+
+	return names;
+}
+
+function collectNormalizedActionNames(actions: GraphStructure['actions']): Set<string> {
+	const names = new Set<string>();
+	if (!actions) {
+		return names;
+	}
+
+	for (const action of actions) {
+		const normalized = normalizeMetaName(action?.name);
+		if (normalized) {
+			names.add(normalized);
+		}
+	}
+
+	return names;
 }
 
 function createPropertyDiagnostic(
