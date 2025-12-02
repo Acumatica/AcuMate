@@ -33,6 +33,6 @@ jobs:
 
       - name: Run tests
         working-directory: ./acumate-plugin
-        run: npm test
+        run: xvfb-run -a npm test
         env:
           VSCODE_SKIP_POSTINSTALL: true
