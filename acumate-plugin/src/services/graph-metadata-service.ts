@@ -22,6 +22,10 @@ export async function getAvailableGraphs(): Promise<GraphModel[] | undefined> {
 			cachedGraphs = graphs?.filter(graph => Boolean(graph?.name));
 			return cachedGraphs;
 		})
+		.catch(err => {
+			console.error('Error fetching graph metadata:', err);
+			return undefined;
+		})
 		.finally(() => {
 			inflightFetch = undefined;
 		});

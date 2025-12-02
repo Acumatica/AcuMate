@@ -198,9 +198,7 @@ function compareViewClassesWithGraph(
 ): vscode.Diagnostic[] {
 	const diagnostics: vscode.Diagnostic[] = [];
 	const backendViewMap = buildBackendViewMap(structure);
-	if (!backendViewMap.size) {
-		return diagnostics;
-	}
+	const backendActionNames = buildBackendActionSet(structure);
 
 	const processedPairs = new Set<string>();
 
@@ -216,40 +214,65 @@ function compareViewClassesWithGraph(
 			}
 
 			const backendView = backendViewMap.get(normalizedViewName);
-			if (!backendView || !backendView.fields.size) {
-				continue;
-			}
-
 			const viewClassInfo = classInfoLookup.get(property.viewClassName);
 			if (!viewClassInfo) {
 				continue;
 			}
 
-			const pairKey = `${viewClassInfo.className}::${backendView.normalizedName}`;
+			const pairKey = `${viewClassInfo.className}::${backendView?.normalizedName ?? normalizedViewName}`;
 			if (processedPairs.has(pairKey)) {
 				continue;
 			}
 			processedPairs.add(pairKey);
+
+			const backendFields = backendView?.fields;
+			if (backendView && backendFields?.size) {
+				for (const fieldProperty of viewClassInfo.properties.values()) {
+					if (fieldProperty.kind !== 'field') {
+						continue;
+					}
+
+					const normalizedFieldName = normalizeMetaName(fieldProperty.name);
+					if (!normalizedFieldName) {
+						continue;
+					}
+
+					if (!backendFields.has(normalizedFieldName)) {
+						const diagnostic = createPropertyDiagnostic(
+							document,
+							fieldProperty,
+							`The PXView "${viewClassInfo.className}" declares field "${fieldProperty.name}" which does not exist in backend view "${backendView.viewName}" for graph "${graphName}".`,
+							suppression
+						);
+						if (diagnostic) {
+							diagnostics.push(diagnostic);
+						}
+					}
+				}
+			}
 
 			for (const fieldProperty of viewClassInfo.properties.values()) {
 				if (fieldProperty.kind !== 'field') {
 					continue;
 				}
 
-				const normalizedFieldName = normalizeMetaName(fieldProperty.name);
-				if (!normalizedFieldName) {
-					continue;
-				}
+				const linkCommandTargets = getLinkCommandTargets(fieldProperty.node);
+				for (const target of linkCommandTargets) {
+					const normalizedTarget = normalizeMetaName(target);
+					if (!normalizedTarget) {
+						continue;
+					}
 
-				if (!backendView.fields.has(normalizedFieldName)) {
-					const diagnostic = createPropertyDiagnostic(
-						document,
-						fieldProperty,
-						`The PXView "${viewClassInfo.className}" declares field "${fieldProperty.name}" which does not exist in backend view "${backendView.viewName}" for graph "${graphName}".`,
-						suppression
-					);
-					if (diagnostic) {
-						diagnostics.push(diagnostic);
+					if (!backendActionNames.has(normalizedTarget)) {
+						const diagnostic = createPropertyDiagnostic(
+							document,
+							fieldProperty,
+							`The @linkCommand decorator on field "${fieldProperty.name}" references action "${target}" which does not exist in graph "${graphName}".`,
+							suppression
+						);
+						if (diagnostic) {
+							diagnostics.push(diagnostic);
+						}
 					}
 				}
 			}
@@ -276,4 +299,67 @@ function createPropertyDiagnostic(
 	diagnostic.code = 'graphInfo';
 	diagnostic.source = 'graphInfo';
 	return diagnostic;
+}
+
+function getLinkCommandTargets(node: ts.PropertyDeclaration): string[] {
+	const targets: string[] = [];
+	const decorators = getNodeDecorators(node);
+	if (!decorators?.length) {
+		return targets;
+	}
+
+	for (const decorator of decorators) {
+		const expression = decorator.expression;
+		if (!ts.isCallExpression(expression)) {
+			continue;
+		}
+
+		const decoratorName = getDecoratorIdentifier(expression.expression);
+		if (!decoratorName || decoratorName.toLowerCase() !== 'linkcommand') {
+			continue;
+		}
+
+		if (!expression.arguments.length) {
+			continue;
+		}
+
+		const firstArg = expression.arguments[0];
+		const actionName = tryGetStringLiteral(firstArg);
+		if (actionName) {
+			targets.push(actionName);
+		}
+	}
+
+	return targets;
+}
+
+function getNodeDecorators(node: ts.Node): readonly ts.Decorator[] | undefined {
+	const tsAny = ts as unknown as { canHaveDecorators?: (node: ts.Node) => boolean; getDecorators?: (node: ts.Node) => readonly ts.Decorator[] | undefined };
+	if (typeof tsAny.canHaveDecorators === 'function' && typeof tsAny.getDecorators === 'function') {
+		if (tsAny.canHaveDecorators(node)) {
+			return tsAny.getDecorators(node);
+		}
+	}
+
+	return (node as ts.Node & { decorators?: readonly ts.Decorator[] }).decorators;
+}
+
+function getDecoratorIdentifier(expression: ts.LeftHandSideExpression): string | undefined {
+	if (ts.isIdentifier(expression)) {
+		return expression.text;
+	}
+
+	if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) {
+		return expression.name.text;
+	}
+
+	return undefined;
+}
+
+function tryGetStringLiteral(node: ts.Expression): string | undefined {
+	if (ts.isStringLiteralLike(node)) {
+		return node.text.trim();
+	}
+
+	return undefined;
 }

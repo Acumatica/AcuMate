@@ -20,6 +20,8 @@ const viewFieldMatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMatch.t
 const viewFieldCompletionFixture = path.join(fixturesRoot, 'GraphInfoViewFieldCompletion.ts');
 const caseInsensitiveFixture = path.join(fixturesRoot, 'GraphInfoScreenCaseInsensitive.ts');
 const suppressedFixture = path.join(fixturesRoot, 'GraphInfoScreenSuppressed.ts');
+const linkCommandInvalidFixture = path.join(fixturesRoot, 'GraphInfoLinkCommandInvalid.ts');
+const linkCommandValidFixture = path.join(fixturesRoot, 'GraphInfoLinkCommandValid.ts');
 const suppressedFileFixture = path.join(fixturesRoot, 'GraphInfoScreenFileSuppressed.ts');
 
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
@@ -189,6 +191,32 @@ describe('graphInfo decorator assistance', () => {
 			suppressedDiagnostics.length,
 			0,
 			'Expected acumate-disable-next-line to suppress graphInfo diagnostics'
+		);
+	});
+
+	it('validates linkCommand decorators against backend actions', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'ExistingBackendAction' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const invalidDocument = await vscode.workspace.openTextDocument(linkCommandInvalidFixture);
+		const invalidDiagnostics = await collectGraphInfoDiagnostics(invalidDocument, sampleGraphs);
+		assert.ok(
+			invalidDiagnostics.some(diag => diag.message.includes('@linkCommand')),
+			'Expected diagnostic when @linkCommand references missing backend action'
+		);
+
+		const validDocument = await vscode.workspace.openTextDocument(linkCommandValidFixture);
+		const validDiagnostics = await collectGraphInfoDiagnostics(validDocument, sampleGraphs);
+		assert.strictEqual(
+			validDiagnostics.length,
+			0,
+			'Expected no diagnostics when @linkCommand targets backend action'
 		);
 	});
 

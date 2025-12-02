@@ -48,7 +48,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             return;
         }
 
-        await fetch(AcuMateContext.ConfigurationService.backedUrl!+LogoutEndpoint, {
+        const response = await fetch(AcuMateContext.ConfigurationService.backedUrl!+LogoutEndpoint, {
             method:'POST',
             headers: {
                 "Content-Type": "application/json",
@@ -57,6 +57,13 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         });
 
         this.sessionCookieHeader = undefined;
+
+        if (response.ok) {
+            console.log('Logged out successfully.');
+        } else {
+            const errorBody = await response.text().catch(() => "");
+            console.error(`Authentication failed with status ${response.status}: ${errorBody}`);
+        }
     }
 
     private async makeGetRequest<T>(route: string): Promise<T | undefined> {
@@ -69,6 +76,8 @@ export class AcuMateApiClient implements IAcuMateApiClient {
                 const authResponse = await this.auth();
 
                 if (authResponse.status !== 200 && authResponse.status !== 204) {
+                    const errorBody = await authResponse.text().catch(() => "");
+                    console.error(`Authentication failed with status ${authResponse.status}: ${errorBody}`);
                     return undefined;
                 }
             }

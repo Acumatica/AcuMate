@@ -50,6 +50,7 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
 5. **Graph Metadata Assistance**  
    - When `acuMate.useBackend` is enabled, AcuMate queries the connected site for the list of available graphs and surfaces them as completions inside the `@graphInfo` decorator's `graphType` value.  
    - The same metadata powers TypeScript diagnostics, warning when a `graphType` string does not match any graph returned by the backend so you can catch typos before running the UI.
+   - Validates `@linkCommand("ActionName")` decorators on PXFieldState members, ensuring the referenced PXAction exists on the backend graph (case-insensitive comparison).
 
 ### HTML Features
 
