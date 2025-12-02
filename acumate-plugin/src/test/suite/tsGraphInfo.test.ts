@@ -15,7 +15,11 @@ const invalidFixture = path.join(fixturesRoot, 'GraphInfoScreenInvalid.ts');
 const validFixture = path.join(fixturesRoot, 'GraphInfoScreenValid.ts');
 const mismatchFixture = path.join(fixturesRoot, 'GraphInfoScreenMismatch.ts');
 const matchFixture = path.join(fixturesRoot, 'GraphInfoScreenMatch.ts');
+const viewFieldMismatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMismatch.ts');
+const viewFieldMatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMatch.ts');
+const viewFieldCompletionFixture = path.join(fixturesRoot, 'GraphInfoViewFieldCompletion.ts');
 const caseInsensitiveFixture = path.join(fixturesRoot, 'GraphInfoScreenCaseInsensitive.ts');
+const suppressedFixture = path.join(fixturesRoot, 'GraphInfoScreenSuppressed.ts');
 
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
 
@@ -108,6 +112,82 @@ describe('graphInfo decorator assistance', () => {
 			diagnostics.length,
 			0,
 			'expected no diagnostics when backend metadata differs by casing only'
+		);
+	});
+
+	it('validates PXView fields against backend metadata', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						OrderNbr: { name: 'OrderNbr' }
+					}
+				}
+			},
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const mismatchDocument = await vscode.workspace.openTextDocument(viewFieldMismatchFixture);
+		const mismatchDiagnostics = await collectGraphInfoDiagnostics(mismatchDocument, sampleGraphs);
+		assert.ok(
+			mismatchDiagnostics.some(diag => diag.message.includes('MissingBackendField')),
+			'should detect PXView fields that are not part of backend metadata'
+		);
+
+		const matchDocument = await vscode.workspace.openTextDocument(viewFieldMatchFixture);
+		const matchDiagnostics = await collectGraphInfoDiagnostics(matchDocument, sampleGraphs);
+		assert.strictEqual(matchDiagnostics.length, 0, 'expected no diagnostics when PXView fields align with backend metadata');
+	});
+
+	it('suggests PXFieldState declarations for PXView classes from backend metadata', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						ExistingField: { name: 'ExistingField' },
+						SuggestedField: { name: 'SuggestedField', displayName: 'Suggested Field' }
+					}
+				}
+			},
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(viewFieldCompletionFixture);
+		const marker = '// completion-marker';
+		const markerIndex = document.getText().indexOf(marker);
+		assert.ok(markerIndex >= 0, 'completion marker not found');
+		const caret = document.positionAt(markerIndex);
+		const completions = await provideTSCompletionItems(
+			document,
+			caret,
+			new vscode.CancellationTokenSource().token,
+			{ triggerKind: vscode.CompletionTriggerKind.Invoke } as vscode.CompletionContext
+		);
+		const labels = (completions ?? []).map(item => item.label);
+		assert.ok(labels.includes('SuggestedField'), 'PXView field completion should include backend fields not yet declared');
+		assert.ok(!labels.includes('ExistingField'), 'existing PXView fields should not be suggested again');
+	});
+
+	it('respects acumate-disable-next-line directives for graphInfo diagnostics', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'SaveAction' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const suppressedDocument = await vscode.workspace.openTextDocument(suppressedFixture);
+		const suppressedDiagnostics = await collectGraphInfoDiagnostics(suppressedDocument, sampleGraphs);
+		assert.strictEqual(
+			suppressedDiagnostics.length,
+			0,
+			'Expected acumate-disable-next-line to suppress graphInfo diagnostics'
 		);
 	});
 });

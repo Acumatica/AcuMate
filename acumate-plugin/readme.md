@@ -70,6 +70,12 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
    - Provides field name suggestions that automatically scope to the closest parent view binding, so only valid fields appear.  
    - Attribute parsing tolerates empty values (`view.bind=""`) to keep suggestions responsive while editing.
 
+### Suppressing Diagnostics
+
+- Any HTML warning emitted by the validator can be silenced on a per-line basis by inserting `<!-- acumate-disable-next-line htmlValidator -->` immediately above the element that triggered the message. The directive only applies to the following line, keeping the rest of the document validated as usual.
+- GraphInfo warnings inside TypeScript files can be suppressed the same way with `// acumate-disable-next-line graphInfo` (or the quick fix described below) on the line before the PXScreen property.
+- Both HTML and TypeScript diagnostics surface a quick fix in the lightbulb menu: select the warning and choose **Suppress with acumate-disable-next-line** to insert the appropriate directive automatically.
+
 ### Quality & CI
 
 1. **Automated Tests**  

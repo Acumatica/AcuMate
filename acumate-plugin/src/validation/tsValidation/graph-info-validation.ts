@@ -6,7 +6,9 @@ import { findGraphTypeLiterals } from '../../typescript/graph-info-utils';
 import { AcuMateContext } from '../../plugin-context';
 import { GraphModel } from '../../model/graph-model';
 import { GraphStructure } from '../../model/graph-structure';
-import { getClassPropertiesFromTs, CollectedClassInfo, ClassPropertyInfo } from '../../utils';
+import { getClassPropertiesFromTs, CollectedClassInfo, ClassPropertyInfo, createClassInfoLookup } from '../../utils';
+import { buildBackendActionSet, buildBackendViewMap, normalizeMetaName } from '../../backend-metadata-utils';
+import { createSuppressionEngine, SuppressionEngine } from '../../diagnostics/suppression';
 
 export function registerGraphInfoValidation(context: vscode.ExtensionContext) {
 	if (!AcuMateContext.ConfigurationService.useBackend) {
@@ -63,7 +65,9 @@ const graphs = graphsOverride ?? (await getAvailableGraphs());
 		return [];
 	}
 
-	const sourceFile = ts.createSourceFile(document.fileName, document.getText(), ts.ScriptTarget.Latest, true);
+	const documentText = document.getText();
+	const suppression = createSuppressionEngine(documentText, 'ts');
+	const sourceFile = ts.createSourceFile(document.fileName, documentText, ts.ScriptTarget.Latest, true);
 	const literals = findGraphTypeLiterals(sourceFile);
 	const diagnostics: vscode.Diagnostic[] = [];
 	const normalizedDocumentPath = path.normalize(document.fileName);
@@ -78,12 +82,11 @@ const graphs = graphsOverride ?? (await getAvailableGraphs());
 			document.positionAt(info.literal.getStart()),
 			document.positionAt(info.literal.getEnd())
 		);
-		diagnostics.push(
-			new vscode.Diagnostic(
-				range,
-				`The graphType "${graphName}" is not available on the connected server.`,
-				vscode.DiagnosticSeverity.Warning
-			)
+		pushGraphDiagnostic(
+			diagnostics,
+			range,
+			`The graphType "${graphName}" is not available on the connected server.`,
+			suppression
 		);
 	}
 
@@ -102,7 +105,8 @@ const graphs = graphsOverride ?? (await getAvailableGraphs());
 		return diagnostics;
 	}
 
-	const classInfos = getClassPropertiesFromTs(document.getText(), document.fileName);
+	const classInfos = getClassPropertiesFromTs(documentText, document.fileName);
+	const classInfoLookup = createClassInfoLookup(classInfos);
 	const screenClasses = classInfos.filter(
 		info => info.type === 'PXScreen' && path.normalize(info.sourceFile.fileName) === normalizedDocumentPath
 	);
@@ -110,46 +114,72 @@ const graphs = graphsOverride ?? (await getAvailableGraphs());
 		return diagnostics;
 	}
 
-	const viewActionDiagnostics = compareScreenDeclarationsWithGraph(screenClasses, structure, document, graphName);
-	diagnostics.push(...viewActionDiagnostics);
+	diagnostics.push(
+		...compareScreenDeclarationsWithGraph(screenClasses, structure, document, graphName, suppression)
+	);
+	diagnostics.push(
+		...compareViewClassesWithGraph(screenClasses, classInfoLookup, structure, document, graphName, suppression)
+	);
 	return diagnostics;
+}
+
+function pushGraphDiagnostic(
+	diagnostics: vscode.Diagnostic[],
+	range: vscode.Range,
+	message: string,
+	suppression: SuppressionEngine,
+	severity: vscode.DiagnosticSeverity = vscode.DiagnosticSeverity.Warning
+) {
+	if (suppression.isSuppressed(range.start.line, 'graphInfo')) {
+		return;
+	}
+
+	const diagnostic = new vscode.Diagnostic(range, message, severity);
+	diagnostic.code = 'graphInfo';
+	diagnostic.source = 'graphInfo';
+	diagnostics.push(diagnostic);
 }
 
 function compareScreenDeclarationsWithGraph(
 	screenClasses: CollectedClassInfo[],
 	structure: GraphStructure,
 	document: vscode.TextDocument,
-	graphName: string
+	graphName: string,
+	suppression: SuppressionEngine
 ): vscode.Diagnostic[] {
 	const diagnostics: vscode.Diagnostic[] = [];
-	const backendViewNames = collectNormalizedViewNames(structure.views);
-	const backendActionNames = collectNormalizedActionNames(structure.actions);
+	const backendViewMap = buildBackendViewMap(structure);
+	const backendActionNames = buildBackendActionSet(structure);
 
 	for (const screenClass of screenClasses) {
 		for (const property of screenClass.properties.values()) {
 			const propertyName = normalizeMetaName(property.name);
 			if ((property.kind === 'view' || property.kind === 'viewCollection') && propertyName) {
-				if (!backendViewNames.has(propertyName)) {
-					diagnostics.push(
-						createPropertyDiagnostic(
-							document,
-							property,
-							`The PXScreen declares view "${property.name}" which does not exist in graph "${graphName}".`
-						)
+				if (!backendViewMap.has(propertyName)) {
+					const diagnostic = createPropertyDiagnostic(
+						document,
+						property,
+						`The PXScreen declares view "${property.name}" which does not exist in graph "${graphName}".`,
+						suppression
 					);
+					if (diagnostic) {
+						diagnostics.push(diagnostic);
+					}
 				}
 				continue;
 			}
 
 			if (property.kind === 'action' && propertyName) {
 				if (!backendActionNames.has(propertyName)) {
-					diagnostics.push(
-						createPropertyDiagnostic(
-							document,
-							property,
-							`The PXScreen declares action "${property.name}" which does not exist in graph "${graphName}".`
-						)
+					const diagnostic = createPropertyDiagnostic(
+						document,
+						property,
+						`The PXScreen declares action "${property.name}" which does not exist in graph "${graphName}".`,
+						suppression
 					);
+					if (diagnostic) {
+						diagnostics.push(diagnostic);
+					}
 				}
 			}
 		}
@@ -158,60 +188,92 @@ function compareScreenDeclarationsWithGraph(
 	return diagnostics;
 }
 
-function normalizeMetaName(value: string | undefined): string | undefined {
-	if (typeof value !== 'string') {
-		return undefined;
+function compareViewClassesWithGraph(
+	screenClasses: CollectedClassInfo[],
+	classInfoLookup: Map<string, CollectedClassInfo>,
+	structure: GraphStructure,
+	document: vscode.TextDocument,
+	graphName: string,
+	suppression: SuppressionEngine
+): vscode.Diagnostic[] {
+	const diagnostics: vscode.Diagnostic[] = [];
+	const backendViewMap = buildBackendViewMap(structure);
+	if (!backendViewMap.size) {
+		return diagnostics;
 	}
 
-	const normalized = value.trim().toLowerCase();
-	return normalized.length ? normalized : undefined;
-}
+	const processedPairs = new Set<string>();
 
-function collectNormalizedViewNames(views: GraphStructure['views']): Set<string> {
-	const names = new Set<string>();
-	if (!views) {
-		return names;
-	}
+	for (const screenClass of screenClasses) {
+		for (const property of screenClass.properties.values()) {
+			if ((property.kind !== 'view' && property.kind !== 'viewCollection') || !property.viewClassName) {
+				continue;
+			}
 
-	for (const [key, view] of Object.entries(views)) {
-		const normalizedKey = normalizeMetaName(key);
-		if (normalizedKey) {
-			names.add(normalizedKey);
+			const normalizedViewName = normalizeMetaName(property.name);
+			if (!normalizedViewName) {
+				continue;
+			}
+
+			const backendView = backendViewMap.get(normalizedViewName);
+			if (!backendView || !backendView.fields.size) {
+				continue;
+			}
+
+			const viewClassInfo = classInfoLookup.get(property.viewClassName);
+			if (!viewClassInfo) {
+				continue;
+			}
+
+			const pairKey = `${viewClassInfo.className}::${backendView.normalizedName}`;
+			if (processedPairs.has(pairKey)) {
+				continue;
+			}
+			processedPairs.add(pairKey);
+
+			for (const fieldProperty of viewClassInfo.properties.values()) {
+				if (fieldProperty.kind !== 'field') {
+					continue;
+				}
+
+				const normalizedFieldName = normalizeMetaName(fieldProperty.name);
+				if (!normalizedFieldName) {
+					continue;
+				}
+
+				if (!backendView.fields.has(normalizedFieldName)) {
+					const diagnostic = createPropertyDiagnostic(
+						document,
+						fieldProperty,
+						`The PXView "${viewClassInfo.className}" declares field "${fieldProperty.name}" which does not exist in backend view "${backendView.viewName}" for graph "${graphName}".`,
+						suppression
+					);
+					if (diagnostic) {
+						diagnostics.push(diagnostic);
+					}
+				}
+			}
 		}
-
-		const normalizedName = normalizeMetaName(view?.name);
-		if (normalizedName) {
-			names.add(normalizedName);
-		}
 	}
 
-	return names;
-}
-
-function collectNormalizedActionNames(actions: GraphStructure['actions']): Set<string> {
-	const names = new Set<string>();
-	if (!actions) {
-		return names;
-	}
-
-	for (const action of actions) {
-		const normalized = normalizeMetaName(action?.name);
-		if (normalized) {
-			names.add(normalized);
-		}
-	}
-
-	return names;
+	return diagnostics;
 }
 
 function createPropertyDiagnostic(
 	document: vscode.TextDocument,
 	property: ClassPropertyInfo,
-	message: string
-): vscode.Diagnostic {
+	message: string,
+	suppression: SuppressionEngine
+): vscode.Diagnostic | undefined {
 	const range = new vscode.Range(
 		document.positionAt(property.node.getStart()),
 		document.positionAt(property.node.getEnd())
 	);
-	return new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Warning);
+	if (suppression.isSuppressed(range.start.line, 'graphInfo')) {
+		return undefined;
+	}
+	const diagnostic = new vscode.Diagnostic(range, message, vscode.DiagnosticSeverity.Warning);
+	diagnostic.code = 'graphInfo';
+	diagnostic.source = 'graphInfo';
+	return diagnostic;
 }

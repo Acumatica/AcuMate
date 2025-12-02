@@ -16,6 +16,7 @@ import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
 import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
 import { registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
+import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -31,6 +32,7 @@ export function activate(context: vscode.ExtensionContext) {
 	registerHtmlDefinitionProvider(context);
 	registerHtmlCompletionProvider(context);
 	registerGraphInfoValidation(context);
+    registerSuppressionCodeActions(context);
 
 }
 

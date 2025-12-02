@@ -1,9 +1,10 @@
 import vscode from 'vscode';
 import ts from 'typescript';
-import { buildClassInheritance, tryGetGraphType } from '../utils';
+import { buildClassInheritance, tryGetGraphType, getClassPropertiesFromTs, createClassInfoLookup } from '../utils';
 import { AcuMateContext } from '../plugin-context';
 import { getAvailableGraphs } from '../services/graph-metadata-service';
 import { getGraphTypeLiteralAtPosition } from '../typescript/graph-info-utils';
+import { buildBackendViewMap, normalizeMetaName } from '../backend-metadata-utils';
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
 
@@ -14,12 +15,15 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
         return graphTypeCompletions;
     }
 
-    let isInsideScreenClass = false;
-    let isInsideViewClass = false;
-    let viewName: string | undefined;
+    let activeClassName: string | undefined;
+    let activeClassKind: 'PXScreen' | 'PXView' | undefined;
 
     // Walk through the AST to find the specified class and check the position
     function findClassAndCheckPosition(node: ts.Node) {
+        if (activeClassKind) {
+            return;
+        }
+
         if (ts.isClassDeclaration(node) && node.name) {
             const inheritanceInfo = buildClassInheritance(node);
             const screenOrViewItem = inheritanceInfo.chain.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
@@ -28,8 +32,8 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
                 const { line: endLine } = document.positionAt(node.getEnd());
 
                 if (position.line >= startLine && position.line <= endLine) {
-                    isInsideScreenClass = screenOrViewItem.escapedText === "PXScreen";
-                    isInsideViewClass = screenOrViewItem.escapedText === "PXView";
+                    activeClassName = node.name.text;
+                    activeClassKind = screenOrViewItem.escapedText as 'PXScreen' | 'PXView';
                     return;
                 }
             }
@@ -44,7 +48,7 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
 
     const suggestions: vscode.CompletionItem[] = [];
 
-    if (isInsideScreenClass) {
+    if (activeClassKind === 'PXScreen') {
         const graphName = tryGetGraphType(document.getText());
 
         if (!graphName) {
@@ -53,86 +57,114 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
 
         const apiClient = AcuMateContext.ApiService;
         const graphStructure = await apiClient.getGraphStructure(graphName);
-        if (!graphStructure?.actions) {
+        if (!graphStructure) {
             return;
         }
 
-        graphStructure?.actions.forEach(a => {
-            if (!a.name) {
+        graphStructure.actions?.forEach(a => {
+            if (!a?.name) {
                 return;
             }
 
-            // Define a completion item
-            const suggestion = new vscode.CompletionItem(
-                a.name,
-                vscode.CompletionItemKind.Property
-            );
+            const suggestion = new vscode.CompletionItem(a.name, vscode.CompletionItemKind.Property);
             suggestion.detail = `Action ${a.name} (${a.displayName})`;
             suggestion.insertText = `${a.name}: PXActionState;`;
-            suggestion.documentation = new vscode.MarkdownString(
-                'Action from the graph ' + graphName
-            );
-
+            suggestion.documentation = new vscode.MarkdownString('Action from the graph ' + graphName);
             suggestions.push(suggestion);
         });
 
+        if (graphStructure.views) {
+            for (const viewKey of Object.keys(graphStructure.views)) {
+                const viewMeta = graphStructure.views[viewKey];
+                if (!viewMeta?.name) {
+                    continue;
+                }
 
-        if (!graphStructure?.views) {
-            return;
-        }
-
-        for (const viewName in graphStructure.views) {
-            const v = graphStructure.views[viewName];
-            if (!v.name) {
-                return;
+                const suggestion = new vscode.CompletionItem(viewMeta.name, vscode.CompletionItemKind.Property);
+                suggestion.detail = `View ${viewMeta.name} (${viewMeta.cacheName})`;
+                suggestion.insertText = `${viewMeta.name} = createSingle(${viewMeta.cacheType});`;
+                suggestion.documentation = new vscode.MarkdownString('View from the graph ' + graphName);
+                suggestions.push(suggestion);
             }
-
-            // Define a completion item
-            const suggestion = new vscode.CompletionItem(
-                v.name,
-                vscode.CompletionItemKind.Property
-            );
-            suggestion.detail = `View ${v.name} (${v.cacheName})`;
-            suggestion.insertText = `${v.name} = createSingle(${v.cacheType});`;
-            suggestion.documentation = new vscode.MarkdownString(
-                'View from the graph ' + graphName
-            );
-
-            suggestions.push(suggestion);
         }
     }
-    else if (isInsideViewClass) {
-
+    else if (activeClassKind === 'PXView' && activeClassName) {
         const graphName = tryGetGraphType(document.getText());
-
         if (!graphName) {
             return;
         }
 
         const apiClient = AcuMateContext.ApiService;
         const graphStructure = await apiClient.getGraphStructure(graphName);
-        if (!graphStructure?.actions) {
+        if (!graphStructure) {
             return;
         }
 
-        graphStructure?.actions.forEach(a => {
-            if (!a.name) {
-                return;
+        const classInfos = getClassPropertiesFromTs(document.getText(), document.fileName);
+        const classInfoLookup = createClassInfoLookup(classInfos);
+        const viewClassInfo = classInfoLookup.get(activeClassName);
+        if (!viewClassInfo) {
+            return;
+        }
+
+        const backendViewMap = buildBackendViewMap(graphStructure);
+        if (!backendViewMap.size) {
+            return;
+        }
+
+        const referencingViewNames = new Set<string>();
+        for (const classInfo of classInfos) {
+            for (const property of classInfo.properties.values()) {
+                if ((property.kind === 'view' || property.kind === 'viewCollection') && property.viewClassName === activeClassName) {
+                    const normalized = normalizeMetaName(property.name);
+                    if (normalized) {
+                        referencingViewNames.add(normalized);
+                    }
+                }
+            }
+        }
+
+        if (!referencingViewNames.size) {
+            return;
+        }
+
+        const existingFields = new Set<string>();
+        for (const property of viewClassInfo.properties.values()) {
+            if (property.kind === 'field') {
+                const normalized = normalizeMetaName(property.name);
+                if (normalized) {
+                    existingFields.add(normalized);
+                }
+            }
+        }
+
+        const offeredFields = new Set<string>();
+        for (const normalizedViewName of referencingViewNames) {
+            const backendView = backendViewMap.get(normalizedViewName);
+            if (!backendView) {
+                continue;
             }
 
-            // Define a completion item
-            const suggestion = new vscode.CompletionItem(
-                a.name,
-                vscode.CompletionItemKind.Property
-            );
-            suggestion.detail = `Action ${a.name} (${a.displayName})`;
-            suggestion.insertText = `${a.name}: PXActionState;`;
-            suggestion.documentation = new vscode.MarkdownString(
-                'Action from the graph ' + graphName
-            );
+            for (const fieldMetadata of backendView.fields.values()) {
+                if (existingFields.has(fieldMetadata.normalizedName) || offeredFields.has(fieldMetadata.normalizedName)) {
+                    continue;
+                }
 
-            suggestions.push(suggestion);
-        });
+                offeredFields.add(fieldMetadata.normalizedName);
+
+                const suggestion = new vscode.CompletionItem(fieldMetadata.fieldName, vscode.CompletionItemKind.Property);
+                suggestion.detail = `Field ${fieldMetadata.fieldName} (${backendView.viewName})`;
+                suggestion.insertText = `${fieldMetadata.fieldName}: PXFieldState;`;
+
+                const docLines = [`Field from view ${backendView.viewName} in graph ${graphName}.`];
+                if (fieldMetadata.field.displayName) {
+                    docLines.push(`Display name: ${fieldMetadata.field.displayName}`);
+                }
+                suggestion.documentation = new vscode.MarkdownString(docLines.join('\n\n'));
+
+                suggestions.push(suggestion);
+            }
+        }
     }
 
     // Return an array of suggestions
