@@ -457,8 +457,10 @@ describe('HTML definition provider integration', () => {
 		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
 		assert.ok(locations.length >= 1, 'No definitions returned for selector field');
 		assert.ok(
-			locations.some(loc => loc.uri.fsPath.endsWith('SO301000.ts')),
-			'Expected field definition inside base screen TS file'
+			locations.some(loc =>
+				loc.uri.fsPath.endsWith('SO301000.ts') || loc.uri.fsPath.endsWith('SO301000_Manufacturing.ts')
+			),
+			'Expected field definition inside base screen or manufacturing mixin TS file'
 		);
 	});
 

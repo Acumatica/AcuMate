@@ -6,8 +6,6 @@ export class SOOrder extends PXView {
 	BaseOrderField!: PXFieldState;
 	CuryGoodsExtPriceTotal!: PXFieldState;
 	BlanketOpenQty!: PXFieldState;
-	AMCuryEstimateTotal!: PXFieldState;
-	AMEstimateQty!: PXFieldState;
 }
 
 export class SO301000 extends PXScreen {
