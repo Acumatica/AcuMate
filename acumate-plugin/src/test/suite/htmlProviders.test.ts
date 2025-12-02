@@ -10,6 +10,7 @@ import { IAcuMateApiClient } from '../../api/acu-mate-api-client';
 import { GraphStructure } from '../../model/graph-structure';
 import { GraphModel } from '../../model/graph-model';
 import { FeatureModel } from '../../model/FeatureModel';
+import { provideHtmlFieldHover } from '../../providers/html-hover-provider';
 import { ConfigurationService } from '../../services/configuration-service';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
@@ -163,6 +164,36 @@ describe('HTML completion provider integration', () => {
 			fieldItem?.detail?.includes('qp-drop-down'),
 			'Field completion should mention default control type'
 		);
+	});
+
+	it('shows backend metadata when hovering HTML field names', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						BillShipmentSource: {
+							name: 'BillShipmentSource',
+							displayName: 'Ship-To Address',
+							typeName: 'System.String',
+							defaultControlType: 'qp-drop-down'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(fieldControlHtmlPath);
+		const caret = positionAt(document, 'BillShipmentSource', 'BillShipmentSource'.length - 1);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for HTML field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Ship-To Address/.test(value), 'Hover should show backend display name');
+		assert.ok(/qp-drop-down/.test(value), 'Hover should show default control type');
 	});
 
 	it('suggests view names for using view attribute', async () => {
