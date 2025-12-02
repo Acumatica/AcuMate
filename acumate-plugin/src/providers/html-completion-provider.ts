@@ -10,6 +10,7 @@ import {
 	filterScreenLikeClasses,
 	collectActionProperties,
 	extractConfigPropertyNames,
+	filterClassesBySource,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -24,6 +25,8 @@ import {
 } from '../services/client-controls-service';
 import { getScreenTemplates } from '../services/screen-template-service';
 import { getIncludeMetadata, IncludeMetadata } from '../services/include-service';
+import { BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
+import { loadBackendFieldsForView } from './html-backend-utils';
 
 // Registers completions so HTML view bindings stay in sync with PX metadata.
 export function registerHtmlCompletionProvider(context: vscode.ExtensionContext) {
@@ -81,6 +84,11 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return configCompletions;
 		}
 
+		const controlTypeCompletions = this.tryProvideControlTypeCompletions(document, elementNode, attributeContext);
+		if (controlTypeCompletions) {
+			return controlTypeCompletions;
+		}
+
 		if (!attributeContext) {
 			return undefined;
 		}
@@ -95,8 +103,13 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return undefined;
 		}
 
+		const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
+		if (!relevantClassInfos.length) {
+			return undefined;
+		}
+
 		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = filterScreenLikeClasses(classInfos);
+		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
 		// Completions are sourced from the same metadata as validation/definitions to keep behavior consistent.
 
 		if (attributeContext.attributeName === 'view.bind') {
@@ -128,7 +141,8 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 				return undefined;
 			}
 
-			return this.createFieldCompletions(viewClass.properties);
+			const backendFields = await loadBackendFieldsForView(viewName, screenClasses);
+			return this.createFieldCompletions(viewClass.properties, backendFields);
 		}
 
 		return undefined;
@@ -203,6 +217,46 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			placeholder = '${1:null}';
 		}
 		return new vscode.SnippetString(`"${name}": ${placeholder}`);
+	}
+
+	private tryProvideControlTypeCompletions(
+		document: vscode.TextDocument,
+		elementNode: any,
+		attributeContext: ReturnType<typeof getAttributeContext>
+	): vscode.CompletionItem[] | undefined {
+		if (
+			!attributeContext ||
+			attributeContext.attributeName !== 'control-type' ||
+			(attributeContext.tagName !== 'field' && attributeContext.tagName !== 'qp-field')
+		) {
+			return undefined;
+		}
+
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const controls = getClientControlsMetadata({
+			startingPath: document.uri.fsPath,
+			workspaceRoots,
+		});
+		if (!controls.length) {
+			return undefined;
+		}
+
+		const prefix = (attributeContext.value ?? '').toLowerCase();
+		const items: vscode.CompletionItem[] = [];
+		for (const control of controls) {
+			if (prefix && !control.tagName.toLowerCase().startsWith(prefix)) {
+				continue;
+			}
+
+			const item = new vscode.CompletionItem(control.tagName, vscode.CompletionItemKind.EnumMember);
+			item.sortText = `0_${control.tagName}`;
+			item.detail = control.config?.displayName ?? control.className;
+			item.documentation = this.buildControlDocumentation(control);
+			item.range = attributeContext.valueRange;
+			items.push(item);
+		}
+
+		return items.length ? items : undefined;
 	}
 
 	private async tryProvideControlTagCompletion(
@@ -477,7 +531,10 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 	}
 
 	// Builds the suggestion set for <field name="..."> attributes scoped to a PXView.
-	private createFieldCompletions(properties: Map<string, ClassPropertyInfo>): vscode.CompletionItem[] {
+	private createFieldCompletions(
+		properties: Map<string, ClassPropertyInfo>,
+		backendFields?: Map<string, BackendFieldMetadata>
+	): vscode.CompletionItem[] {
 		const items: vscode.CompletionItem[] = [];
 
 		for (const [name, property] of properties) {
@@ -486,7 +543,23 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			}
 
 			const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Field);
-			item.detail = property.typeName ?? 'PXFieldState';
+			const normalizedName = backendFields ? normalizeMetaName(name) : undefined;
+			const backendField = normalizedName && backendFields ? backendFields.get(normalizedName) : undefined;
+			const baseDetail = property.typeName ?? 'PXFieldState';
+			if (backendField?.field.defaultControlType) {
+				item.detail = `${baseDetail} • default: ${backendField.field.defaultControlType}`;
+				const markdown = new vscode.MarkdownString(
+					`Default control: \`${backendField.field.defaultControlType}\``
+				);
+				if (backendField.field.displayName) {
+					markdown.appendMarkdown(`\n\n**${backendField.field.displayName}**`);
+				}
+				markdown.isTrusted = false;
+				item.documentation = markdown;
+			}
+			else {
+				item.detail = baseDetail;
+			}
 			items.push(item);
 		}
 

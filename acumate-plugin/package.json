@@ -49,11 +49,6 @@
           "default": true,
           "description": "Use the backend for plugin. If 'false' some features won't work."
         },
-        "acuMate.useAuthentification": {
-          "type": "boolean",
-          "default": true,
-          "description": "Use credentials to access Acumatica backend."
-        },
         "acuMate.usePrettier": {
           "type": "boolean",
           "default": true,
@@ -180,10 +175,12 @@
     "@vscode/test-cli": "^0.0.10",
     "@vscode/test-electron": "^2.4.1",
     "eslint": "^9.13.0",
-    "glob": "^10.4.5"
+    "glob": "^10.4.5",
+    "tar": "^7.5.2"
   },
   "dependencies": {
     "handlebars": "^4.7.8",
+    "css-select": "^5.1.0",
     "htmlparser2": "^9.1.0",
     "jsonic": "^1.0.1",
     "prettier": "3.3.0",

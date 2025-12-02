@@ -2,7 +2,7 @@
 
 ## Description
 
-**AcuMate** is a Visual Studio Code extension designed specifically for working with the **Acumatica ERP** platform's Modern UI. This extension streamlines development tasks, providing tools to improve productivity, consistency, and ease of use when working with Acumatica. AcuMate offers customizable settings to connect seamlessly with your backend, manage authentication, optimize caching, and enforce code quality standards with integrated Prettier support. 
+**AcuMate** is a Visual Studio Code extension designed specifically for working with the **Acumatica ERP** platform's Modern UI. This extension streamlines development tasks, providing tools to improve productivity, consistency, and ease of use when working with Acumatica. 
 
 ## Settings
 
@@ -18,11 +18,8 @@ The AcuMate extension provides a range of settings to configure its behavior. Ea
 | `acuMate.tenant`                 | `string`  | `""`              | Specifies the tenant to use.                                                                    |
 | `acuMate.useCache`               | `boolean` | `true`            | Enables caching of server responses.                                                            |
 | `acuMate.useBackend`             | `boolean` | `true`            | Enables the use of the backend for the plugin. Disabling this may cause some features to stop working. |
-| `acuMate.useAuthentification`    | `boolean` | `true`            | Uses credentials to access the Acumatica backend.                                               |
 | `acuMate.usePrettier`            | `boolean` | `true`            | Applies Prettier formatting to generated files.                                                 |
 | `acuMate.clearUsages`            | `boolean` | `true`            | Runs the `organizeUsages` command on generated files.                                           |
-
-Each of these settings can be adjusted to optimize your development experience with the AcuMate extension.
 
 
 ## Features
@@ -47,6 +44,12 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
 4. **Snippets**  
    - **Event Hook Creation**: Quickly add event hooks to TypeScript code with built-in snippets.
 
+5. **Graph Metadata Assistance**  
+   - When `acuMate.useBackend` is enabled, AcuMate queries the connected site for the list of available graphs and surfaces them as completions inside the `@graphInfo` decorator's `graphType` value.  
+   - The same metadata powers TypeScript diagnostics, warning when a `graphType` string does not match any graph returned by the backend so you can catch typos before running the UI.
+   - Validates `@linkCommand("ActionName")` decorators on PXFieldState members, ensuring the referenced PXAction exists on the backend graph (case-insensitive comparison).
+   - Screen extension TypeScript files (under `.../extensions/...`) automatically reuse the parent screen's `@graphInfo` metadata so backend validations, completions, and linkCommand checks keep working even when the extension file lacks its own decorator.
+
 ### HTML Features
 
 1. **HTML Validation Against TypeScript + Client Metadata**  
@@ -66,13 +69,12 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
    - Provides field name suggestions that automatically scope to the closest parent view binding, so only valid fields appear.  
    - Attribute parsing tolerates empty values (`view.bind=""`) to keep suggestions responsive while editing.
 
-### Quality & CI
+### Suppressing Diagnostics
 
-1. **Automated Tests**  
-   - Run `npm test` locally to compile, lint, and execute the VS Code integration suites (metadata, HTML providers, validator).
-   - The GitHub Actions workflow in `.github/workflows/ci.yml` mirrors this command on pushes and pull requests across Node 18.x and 20.x, ensuring extensions remain stable before merges.
-
-
+- Any HTML warning emitted by the validator can be silenced on a per-line basis by inserting `<!-- acumate-disable-next-line htmlValidator -->` immediately above the element that triggered the message. The directive only applies to the following line, keeping the rest of the document validated as usual.
+- To switch off the validator for an entire HTML file, add `<!-- acumate-disable-file htmlValidator -->` anywhere in the document (commonly at the top). All HTML diagnostics in that file stay muted until the comment is removed.
+- GraphInfo warnings inside TypeScript files respect both `// acumate-disable-next-line graphInfo` and `// acumate-disable-file graphInfo`, so you can either silence a single property or disable the validator for the entire file.
+- HTML and TypeScript diagnostics now expose two lightbulb options: **Suppress with acumate-disable-next-line** inserts the scoped directive above the offending line, while **Suppress file with acumate-disable-file** drops the file-wide directive at the top of the document automatically.
 
 ## Commands
 
@@ -96,4 +98,10 @@ The **AcuMate** extension provides several commands to streamline development ta
 | `acumate.watchCurrentScreen`       | **Watch Current Screen**             | Watches the currently active screen for changes and rebuilds as needed.                                     |
 | `acumate.repeatLastBuildCommand`   | **Repeat Last Build Command**        | Repeats the last executed build command, useful for quick iterations.                                       |
 | `acumate.dropCache`                | **Drop Local Cache**                 | Clears the local cache, ensuring that the next build retrieves fresh data from the backend.                 |
+
+### Quality & CI
+
+1. **Automated Tests**  
+   - Run `npm test` locally to compile, lint, and execute the VS Code integration suites (metadata, HTML providers, validator).
+   - The GitHub Actions workflow in `.github/workflows/ci.yml` mirrors this command on pushes and pull requests across Node 18.x and 20.x, ensuring extensions remain stable before merges.
 

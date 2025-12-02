@@ -410,7 +410,7 @@ export type CollectedClassInfo = {
 function collectClassPropertiesFromSource(
 	sourceFile: ts.SourceFile,
 	visitedFiles: Set<string>,
-	mixinTargets: Map<string, string>
+	mixinTargets: Map<string, Set<string>>
 ): CollectedClassInfo[] {
 	const normalizedFileName = path.normalize(sourceFile.fileName);
 	if (visitedFiles.has(normalizedFileName)) {
@@ -422,9 +422,11 @@ function collectClassPropertiesFromSource(
 
 	const visit = (node: ts.Node) => {
 		if (ts.isInterfaceDeclaration(node)) {
-			const mixinTarget = getMixinTargetFromInterface(node);
-			if (mixinTarget) {
-				mixinTargets.set(node.name.text, mixinTarget);
+			const targets = getMixinTargetsFromInterface(node);
+			if (targets.length) {
+				const existing = mixinTargets.get(node.name.text) ?? new Set<string>();
+				targets.forEach(target => existing.add(target));
+				mixinTargets.set(node.name.text, existing);
 			}
 		}
 		if (ts.isClassDeclaration(node) && node.name) {
@@ -471,46 +473,50 @@ function collectClassPropertiesFromSource(
 	return classes;
 }
 
-function getMixinTargetFromInterface(node: ts.InterfaceDeclaration): string | undefined {
+function getMixinTargetsFromInterface(node: ts.InterfaceDeclaration): string[] {
 	if (!node.heritageClauses) {
-		return undefined;
+		return [];
 	}
 
+	const targets: string[] = [];
 	for (const clause of node.heritageClauses) {
 		if (clause.token !== ts.SyntaxKind.ExtendsKeyword) {
 			continue;
 		}
 
-		if (!clause.types.length) {
-			continue;
-		}
-
-		const firstType = clause.types[0];
-		if (ts.isExpressionWithTypeArguments(firstType) && ts.isIdentifier(firstType.expression)) {
-			return firstType.expression.text;
+		for (const typeNode of clause.types) {
+			if (ts.isExpressionWithTypeArguments(typeNode) && ts.isIdentifier(typeNode.expression)) {
+				targets.push(typeNode.expression.text);
+			}
 		}
 	}
 
-	return undefined;
+	return targets;
 }
 
-function applyMixinTargets(classInfos: CollectedClassInfo[], mixinTargets: Map<string, string>) {
+function applyMixinTargets(classInfos: CollectedClassInfo[], mixinTargets: Map<string, Set<string>>) {
 	if (!mixinTargets.size) {
 		return;
 	}
 
 	const lookup = new Map(classInfos.map(info => [info.className, info]));
 
-	for (const [mixinName, targetName] of mixinTargets) {
+	for (const [mixinName, targetNames] of mixinTargets) {
 		const mixinInfo = lookup.get(mixinName);
-		const targetInfo = lookup.get(targetName);
-		if (!mixinInfo || !targetInfo) {
+		if (!mixinInfo) {
 			continue;
 		}
 
-		for (const [propName, propInfo] of mixinInfo.properties) {
-			if (!targetInfo.properties.has(propName)) {
-				targetInfo.properties.set(propName, propInfo);
+		for (const targetName of targetNames) {
+			const targetInfo = lookup.get(targetName);
+			if (!targetInfo) {
+				continue;
+			}
+
+			for (const [propName, propInfo] of mixinInfo.properties) {
+				if (!targetInfo.properties.has(propName)) {
+					targetInfo.properties.set(propName, propInfo);
+				}
 			}
 		}
 	}
@@ -519,7 +525,7 @@ function applyMixinTargets(classInfos: CollectedClassInfo[], mixinTargets: Map<s
 export function getClassPropertiesFromTs(
 	tsContent: string,
 	filePath = 'temp.ts',
-	mixinAccumulator?: Map<string, string>
+	mixinAccumulator?: Map<string, Set<string>>
 ): CollectedClassInfo[] {
 	const sourceFile = ts.createSourceFile(filePath, tsContent, ts.ScriptTarget.Latest, true);
 	if (filePath && filePath !== 'temp.ts') {
@@ -535,7 +541,7 @@ export function getClassPropertiesFromTs(
 		}
 	}
 
-	const mixinTargets = mixinAccumulator ?? new Map<string, string>();
+	const mixinTargets = mixinAccumulator ?? new Map<string, Set<string>>();
 	const classInfos = collectClassPropertiesFromSource(sourceFile, new Set(), mixinTargets);
 	if (!mixinAccumulator) {
 		applyMixinTargets(classInfos, mixinTargets);
@@ -664,7 +670,7 @@ export function getRelatedTsFiles(htmlFilePath: string): string[] {
 		related.add(path.normalize(direct));
 	}
 
-	const screenTs = tryGetScreenTsFromExtension(htmlFilePath);
+	const screenTs = getScreenTsFromExtension(htmlFilePath);
 	if (screenTs) {
 		related.add(path.normalize(screenTs));
 	}
@@ -672,8 +678,8 @@ export function getRelatedTsFiles(htmlFilePath: string): string[] {
 	return [...related];
 }
 
-function tryGetScreenTsFromExtension(htmlFilePath: string): string | undefined {
-	const normalized = path.normalize(htmlFilePath);
+export function getScreenTsFromExtension(filePath: string): string | undefined {
+	const normalized = path.normalize(filePath);
 	const lowerNormalized = normalized.toLowerCase();
 	const marker = `${path.sep}extensions${path.sep}`.toLowerCase();
 	const markerIndex = lowerNormalized.lastIndexOf(marker);
@@ -694,10 +700,25 @@ function tryGetScreenTsFromExtension(htmlFilePath: string): string | undefined {
 	return fs.existsSync(candidate) ? candidate : undefined;
 }
 
+export function tryGetGraphTypeFromExtension(filePath: string): string | undefined {
+	const screenTs = getScreenTsFromExtension(filePath);
+	if (!screenTs || !fs.existsSync(screenTs)) {
+		return undefined;
+	}
+
+	try {
+		const baseContent = fs.readFileSync(screenTs, 'utf-8');
+		return tryGetGraphType(baseContent);
+	}
+	catch {
+		return undefined;
+	}
+}
+
 export function loadClassInfosFromFiles(tsFilePaths: string[]): CollectedClassInfo[] {
 	const results: CollectedClassInfo[] = [];
 	const visited = new Set<string>();
-	const mixinTargets = new Map<string, string>();
+	const mixinTargets = new Map<string, Set<string>>();
 
 	for (const filePath of tsFilePaths) {
 		const normalized = path.normalize(filePath);
@@ -751,6 +772,15 @@ export function collectActionProperties(classInfos: CollectedClassInfo[]): Map<s
 		}
 	}
 	return actions;
+}
+
+export function filterClassesBySource(classInfos: CollectedClassInfo[], filePaths: string[]): CollectedClassInfo[] {
+	if (!filePaths.length) {
+		return [];
+	}
+
+	const allowed = new Set(filePaths.map(filePath => path.normalize(filePath)));
+	return classInfos.filter(info => allowed.has(path.normalize(info.sourceFile.fileName)));
 }
 
 export function parseConfigObject(rawValue: string | undefined): Record<string, unknown> | undefined {

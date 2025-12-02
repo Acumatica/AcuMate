@@ -1,3 +1,4 @@
+import path from "path";
 import vscode from "vscode";
 import { Parser, DomHandler } from "htmlparser2";
 import {
@@ -11,29 +12,60 @@ import {
   filterScreenLikeClasses,
   collectActionProperties,
   parseConfigObject,
+  filterClassesBySource,
 } from "../../utils";
 import { findParentViewName } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
+import {
+  getBaseScreenDocument,
+  isCustomizationSelectorAttribute,
+  queryBaseScreenElements,
+  BaseScreenDocument,
+  getCustomizationSelectorAttributes,
+} from "../../services/screen-html-service";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
 import { AcuMateContext } from "../../plugin-context";
+import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
 
 const includeIntrinsicAttributes = new Set(["id", "class", "style", "slot"]);
+
+function pushHtmlDiagnostic(
+  diagnostics: vscode.Diagnostic[],
+  suppression: SuppressionEngine,
+  range: vscode.Range,
+  message: string,
+  severity: vscode.DiagnosticSeverity = vscode.DiagnosticSeverity.Warning
+) {
+  if (suppression.isSuppressed(range.start.line, "htmlValidator")) {
+    return;
+  }
+
+  diagnostics.push({
+    severity,
+    range,
+    message,
+    source: "htmlValidator",
+    code: "htmlValidator",
+  });
+}
 
 // Entrypoint invoked by the extension whenever an HTML file should be validated.
 export async function validateHtmlFile(document: vscode.TextDocument) {
   const diagnostics: vscode.Diagnostic[] = [];
   const filePath = document.uri.fsPath;
   const content = document.getText();
+  const suppression = createSuppressionEngine(content, "html");
 
   const tsFilePaths = getRelatedTsFiles(filePath);
 
   // Each CollectedClassInfo entry represents a TypeScript class along with a map of its
   // properties (PXActionState, PXView, PXViewCollection, PXFieldState) including inherited ones.
   const classProperties = tsFilePaths.length ? loadClassInfosFromFiles(tsFilePaths) : [];
+  const relevantClassInfos = filterClassesBySource(classProperties, tsFilePaths);
 
   // Parse the HTML content
   const workspaceRoots = vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath);
@@ -41,19 +73,21 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
     getScreenTemplates({ startingPath: filePath, workspaceRoots })
   );
   const controlMetadata = new Map(
-    getClientControlsMetadata({ startingPath: filePath, workspaceRoots }).map((control) => [control.tagName, control])
+    getClientControlsMetadata({ startingPath: filePath, workspaceRoots }).map((control) => [control.tagName.toLowerCase(), control])
   );
+  const baseScreenDocument = getBaseScreenDocument(filePath);
 
   const handler = new DomHandler(
     (error, dom): void => {
       if (error) {
-        const diagnostic = {
-          severity: vscode.DiagnosticSeverity.Error,
-          range: new vscode.Range(0, 0, 0, 0),
-          message: `Parsing error: ${error.message}`,
-          source: "htmlValidator",
-        };
-        diagnostics.push(diagnostic);
+        const range = new vscode.Range(0, 0, 0, 0);
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
+          range,
+          `Parsing error: ${error.message}`,
+          vscode.DiagnosticSeverity.Error
+        );
       } else {
         // Custom validation logic
         // Custom validation logic goes here
@@ -61,11 +95,15 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           dom,
           diagnostics,
           classProperties,
+          relevantClassInfos,
           content,
           filePath,
           workspaceRoots,
           screenTemplateNames,
-          controlMetadata
+          controlMetadata,
+          baseScreenDocument,
+          suppression,
+          undefined
         );
       }
     },
@@ -89,14 +127,18 @@ function validateDom(
   dom: any[],
   diagnostics: vscode.Diagnostic[],
   classProperties: CollectedClassInfo[],
+  relevantClassInfos: CollectedClassInfo[],
   content: string,
   htmlFilePath: string,
   workspaceRoots: string[] | undefined,
   screenTemplateNames: Set<string>,
-  controlMetadata: Map<string, ClientControlMetadata>
+  controlMetadata: Map<string, ClientControlMetadata>,
+  baseScreenDocument: BaseScreenDocument | undefined,
+  suppression: SuppressionEngine,
+  panelViewContext?: CollectedClassInfo
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
-  const screenClasses = filterScreenLikeClasses(classProperties);
+  const screenClasses = filterScreenLikeClasses(relevantClassInfos);
   const actionLookup = collectActionProperties(screenClasses);
   const hasScreenMetadata = screenClasses.length > 0;
   const canValidateActions = classProperties.length > 0;
@@ -120,6 +162,7 @@ function validateDom(
 
   // Custom validation logic goes here
   dom.forEach((node) => {
+    let nextPanelViewContext = panelViewContext;
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
@@ -136,13 +179,30 @@ function validateDom(
 
       if (!hasValidView) {
         const range = getRange(content, node);
-        const diagnostic: vscode.Diagnostic = {
-          severity: vscode.DiagnosticSeverity.Warning,
-          range: range,
-          message: "The <qp-fieldset> element must be bound to a valid view.",
-          source: "htmlValidator",
-        };
-        diagnostics.push(diagnostic);
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
+          range,
+          "The <qp-fieldset> element must be bound to a valid view."
+        );
+      }
+    }
+
+    if (hasScreenMetadata && node.type === "tag" && node.name === "qp-panel") {
+      const panelId = typeof node.attribs?.id === "string" ? node.attribs.id.trim() : "";
+      if (panelId.length) {
+        const viewResolution = resolveView(panelId);
+        if (!viewResolution) {
+          const range = getRange(content, node);
+          pushHtmlDiagnostic(
+            diagnostics,
+            suppression,
+            range,
+            "The <qp-panel> id must reference a valid view."
+          );
+        } else if (viewResolution.viewClass) {
+          nextPanelViewContext = viewResolution.viewClass;
+        }
       }
     }
 
@@ -157,32 +217,31 @@ function validateDom(
 
       if (!hasValidView) {
         const range = getRange(content, node);
-        const diagnostic: vscode.Diagnostic = {
-          severity: vscode.DiagnosticSeverity.Warning,
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
           range,
-          message: "The <using> element must reference a valid view.",
-          source: "htmlValidator",
-        };
-        diagnostics.push(diagnostic);
+          "The <using> element must reference a valid view."
+        );
       }
     }
 
     const actionBinding = node.attribs?.["state.bind"];
     if (canValidateActions && typeof actionBinding === "string" && actionBinding.length) {
-      if (!actionLookup.has(actionBinding)) {
+      const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
+      if (!actionLookup.has(actionBinding) && !panelHasAction) {
         const range = getRange(content, node);
-        const diagnostic: vscode.Diagnostic = {
-          severity: vscode.DiagnosticSeverity.Warning,
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
           range,
-          message: "The state.bind attribute must reference a valid PXAction.",
-          source: "htmlValidator",
-        };
-        diagnostics.push(diagnostic);
+          "The state.bind attribute must reference a valid PXAction."
+        );
       }
     }
 
     if (node.type === "tag" && node.name === "qp-include") {
-      validateIncludeNode(node, diagnostics, content, htmlFilePath, workspaceRoots);
+      validateIncludeNode(node, diagnostics, content, htmlFilePath, workspaceRoots, suppression);
     }
 
     if (
@@ -212,6 +271,18 @@ function validateDom(
       validateConfigBinding(node.attribs["config.bind"], node);
     }
 
+    if (node.type === "tag" && node.name === "field") {
+      validateFieldCustomizationSelectors(node);
+    }
+
+    if (
+      node.type === "tag" &&
+      (node.name === "field" || node.name === "qp-field") &&
+      typeof node.attribs?.["control-type"] === "string"
+    ) {
+      validateControlTypeAttribute(node);
+    }
+
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
@@ -227,21 +298,25 @@ function validateDom(
         Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
 
       if (!isUnboundReplacement) {
-        const viewname = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
+        let viewName = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
+        if (!viewName) {
+          viewName = getViewNameFromCustomizationSelectors(node);
+        }
         const fieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
-        const viewResolution = resolveView(viewname);
+        const viewResolution = resolveView(viewName);
         const viewClass = viewResolution?.viewClass;
         const fieldProperty = viewClass?.properties.get(fieldName);
         const isValidField = fieldProperty?.kind === "field";
         if (!isValidField) {
           const range = getRange(content, node);
-          const diagnostic = {
-            severity: vscode.DiagnosticSeverity.Warning,
-            range: range,
-            message: "The <field> element must be bound to a valid field.",
-            source: "htmlValidator",
-          };
-          diagnostics.push(diagnostic);
+          pushHtmlDiagnostic(
+            diagnostics,
+            suppression,
+            range,
+            viewName
+              ? `The field "${fieldName}" is not defined on view "${viewName}".`
+              : "The <field> element must be bound to a valid field."
+          );
         }
       }
     }
@@ -251,11 +326,15 @@ function validateDom(
         (<any>node).children,
         diagnostics,
         classProperties,
+        relevantClassInfos,
         content,
         htmlFilePath,
         workspaceRoots,
         screenTemplateNames,
-        controlMetadata
+        controlMetadata,
+        baseScreenDocument,
+        suppression,
+        nextPanelViewContext
       );
     }
   });
@@ -266,12 +345,93 @@ function validateDom(
 
     if (!screenTemplateNames.has(templateName)) {
       const range = getRange(content, node);
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: `The qp-template name "${templateName}" is not one of the predefined screen templates.`,
-        source: "htmlValidator",
-      });
+        `The qp-template name "${templateName}" is not one of the predefined screen templates.`
+      );
+    }
+  }
+
+  function validateFieldCustomizationSelectors(node: any) {
+    if (!baseScreenDocument) {
+      return;
+    }
+
+    forEachCustomizationSelector(node, (attributeName, rawValue, normalizedValue) => {
+      const range =
+        getAttributeValueRange(content, node, attributeName, rawValue) ?? getRange(content, node);
+      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
+      if (error) {
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
+          range,
+          `The ${attributeName} selector "${rawValue}" is not a valid CSS selector (${error}).`
+        );
+        return;
+      }
+
+      if (!nodes.length) {
+        const baseName = path.basename(baseScreenDocument.filePath);
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
+          range,
+          `The ${attributeName} selector "${rawValue}" does not match any elements in ${baseName}.`
+        );
+      }
+    });
+  }
+
+  function getViewNameFromCustomizationSelectors(node: any): string | undefined {
+    if (!baseScreenDocument) {
+      return undefined;
+    }
+
+    let selectorViewName: string | undefined;
+    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
+      if (selectorViewName) {
+        return;
+      }
+
+      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
+      if (error || !nodes.length) {
+        return;
+      }
+
+      for (const target of nodes) {
+        const candidateViewName = findParentViewName(target);
+        if (candidateViewName) {
+          selectorViewName = candidateViewName;
+          return;
+        }
+      }
+    });
+
+    return selectorViewName;
+  }
+
+  function forEachCustomizationSelector(
+    node: any,
+    callback: (attributeName: string, rawValue: string, normalizedValue: string) => void
+  ) {
+    if (!node?.attribs) {
+      return;
+    }
+
+    for (const [attributeName, attributeValue] of Object.entries(node.attribs)) {
+      if (!isCustomizationSelectorAttribute(attributeName) || typeof attributeValue !== "string") {
+        continue;
+      }
+
+      const normalizedValue = attributeValue.trim();
+      if (!normalizedValue.length) {
+        continue;
+      }
+
+      callback(attributeName, attributeValue, normalizedValue);
     }
   }
 
@@ -281,7 +441,8 @@ function validateDom(
       return;
     }
 
-    const control = controlMetadata.get(node.name);
+    const controlName = typeof node.name === "string" ? node.name.toLowerCase() : undefined;
+    const control = controlName ? controlMetadata.get(controlName) : undefined;
     const definition = control?.config?.definition;
     if (!definition) {
       return;
@@ -290,37 +451,67 @@ function validateDom(
     const configObject = parseConfigObject(bindingValue);
     const range = getRange(content, node);
     if (!configObject) {
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: `The ${node.name} config.bind value must be valid JSON matching ${definition.typeName}.`,
-        source: "htmlValidator",
-      });
+        `The ${node.name} config.bind value must be valid object matching ${definition.typeName}.`
+      );
       return;
     }
 
     const providedKeys = new Set(Object.keys(configObject));
     for (const property of definition.properties) {
       if (!property.optional && !providedKeys.has(property.name)) {
-        diagnostics.push({
-          severity: vscode.DiagnosticSeverity.Warning,
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
           range,
-          message: `The ${node.name} config.bind is missing required property "${property.name}".`,
-          source: "htmlValidator",
-        });
+          `The ${node.name} config.bind is missing required property "${property.name}".`
+        );
       }
     }
 
     for (const key of providedKeys) {
       if (!definition.properties.some((property) => property.name === key)) {
-        diagnostics.push({
-          severity: vscode.DiagnosticSeverity.Warning,
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
           range,
-          message: `The ${node.name} config.bind property "${key}" is not defined by ${definition.typeName}.`,
-          source: "htmlValidator",
-        });
+          `The ${node.name} config.bind property "${key}" is not defined by ${definition.typeName}.`
+        );
       }
     }
+  }
+
+  function validateControlTypeAttribute(node: any) {
+    if (!controlMetadata.size) {
+      return;
+    }
+
+    const rawValue = node.attribs?.["control-type"];
+    if (typeof rawValue !== "string") {
+      return;
+    }
+
+    const normalizedValue = rawValue.trim();
+    if (!normalizedValue.length) {
+      return;
+    }
+
+    const metadata = controlMetadata.get(normalizedValue.toLowerCase());
+    if (metadata) {
+      return;
+    }
+
+    const range =
+      getAttributeValueRange(content, node, "control-type", rawValue) ?? getRange(content, node);
+    pushHtmlDiagnostic(
+      diagnostics,
+      suppression,
+      range,
+      `The control-type value "${normalizedValue}" does not match any known qp-controls.`
+    );
   }
 
 
@@ -328,47 +519,47 @@ function validateDom(
     const parts = bindingValue.split(".");
     const range = getRange(content, node);
     if (parts.length !== 2) {
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: "The control-state.bind attribute must use the <view>.<field> format.",
-        source: "htmlValidator",
-      });
+        "The control-state.bind attribute must use the <view>.<field> format."
+      );
       return;
     }
 
     const viewName = parts[0]?.trim();
     const fieldName = parts[1]?.trim();
     if (!viewName || !fieldName) {
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: "The control-state.bind attribute must include both a view and field name.",
-        source: "htmlValidator",
-      });
+        "The control-state.bind attribute must include both a view and field name."
+      );
       return;
     }
 
     const viewResolution = resolveView(viewName);
     const viewClass = viewResolution?.viewClass;
     if (!viewClass) {
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: `The control-state.bind attribute references unknown view "${viewName}".`,
-        source: "htmlValidator",
-      });
+        `The control-state.bind attribute references unknown view "${viewName}".`
+      );
       return;
     }
 
     const fieldProperty = viewClass.properties.get(fieldName);
     if (!fieldProperty || fieldProperty.kind !== "field") {
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: `The control-state.bind attribute references unknown field "${fieldName}" on view "${viewName}".`,
-        source: "htmlValidator",
-      });
+        `The control-state.bind attribute references unknown field "${fieldName}" on view "${viewName}".`
+      );
     }
   }
 }
@@ -378,7 +569,8 @@ function validateIncludeNode(
   diagnostics: vscode.Diagnostic[],
   content: string,
   htmlFilePath: string,
-  workspaceRoots: string[] | undefined
+  workspaceRoots: string[] | undefined,
+  suppression: SuppressionEngine
 ) {
   const includeUrl = node.attribs?.url;
   if (typeof includeUrl !== "string" || !includeUrl.length) {
@@ -400,12 +592,12 @@ function validateIncludeNode(
 
   for (const parameter of metadata.parameters) {
     if (parameter.required && !Object.prototype.hasOwnProperty.call(providedAttributes, parameter.name)) {
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: `The qp-include is missing required parameter "${parameter.name}".`,
-        source: "htmlValidator",
-      });
+        `The qp-include is missing required parameter "${parameter.name}".`
+      );
     }
   }
 
@@ -415,12 +607,12 @@ function validateIncludeNode(
     }
 
     if (!parameterMap.has(attributeName)) {
-      diagnostics.push({
-        severity: vscode.DiagnosticSeverity.Warning,
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
         range,
-        message: `The qp-include attribute "${attributeName}" is not defined by the include template.`,
-        source: "htmlValidator",
-      });
+        `The qp-include attribute "${attributeName}" is not defined by the include template.`
+      );
     }
   }
 }
@@ -443,6 +635,90 @@ function shouldIgnoreIncludeAttribute(attributeName: string): boolean {
   }
 
   return false;
+}
+
+function getAttributeValueRange(
+  content: string,
+  node: any,
+  attributeName: string,
+  attributeValue: string
+): vscode.Range | undefined {
+  if (typeof node.startIndex !== "number" || typeof node.endIndex !== "number") {
+    return undefined;
+  }
+
+  const sliceStart = node.startIndex;
+  const sliceEnd = node.endIndex;
+  const slice = content.substring(sliceStart, sliceEnd + 1);
+  const lowerSlice = slice.toLowerCase();
+  const lowerAttr = attributeName.toLowerCase();
+  let searchIndex = 0;
+
+  while (searchIndex < lowerSlice.length) {
+    const attrIndex = lowerSlice.indexOf(lowerAttr, searchIndex);
+    if (attrIndex === -1) {
+      break;
+    }
+
+    const precedingChar = attrIndex > 0 ? lowerSlice[attrIndex - 1] : undefined;
+    if (precedingChar && /[A-Za-z0-9_.:-]/.test(precedingChar)) {
+      searchIndex = attrIndex + lowerAttr.length;
+      continue;
+    }
+
+    let cursor = attrIndex + lowerAttr.length;
+    while (cursor < slice.length && /\s/.test(slice[cursor])) {
+      cursor++;
+    }
+
+    if (cursor >= slice.length || slice[cursor] !== "=") {
+      searchIndex = attrIndex + lowerAttr.length;
+      continue;
+    }
+
+    cursor++;
+    while (cursor < slice.length && /\s/.test(slice[cursor])) {
+      cursor++;
+    }
+
+    if (cursor >= slice.length) {
+      break;
+    }
+
+    let valueStart = cursor;
+    let valueEnd = cursor;
+    if (slice[cursor] === '"' || slice[cursor] === "'") {
+      const quote = slice[cursor];
+      valueStart = cursor + 1;
+      valueEnd = valueStart;
+      while (valueEnd < slice.length && slice[valueEnd] !== quote) {
+        valueEnd++;
+      }
+      if (valueEnd >= slice.length) {
+        valueEnd = slice.length;
+      }
+    } else {
+      while (valueEnd < slice.length && !/[\s>]/.test(slice[valueEnd])) {
+        valueEnd++;
+      }
+    }
+
+    const candidate = slice.substring(valueStart, valueEnd);
+    if (candidate === attributeValue) {
+      const absoluteStart = sliceStart + valueStart;
+      const absoluteEnd = sliceStart + valueEnd;
+      const startPosition = getLineAndColumnFromIndex(content, absoluteStart);
+      const endPosition = getLineAndColumnFromIndex(content, absoluteEnd);
+      return new vscode.Range(
+        new vscode.Position(startPosition.line, startPosition.column),
+        new vscode.Position(endPosition.line, endPosition.column)
+      );
+    }
+
+    searchIndex = valueEnd + 1;
+  }
+
+  return undefined;
 }
 
 // Converts parser indices into VS Code ranges for diagnostics.

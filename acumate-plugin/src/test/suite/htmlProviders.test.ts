@@ -1,15 +1,25 @@
 import * as path from 'path';
 import * as assert from 'assert';
-import { describe, it } from 'mocha';
+import { before, describe, it } from 'mocha';
 import vscode from 'vscode';
 import { HtmlCompletionProvider } from '../../providers/html-completion-provider';
 import { HtmlDefinitionProvider } from '../../providers/html-definition-provider';
+import { ensureClientControlsFixtures } from '../utils/clientControlsFixtures';
+import { AcuMateContext } from '../../plugin-context';
+import { IAcuMateApiClient } from '../../api/acu-mate-api-client';
+import { GraphStructure } from '../../model/graph-structure';
+import { GraphModel } from '../../model/graph-model';
+import { FeatureModel } from '../../model/FeatureModel';
+import { provideHtmlFieldHover } from '../../providers/html-hover-provider';
+import { ConfigurationService } from '../../services/configuration-service';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
 const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
+const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
+const controlTypeCompletionPath = path.join(fixturesRoot, 'TestControlTypeCompletion.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -32,6 +42,46 @@ const screenPaymentLinksHtmlPath = path.join(
 	'extensions',
 	'SO301000_PaymentLinks.html'
 );
+const screenSelectorHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_FieldSelectors.html'
+);
+const fieldControlHtmlPath = path.join(fixturesRoot, 'FieldControlInfo.html');
+const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
+
+class HtmlMockApiClient implements IAcuMateApiClient {
+	constructor(private readonly structures: Record<string, GraphStructure | undefined> = {}) {}
+
+	async getGraphs(): Promise<GraphModel[] | undefined> {
+		return [];
+	}
+
+	async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
+		return this.structures[graphName];
+	}
+
+	async getFeatures(): Promise<FeatureModel[] | undefined> {
+		return [];
+	}
+}
+
+const backendConfigStub = {
+	get useBackend() {
+		return true;
+	}
+} as ConfigurationService;
+
+before(function () {
+	this.timeout(20000);
+	return ensureClientControlsFixtures();
+});
+
+before(() => {
+	AcuMateContext.ConfigurationService = backendConfigStub;
+});
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
 	const text = document.getText();
@@ -63,6 +113,17 @@ describe('HTML completion provider integration', () => {
 		assert.ok(labels.includes('formView'), 'formView not suggested');
 	});
 
+	it('does not suggest views declared only in imported files', async () => {
+		const document = await vscode.workspace.openTextDocument(importedFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'view.bind="Document"', 'view.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'Expected host view completions');
+		const labels = completions.map(item => item.label);
+		assert.ok(!labels.includes('Document'), 'Imported view name should not be suggested');
+		assert.ok(labels.includes('Actual'), 'Actual host view should be suggested');
+	});
+
 	it('suggests field names scoped to parent view', async () => {
 		const htmlPath = path.join(fixturesRoot, 'TestScreenEmpty.html');
 		const document = await vscode.workspace.openTextDocument(htmlPath);
@@ -72,6 +133,67 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No field completions returned');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('gridField'), 'gridField not suggested');
+	});
+
+	it('includes default control metadata in field completions when backend data is available', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						BillShipmentSource: {
+							name: 'BillShipmentSource',
+							displayName: 'Ship-To Address',
+							defaultControlType: 'qp-drop-down'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(fieldControlHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name=""', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'Expected field completions with backend metadata');
+		const fieldItem = completions?.find(item => item.label === 'BillShipmentSource');
+		assert.ok(fieldItem, 'BillShipmentSource completion missing');
+		assert.ok(
+			fieldItem?.detail?.includes('qp-drop-down'),
+			'Field completion should mention default control type'
+		);
+	});
+
+	it('shows backend metadata when hovering HTML field names', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						BillShipmentSource: {
+							name: 'BillShipmentSource',
+							displayName: 'Ship-To Address',
+							typeName: 'System.String',
+							defaultControlType: 'qp-drop-down'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(fieldControlHtmlPath);
+		const caret = positionAt(document, 'BillShipmentSource', 'BillShipmentSource'.length - 1);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for HTML field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Ship-To Address/.test(value), 'Hover should show backend display name');
+		assert.ok(/qp-drop-down/.test(value), 'Hover should show default control type');
 	});
 
 	it('suggests view names for using view attribute', async () => {
@@ -206,6 +328,16 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No completions returned for control-state.bind');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('mainView.customerName'), 'mainView.customerName not suggested');
+	});
+
+	it('suggests qp-control names for control-type attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(controlTypeCompletionPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'control-type=""', 'control-type="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for control-type');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('qp-drop-down'), 'qp-drop-down not suggested for control-type');
 	});
 
 	it('suggests config properties for client controls', async () => {
@@ -393,6 +525,51 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('form-contact-document.html')),
 			'Expected navigation to include template file'
+		);
+	});
+
+	it('navigates from customization selector attributes to base screen HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			"before=\"#fsOrderTotals-Totals [name='CuryGoodsExtPriceTotal']\"",
+			"before=\"".length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for customization selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000.html')),
+			'Expected navigation to base screen HTML'
+		);
+	});
+
+	it('navigates from selector-injected field name to TS definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="AMCuryEstimateTotal"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for selector field');
+		assert.ok(
+			locations.some(loc =>
+				loc.uri.fsPath.endsWith('SO301000.ts') || loc.uri.fsPath.endsWith('SO301000_Manufacturing.ts')
+			),
+			'Expected field definition inside base screen or manufacturing mixin TS file'
+		);
+	});
+
+	it('navigates from qp-panel id to PXView definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenExtensionDoubleDotHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'id="QuickPrepaymentInvoice"', 'id="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-panel id');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_CreatePrepaymentInvoice.ts')),
+			'Expected navigation to screen extension TS file'
 		);
 	});
 

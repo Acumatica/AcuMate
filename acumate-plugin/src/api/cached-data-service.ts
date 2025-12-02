@@ -2,8 +2,9 @@ import { Memento } from "vscode";
 import { GraphModel } from "../model/graph-model";
 import { GraphStructure } from "../model/graph-structure";
 import { IAcuMateApiClient } from "./acu-mate-api-client";
-import { GraphAPICache, GraphAPIStructureCachePrefix } from "./constants";
+import { FeaturesCache, GraphAPICache, GraphAPIStructureCachePrefix } from "./constants";
 import { AcuMateContext } from "../plugin-context";
+import { FeatureModel } from "../model/FeatureModel";
 
 
 export class CachedDataService implements IAcuMateApiClient {
@@ -32,5 +33,11 @@ export class CachedDataService implements IAcuMateApiClient {
         }
         return this.cache.get(GraphAPIStructureCachePrefix + graphName) as GraphStructure;
     }
-    
+
+    async getFeatures(): Promise<FeatureModel[] | undefined> {
+        if (!AcuMateContext.ConfigurationService.useCache) {
+            return;
+        }
+        return this.cache.get(FeaturesCache) as FeatureModel[];
+    }
 }

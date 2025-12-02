@@ -31,10 +31,6 @@ export class ConfigurationService {
         return this.config.get("useBackend");
     }
 
-    get useAuthentification() : boolean | undefined {
-        return this.config.get("useAuthentification");
-    }
-
     get usePrettier() : boolean | undefined {
         return this.config.get("usePrettier");
     }

@@ -1,8 +1,23 @@
 import { GraphModel } from "../model/graph-model";
 import { GraphStructure } from "../model/graph-structure";
-import { GraphAPIRoute, GraphAPIStructureRoute, AuthEndpoint, LogoutEndpoint } from "./constants";
+import { GraphAPIRoute, GraphAPIStructureRoute, AuthEndpoint, LogoutEndpoint, FeaturesRoute } from "./constants";
 import { IAcuMateApiClient } from "./acu-mate-api-client";
 import { AcuMateContext } from "../plugin-context";
+import { FeatureModel } from "../model/FeatureModel";
+
+interface FeatureSetsResponse {
+    sets?: FeatureSetEntry[];
+}
+
+interface FeatureSetEntry {
+    name?: string;
+    features?: FeatureEntry[];
+}
+
+interface FeatureEntry {
+    name?: string;
+    enabled?: boolean;
+}
 
 export class AcuMateApiClient implements IAcuMateApiClient {
 
@@ -48,7 +63,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             return;
         }
 
-        await fetch(AcuMateContext.ConfigurationService.backedUrl!+LogoutEndpoint, {
+        const response = await fetch(AcuMateContext.ConfigurationService.backedUrl!+LogoutEndpoint, {
             method:'POST',
             headers: {
                 "Content-Type": "application/json",
@@ -57,6 +72,13 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         });
 
         this.sessionCookieHeader = undefined;
+
+        if (response.ok) {
+            console.log('Logged out successfully.');
+        } else {
+            const errorBody = await response.text().catch(() => "");
+            console.error(`Authentication failed with status ${response.status}: ${errorBody}`);
+        }
     }
 
     private async makeGetRequest<T>(route: string): Promise<T | undefined> {
@@ -65,12 +87,12 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         }
 
         try {
-            if (AcuMateContext.ConfigurationService.useAuthentification) {
-                const authResponse = await this.auth();
+            const authResponse = await this.auth();
 
-                if (authResponse.status !== 200 && authResponse.status !== 204) {
-                    return undefined;
-                }
+            if (authResponse.status !== 200 && authResponse.status !== 204) {
+                const errorBody = await authResponse.text().catch(() => "");
+                console.error(`Authentication failed with status ${authResponse.status}: ${errorBody}`);
+                return undefined;
             }
 
             const url = AcuMateContext.ConfigurationService.backedUrl!+route;
@@ -83,12 +105,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
                 method:'GET',
                 headers
             };
-            if (AcuMateContext.ConfigurationService.useAuthentification) {
-                settings.credentials = `include`;
-            }
-            else {
-                settings.credentials = `same-origin`;
-            }
+            settings.credentials = `include`;
             const response = await fetch(url, settings);
 
             if (!response.ok) {
@@ -114,9 +131,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             console.error('Error making GET request:', error);
         }
         finally {
-            if (AcuMateContext.ConfigurationService.useAuthentification) {
-                await this.logout();
-            }
+            await this.logout();
         }
     }
 
@@ -128,5 +143,46 @@ export class AcuMateApiClient implements IAcuMateApiClient {
     public async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
         return await this.makeGetRequest<GraphStructure>(GraphAPIStructureRoute + graphName);
     }
+
+    public async getFeatures(): Promise<FeatureModel[] | undefined> {
+        const response = await this.makeGetRequest<FeatureSetsResponse | FeatureModel[]>(FeaturesRoute);
+        return normalizeFeatureResponse(response);
+    }
+}
+
+function normalizeFeatureResponse(response: FeatureSetsResponse | FeatureModel[] | undefined): FeatureModel[] | undefined {
+    if (!response) {
+        return undefined;
+    }
+
+    if (Array.isArray(response)) {
+        return response;
+    }
+
+    const sets = response.sets;
+    if (!Array.isArray(sets)) {
+        return undefined;
+    }
+
+    const flattened: FeatureModel[] = [];
+    for (const set of sets) {
+        if (!set?.name || !Array.isArray(set.features)) {
+            continue;
+        }
+
+        for (const feature of set.features) {
+            if (!feature?.name) {
+                continue;
+            }
+
+            flattened.push({
+                featureName: `${set.name}+${feature.name}`,
+                enabled: Boolean(feature.enabled),
+                featureSet: set.name
+            });
+        }
+    }
+
+    return flattened;
 }
 

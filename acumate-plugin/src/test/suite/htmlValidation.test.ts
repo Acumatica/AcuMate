@@ -4,6 +4,7 @@ import { describe, it, beforeEach, before } from 'mocha';
 import vscode from 'vscode';
 import { validateHtmlFile } from '../../validation/htmlValidation/html-validation';
 import { AcuMateContext } from '../../plugin-context';
+import { ensureClientControlsFixtures } from '../utils/clientControlsFixtures';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
@@ -14,6 +15,13 @@ const screenExtensionFixture = path.join(
 	'extensions',
 	'SO301000_AddBlanketOrderLine.html'
 );
+const screenSelectorExtensionFixture = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_FieldSelectors.html'
+);
 
 async function openFixtureDocument(fileName: string) {
 	const fullPath = path.join(fixturesRoot, fileName);
@@ -21,6 +29,11 @@ async function openFixtureDocument(fileName: string) {
 }
 
 describe('HTML validation diagnostics', () => {
+	before(function () {
+		this.timeout(20000);
+		return ensureClientControlsFixtures();
+	});
+
 	before(() => {
 		if (!AcuMateContext.HtmlValidator) {
 			AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidatorTest');
@@ -38,18 +51,28 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(diagnostics.some(d => d.message.includes('qp-fieldset')));
 	});
 
+	it('ignores views declared only in imported files', async () => {
+		const document = await openFixtureDocument('TestScreenImported.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('qp-fieldset')),
+			'Expected diagnostic when view.bind references view outside owning screen files'
+		);
+	});
+
 	it('reports missing field name', async () => {
 		const document = await openFixtureDocument('InvalidScreen.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
-		assert.ok(diagnostics.some(d => d.message.includes('<field>')));
+		assert.ok(diagnostics.some(d => d.message.includes('field "')));
 	});
 
 	it('reports missing field when using container overrides view', async () => {
 		const document = await openFixtureDocument('InvalidScreenUsing.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
-		const fieldDiagnostics = diagnostics.filter(d => d.message.includes('<field>'));
+		const fieldDiagnostics = diagnostics.filter(d => d.message.includes('field "'));
 		assert.ok(fieldDiagnostics.length >= 1, 'Expected invalid field diagnostic for using view');
 	});
 
@@ -111,6 +134,62 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('PXAction')),
 			'Expected diagnostic for invalid PXAction reference'
+		);
+	});
+
+	it('accepts qp-panel ids that map to known views', async () => {
+		const document = await openFixtureDocument('TestPanelValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('<qp-panel> id')).length,
+			0,
+			'Expected no diagnostics for qp-panel ids bound to known views'
+		);
+	});
+
+	it('reports qp-panel ids that do not resolve to views', async () => {
+		const document = await openFixtureDocument('TestPanelInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('<qp-panel> id must reference a valid view')),
+			'Expected diagnostic for qp-panel id that does not match a view'
+		);
+	});
+
+	it('allows suppressing html diagnostics via acumate-disable-next-line directives', async () => {
+		const document = await openFixtureDocument('TestPanelInvalidSuppressed.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected suppression directive to silence qp-panel warning');
+	});
+
+	it('allows suppressing html diagnostics via acumate-disable-file directives', async () => {
+		const document = await openFixtureDocument('TestPanelInvalidFileSuppressed.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected acumate-disable-file to silence all html diagnostics in the file');
+	});
+
+	it('accepts qp-panel footer buttons that bind to the panel view actions', async () => {
+		const document = await openFixtureDocument('TestPanelActionValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute must reference a valid PXAction')).length,
+			0,
+			'Expected no invalid PXAction diagnostics when binding to qp-panel view actions'
+		);
+	});
+
+	it('reports qp-panel footer buttons that reference unknown view actions', async () => {
+		const document = await openFixtureDocument('TestPanelActionInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('state.bind attribute must reference a valid PXAction')),
+			'Expected invalid PXAction diagnostic when qp-panel footer button references unknown action'
 		);
 	});
 
@@ -211,8 +290,53 @@ describe('HTML validation diagnostics', () => {
 			'Expected diagnostic for unknown config property'
 		);
 		assert.ok(
-			diagnostics.some(d => d.message.includes('must be valid JSON')),
+			diagnostics.some(d => d.message.includes('must be valid object')),
 			'Expected diagnostic for invalid config JSON'
+		);
+	});
+
+	it('accepts field control-type values defined by client controls metadata', async () => {
+		const document = await openFixtureDocument('TestControlTypeValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for known control-type values');
+	});
+
+	it('reports field control-type values that are not recognized', async () => {
+		const document = await openFixtureDocument('TestControlTypeInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('control-type value')),
+			'Expected diagnostic for unknown control-type value'
+		);
+	});
+
+	it('validates customization selectors against the base screen HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('does not match any elements')),
+			'Expected diagnostic when selector does not resolve in base screen HTML'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('not a valid CSS selector')),
+			'Expected diagnostic for invalid CSS selector'
+		);
+	});
+
+	it('derives view metadata from selector targets when <field> lacks a parent view', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('"AMUnknownField"')),
+			'Expected diagnostic referencing unknown selector field name'
+		);
+		assert.ok(
+			!diagnostics.some(d => d.message.includes('"AMCuryEstimateTotal"')),
+			'Valid selector field should not produce field diagnostics'
 		);
 	});
 });
