@@ -26,11 +26,17 @@ export class SuppressionCodeActionProvider implements vscode.CodeActionProvider 
 				continue;
 			}
 
-			const key = `${code}:${diagnostic.range.start.line}`;
-			if (uniqueKeys.has(key)) {
+			const fileKey = `file:${code}`;
+			if (!uniqueKeys.has(fileKey)) {
+				uniqueKeys.add(fileKey);
+				actions.push(this.createFileSuppressionAction(document, diagnostic, code, newline));
+			}
+
+			const lineKey = `line:${code}:${diagnostic.range.start.line}`;
+			if (uniqueKeys.has(lineKey)) {
 				continue;
 			}
-			uniqueKeys.add(key);
+			uniqueKeys.add(lineKey);
 
 			const action = new vscode.CodeAction(
 				'Suppress with acumate-disable-next-line',
@@ -55,6 +61,31 @@ export class SuppressionCodeActionProvider implements vscode.CodeActionProvider 
 		}
 
 		return `// acumate-disable-next-line ${code}${newline}`;
+	}
+
+	private buildFileDirective(languageId: string, code: string, newline: string): string {
+		if (languageId === 'html') {
+			return `<!-- acumate-disable-file ${code} -->${newline}`;
+		}
+
+		return `// acumate-disable-file ${code}${newline}`;
+	}
+
+	private createFileSuppressionAction(
+		document: vscode.TextDocument,
+		diagnostic: vscode.Diagnostic,
+		code: string,
+		newline: string
+	): vscode.CodeAction {
+		const action = new vscode.CodeAction(
+			'Suppress file with acumate-disable-file',
+			vscode.CodeActionKind.QuickFix
+		);
+		action.diagnostics = [diagnostic];
+		action.edit = new vscode.WorkspaceEdit();
+		const directive = this.buildFileDirective(document.languageId, code, newline);
+		action.edit.insert(document.uri, new vscode.Position(0, 0), directive);
+		return action;
 	}
 
 	private getDiagnosticCode(diagnostic: vscode.Diagnostic): string | undefined {

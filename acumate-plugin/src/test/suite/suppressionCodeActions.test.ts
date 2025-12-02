@@ -54,13 +54,26 @@ describe('Suppression code actions', () => {
 			new vscode.CancellationTokenSource().token
 		);
 
-		assert.ok(actions && actions.length > 0, 'Expected suppression code action for html diagnostic');
-		const editEntries = actions?.[0].edit?.entries() ?? [];
-		assert.ok(editEntries.length > 0, 'Expected workspace edit for suppression action');
-		const firstEdit = editEntries[0][1][0];
+		assert.ok(actions && actions.length >= 2, 'Expected suppression code actions for html diagnostic');
+		const lineAction = actions?.find(action => action.title.includes('next-line'));
+		const fileAction = actions?.find(action => action.title.includes('disable-file'));
+		assert.ok(lineAction, 'Expected next-line suppression action');
+		assert.ok(fileAction, 'Expected file suppression action');
+
+		const lineEdits = lineAction?.edit?.entries() ?? [];
+		assert.ok(lineEdits.length > 0, 'Expected workspace edit for line suppression action');
+		const lineEdit = lineEdits[0][1][0];
 		assert.ok(
-			firstEdit.newText.includes('<!-- acumate-disable-next-line htmlValidator -->'),
-			'Expected html suppression directive in edit'
+			lineEdit.newText.includes('<!-- acumate-disable-next-line htmlValidator -->'),
+			'Expected html next-line suppression directive in edit'
+		);
+
+		const fileEdits = fileAction?.edit?.entries() ?? [];
+		assert.ok(fileEdits.length > 0, 'Expected workspace edit for file suppression action');
+		const fileEdit = fileEdits[0][1][0];
+		assert.ok(
+			fileEdit.newText.includes('<!-- acumate-disable-file htmlValidator -->'),
+			'Expected html file suppression directive in edit'
 		);
 	});
 
@@ -91,12 +104,26 @@ describe('Suppression code actions', () => {
 			new vscode.CancellationTokenSource().token
 		);
 
-		assert.ok(actions && actions.length > 0, 'Expected suppression code action for graphInfo diagnostic');
-		const editEntries = actions?.[0].edit?.entries() ?? [];
-		const firstEdit = editEntries[0][1][0];
+		assert.ok(actions && actions.length >= 2, 'Expected suppression code actions for graphInfo diagnostic');
+		const lineAction = actions?.find(action => action.title.includes('next-line'));
+		const fileAction = actions?.find(action => action.title.includes('disable-file'));
+		assert.ok(lineAction, 'Expected next-line suppression action');
+		assert.ok(fileAction, 'Expected file suppression action');
+
+		const lineEdits = lineAction?.edit?.entries() ?? [];
+		assert.ok(lineEdits.length > 0, 'Expected workspace edit for line suppression action');
+		const lineEdit = lineEdits[0][1][0];
 		assert.ok(
-			firstEdit.newText.includes('// acumate-disable-next-line graphInfo'),
-			'Expected ts suppression directive in edit'
+			lineEdit.newText.includes('// acumate-disable-next-line graphInfo'),
+			'Expected ts next-line suppression directive in edit'
+		);
+
+		const fileEdits = fileAction?.edit?.entries() ?? [];
+		assert.ok(fileEdits.length > 0, 'Expected workspace edit for file suppression action');
+		const fileEdit = fileEdits[0][1][0];
+		assert.ok(
+			fileEdit.newText.includes('// acumate-disable-file graphInfo'),
+			'Expected ts file suppression directive in edit'
 		);
 	});
 });

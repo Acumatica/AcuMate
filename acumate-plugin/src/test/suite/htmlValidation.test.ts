@@ -165,6 +165,13 @@ describe('HTML validation diagnostics', () => {
 		assert.strictEqual(diagnostics.length, 0, 'Expected suppression directive to silence qp-panel warning');
 	});
 
+	it('allows suppressing html diagnostics via acumate-disable-file directives', async () => {
+		const document = await openFixtureDocument('TestPanelInvalidFileSuppressed.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected acumate-disable-file to silence all html diagnostics in the file');
+	});
+
 	it('accepts qp-panel footer buttons that bind to the panel view actions', async () => {
 		const document = await openFixtureDocument('TestPanelActionValid.html');
 		await validateHtmlFile(document);

@@ -20,6 +20,7 @@ const viewFieldMatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMatch.t
 const viewFieldCompletionFixture = path.join(fixturesRoot, 'GraphInfoViewFieldCompletion.ts');
 const caseInsensitiveFixture = path.join(fixturesRoot, 'GraphInfoScreenCaseInsensitive.ts');
 const suppressedFixture = path.join(fixturesRoot, 'GraphInfoScreenSuppressed.ts');
+const suppressedFileFixture = path.join(fixturesRoot, 'GraphInfoScreenFileSuppressed.ts');
 
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
 
@@ -188,6 +189,25 @@ describe('graphInfo decorator assistance', () => {
 			suppressedDiagnostics.length,
 			0,
 			'Expected acumate-disable-next-line to suppress graphInfo diagnostics'
+		);
+	});
+
+	it('respects acumate-disable-file directives for graphInfo diagnostics', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'SaveAction' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const suppressedDocument = await vscode.workspace.openTextDocument(suppressedFileFixture);
+		const diagnostics = await collectGraphInfoDiagnostics(suppressedDocument, sampleGraphs);
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			'Expected acumate-disable-file to suppress graphInfo diagnostics in the entire document'
 		);
 	});
 });

@@ -1,11 +1,12 @@
 export type SuppressionLanguage = 'html' | 'ts';
 
 const ALL_CODES = 'all';
+const NEXT_LINE_TOKEN = 'acumate-disable-next-line';
+const FILE_TOKEN = 'acumate-disable-file';
 
-interface SuppressionDirective {
-	targetLine: number;
-	codes: Set<string>;
-}
+type SuppressionDirective =
+	| { kind: 'line'; targetLine: number; codes: Set<string> }
+	| { kind: 'file'; codes: Set<string> };
 
 export class SuppressionEngine {
 	constructor(private readonly directives: SuppressionDirective[]) {}
@@ -21,6 +22,13 @@ export class SuppressionEngine {
 		}
 
 		for (const directive of this.directives) {
+			if (directive.kind === 'file') {
+				if (directive.codes.has(normalizedCode) || directive.codes.has(ALL_CODES)) {
+					return true;
+				}
+				continue;
+			}
+
 			if (directive.targetLine !== line) {
 				continue;
 			}
@@ -42,28 +50,28 @@ export function createSuppressionEngine(text: string, language: SuppressionLangu
 
 	const lines = text.split(/\r?\n/);
 	for (let index = 0; index < lines.length; index++) {
-		const codes = extractCodes(lines[index], language);
-		if (!codes.length) {
-			continue;
+		const nextLineCodes = extractCodes(lines[index], language, NEXT_LINE_TOKEN);
+		if (nextLineCodes.length) {
+			directives.push({ kind: 'line', targetLine: index + 1, codes: new Set(nextLineCodes) });
 		}
 
-		directives.push({
-			targetLine: index + 1,
-			codes: new Set(codes),
-		});
+		const fileCodes = extractCodes(lines[index], language, FILE_TOKEN);
+		if (fileCodes.length) {
+			directives.push({ kind: 'file', codes: new Set(fileCodes) });
+		}
 	}
 
 	return new SuppressionEngine(directives);
 }
 
-function extractCodes(line: string, language: SuppressionLanguage): string[] {
+function extractCodes(line: string, language: SuppressionLanguage, marker: string): string[] {
 	const matches: string[] = [];
-	if (!line || !line.toLowerCase().includes('acumate-disable-next-line')) {
+	if (!line || !line.toLowerCase().includes(marker)) {
 		return matches;
 	}
 
 	if (language === 'html') {
-		const regex = /<!--\s*acumate-disable-next-line\s+([^>]+?)-->/gi;
+		const regex = new RegExp(`<!--\\s*${marker}\\s+([^>]+?)-->`, 'gi');
 		let match: RegExpExecArray | null;
 		while ((match = regex.exec(line)) !== null) {
 			matches.push(...splitCodes(match[1] ?? ''));
@@ -71,13 +79,13 @@ function extractCodes(line: string, language: SuppressionLanguage): string[] {
 		return matches;
 	}
 
-	const singleLine = /\/\/\s*acumate-disable-next-line\s+(.+)/i;
+	const singleLine = new RegExp(`\/\/\\s*${marker}\\s+(.+)`, 'i');
 	const singleMatch = singleLine.exec(line);
 	if (singleMatch) {
 		return splitCodes(singleMatch[1] ?? '');
 	}
 
-	const block = /\/\*\s*acumate-disable-next-line\s+([^*]+)\*\//i;
+	const block = new RegExp(`\/\\*\\s*${marker}\\s+([^*]+)\\*\/`, 'i');
 	const blockMatch = block.exec(line);
 	if (blockMatch) {
 		return splitCodes(blockMatch[1] ?? '');

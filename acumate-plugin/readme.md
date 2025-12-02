@@ -73,8 +73,9 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
 ### Suppressing Diagnostics
 
 - Any HTML warning emitted by the validator can be silenced on a per-line basis by inserting `<!-- acumate-disable-next-line htmlValidator -->` immediately above the element that triggered the message. The directive only applies to the following line, keeping the rest of the document validated as usual.
-- GraphInfo warnings inside TypeScript files can be suppressed the same way with `// acumate-disable-next-line graphInfo` (or the quick fix described below) on the line before the PXScreen property.
-- Both HTML and TypeScript diagnostics surface a quick fix in the lightbulb menu: select the warning and choose **Suppress with acumate-disable-next-line** to insert the appropriate directive automatically.
+- To switch off the validator for an entire HTML file, add `<!-- acumate-disable-file htmlValidator -->` anywhere in the document (commonly at the top). All HTML diagnostics in that file stay muted until the comment is removed.
+- GraphInfo warnings inside TypeScript files respect both `// acumate-disable-next-line graphInfo` and `// acumate-disable-file graphInfo`, so you can either silence a single property or disable the validator for the entire file.
+- HTML and TypeScript diagnostics now expose two lightbulb options: **Suppress with acumate-disable-next-line** inserts the scoped directive above the offending line, while **Suppress file with acumate-disable-file** drops the file-wide directive at the top of the document automatically.
 
 ### Quality & CI
 
