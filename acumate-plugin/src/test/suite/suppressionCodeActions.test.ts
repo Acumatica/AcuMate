@@ -9,6 +9,7 @@ import { collectGraphInfoDiagnostics } from '../../validation/tsValidation/graph
 import { IAcuMateApiClient } from '../../api/acu-mate-api-client';
 import { GraphModel } from '../../model/graph-model';
 import { GraphStructure } from '../../model/graph-structure';
+import { FeatureModel } from '../../model/FeatureModel';
 
 const htmlFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const tsFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/typescript');
@@ -25,6 +26,10 @@ class MockApiClient implements IAcuMateApiClient {
 
 	async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
 		return this.structures[graphName];
+	}
+
+	async getFeatures(): Promise<FeatureModel[] | undefined> {
+		return [];
 	}
 }
 

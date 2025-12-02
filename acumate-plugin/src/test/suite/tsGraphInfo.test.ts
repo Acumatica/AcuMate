@@ -1,13 +1,15 @@
 import * as path from 'path';
 import * as assert from 'assert';
 import vscode from 'vscode';
-import { describe, it, before } from 'mocha';
+import { describe, it, before, beforeEach } from 'mocha';
 import { provideTSCompletionItems } from '../../completionItemProviders/ts-completion-provider';
 import { AcuMateContext } from '../../plugin-context';
 import { collectGraphInfoDiagnostics } from '../../validation/tsValidation/graph-info-validation';
 import { IAcuMateApiClient } from '../../api/acu-mate-api-client';
 import { GraphModel } from '../../model/graph-model';
 import { GraphStructure } from '../../model/graph-structure';
+import { FeatureModel } from '../../model/FeatureModel';
+import { clearFeatureMetadataCache } from '../../services/feature-metadata-service';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/typescript');
 const completionFixture = path.join(fixturesRoot, 'GraphInfoScreen.ts');
@@ -27,15 +29,27 @@ const extensionFixture = path.resolve(
 const linkCommandInvalidFixture = path.join(fixturesRoot, 'GraphInfoLinkCommandInvalid.ts');
 const linkCommandValidFixture = path.join(fixturesRoot, 'GraphInfoLinkCommandValid.ts');
 const suppressedFileFixture = path.join(fixturesRoot, 'GraphInfoScreenFileSuppressed.ts');
+const featureDecoratorFixture = path.join(fixturesRoot, 'FeatureInstalledDecorator.ts');
+const featureDisabledFixture = path.join(fixturesRoot, 'GraphInfoScreenMismatchFeatureDisabled.ts');
 
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
+const backendFeatureName = 'PX.Objects.CS.FeaturesSet+AcumaticaPayments';
 
 const sampleGraphs: GraphModel[] = [
 	{ name: backendGraphName, text: 'Frontend Maint' }
 ];
 
+const sampleFeatures: FeatureModel[] = [
+	{ featureName: backendFeatureName, enabled: true },
+	{ featureName: 'PX.Objects.CS.FeaturesSet+CommerceIntegration', enabled: false },
+	{ featureName: 'PX.Objects.CS.FeaturesSet+VATRecognitionOnPrepaymentsAR', enabled: false }
+];
+
 class MockApiClient implements IAcuMateApiClient {
-	constructor(private readonly structures: Record<string, GraphStructure | undefined> = {}) {}
+	constructor(
+		private readonly structures: Record<string, GraphStructure | undefined> = {},
+		private readonly features: FeatureModel[] = []
+	) {}
 
 	async getGraphs(): Promise<GraphModel[] | undefined> {
 		return sampleGraphs;
@@ -44,11 +58,19 @@ class MockApiClient implements IAcuMateApiClient {
 	async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
 		return this.structures[graphName];
 	}
+
+	async getFeatures(): Promise<FeatureModel[] | undefined> {
+		return this.features;
+	}
 }
 
 describe('graphInfo decorator assistance', () => {
 	before(() => {
 		AcuMateContext.ApiService = new MockApiClient();
+	});
+
+	beforeEach(() => {
+		clearFeatureMetadataCache();
 	});
 
 	it('suggests backend graph names for graphType', async () => {
@@ -63,6 +85,32 @@ describe('graphInfo decorator assistance', () => {
 		);
 		const labels = (completions ?? []).map(item => item.label);
 		assert.ok(labels.includes('PX.SM.ProjectNewUiFrontendFileMaintenance'), 'graph list did not include backend graph');
+	});
+
+	it('suggests backend feature names for featureInstalled decorator', async () => {
+		AcuMateContext.ApiService = new MockApiClient({}, sampleFeatures);
+
+		const document = await vscode.workspace.openTextDocument(featureDecoratorFixture);
+		const marker = 'featureInstalled("';
+		const caret = document.positionAt(document.getText().indexOf(marker) + marker.length);
+		const completions = await provideTSCompletionItems(
+			document,
+			caret,
+			new vscode.CancellationTokenSource().token,
+			{ triggerKind: vscode.CompletionTriggerKind.Invoke } as vscode.CompletionContext
+		);
+		const labels = (completions ?? []).map(item => item.label);
+		assert.ok(labels.includes(backendFeatureName), 'featureInstalled completion should include backend feature names');
+	});
+
+	it('validates featureInstalled decorators against backend features', async () => {
+		AcuMateContext.ApiService = new MockApiClient({}, sampleFeatures);
+		const document = await vscode.workspace.openTextDocument(featureDecoratorFixture);
+		const diagnostics = await collectGraphInfoDiagnostics(document, sampleGraphs);
+		assert.ok(
+			diagnostics.some(diag => diag.message.includes('MissingFeature')),
+			'Expected diagnostic when featureInstalled references unknown feature'
+		);
 	});
 
 	it('reports diagnostics for unknown graphType values', async () => {
@@ -101,6 +149,25 @@ describe('graphInfo decorator assistance', () => {
 		const matchDocument = await vscode.workspace.openTextDocument(matchFixture);
 		const matchDiagnostics = await collectGraphInfoDiagnostics(matchDocument, sampleGraphs);
 		assert.strictEqual(matchDiagnostics.length, 0, 'expected no diagnostics when view/action names match backend metadata');
+	});
+
+	it('skips backend diagnostics when the PXScreen is gated by a disabled feature', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'SaveAction' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure }, sampleFeatures);
+
+		const document = await vscode.workspace.openTextDocument(featureDisabledFixture);
+		const diagnostics = await collectGraphInfoDiagnostics(document, sampleGraphs);
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			'expected metadata diagnostics to be skipped when class is feature-gated by disabled feature'
+		);
 	});
 
 	it('treats backend metadata names case-insensitively', async () => {

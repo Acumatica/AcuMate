@@ -2,10 +2,13 @@ import vscode from 'vscode';
 import ts from 'typescript';
 import * as path from 'path';
 import { getAvailableGraphs } from '../../services/graph-metadata-service';
+import { getAvailableFeatures } from '../../services/feature-metadata-service';
 import { findGraphTypeLiterals } from '../../typescript/graph-info-utils';
+import { findFeatureInstalledStringLiterals } from '../../typescript/feature-installed-utils';
 import { AcuMateContext } from '../../plugin-context';
 import { GraphModel } from '../../model/graph-model';
 import { GraphStructure } from '../../model/graph-structure';
+import { FeatureModel } from '../../model/FeatureModel';
 import {
 	getClassPropertiesFromTs,
 	CollectedClassInfo,
@@ -16,6 +19,7 @@ import {
 } from '../../utils';
 import { buildBackendActionSet, buildBackendViewMap, normalizeMetaName } from '../../backend-metadata-utils';
 import { createSuppressionEngine, SuppressionEngine } from '../../diagnostics/suppression';
+import { getDecoratorIdentifier, getNodeDecorators, tryGetStringLiteral } from '../../typescript/decorator-utils';
 
 export function registerGraphInfoValidation(context: vscode.ExtensionContext) {
 	if (!AcuMateContext.ConfigurationService.useBackend) {
@@ -62,21 +66,30 @@ export async function collectGraphInfoDiagnostics(
 	document: vscode.TextDocument,
 	graphsOverride?: GraphModel[]
 ): Promise<vscode.Diagnostic[]> {
-const graphs = graphsOverride ?? (await getAvailableGraphs());
+	const documentText = document.getText();
+	const suppression = createSuppressionEngine(documentText, 'ts');
+	const sourceFile = ts.createSourceFile(document.fileName, documentText, ts.ScriptTarget.Latest, true);
+	const diagnostics: vscode.Diagnostic[] = [];
+
+	const features = await getAvailableFeatures();
+	const featureDiagnostics = await collectFeatureInstalledDiagnostics(sourceFile, document, suppression, features);
+	if (featureDiagnostics.length) {
+		diagnostics.push(...featureDiagnostics);
+	}
+
+	const disabledFeatureNames = buildDisabledFeatureSet(features);
+
+	const graphs = graphsOverride ?? (await getAvailableGraphs());
 	if (!graphs?.length) {
-		return [];
+		return diagnostics;
 	}
 
 	const validGraphNames = new Set(graphs.map(graph => graph.name).filter((name): name is string => Boolean(name)));
 	if (!validGraphNames.size) {
-		return [];
+		return diagnostics;
 	}
 
-	const documentText = document.getText();
-	const suppression = createSuppressionEngine(documentText, 'ts');
-	const sourceFile = ts.createSourceFile(document.fileName, documentText, ts.ScriptTarget.Latest, true);
 	const literals = findGraphTypeLiterals(sourceFile);
-	const diagnostics: vscode.Diagnostic[] = [];
 	const normalizedDocumentPath = path.normalize(document.fileName);
 
 	if (literals.length) {
@@ -129,11 +142,28 @@ const graphs = graphsOverride ?? (await getAvailableGraphs());
 		return diagnostics;
 	}
 
+	const featureDisabledClasses = collectFeatureDisabledScreenClasses(screenClasses, disabledFeatureNames);
+
 	diagnostics.push(
-		...compareScreenDeclarationsWithGraph(screenClasses, structure, document, graphName, suppression)
+		...compareScreenDeclarationsWithGraph(
+			screenClasses,
+			structure,
+			document,
+			graphName,
+			suppression,
+			featureDisabledClasses
+		)
 	);
 	diagnostics.push(
-		...compareViewClassesWithGraph(screenClasses, classInfoLookup, structure, document, graphName, suppression)
+		...compareViewClassesWithGraph(
+			screenClasses,
+			classInfoLookup,
+			structure,
+			document,
+			graphName,
+			suppression,
+			featureDisabledClasses
+		)
 	);
 	return diagnostics;
 }
@@ -160,13 +190,18 @@ function compareScreenDeclarationsWithGraph(
 	structure: GraphStructure,
 	document: vscode.TextDocument,
 	graphName: string,
-	suppression: SuppressionEngine
+	suppression: SuppressionEngine,
+	featureDisabledClasses: Set<string>
 ): vscode.Diagnostic[] {
 	const diagnostics: vscode.Diagnostic[] = [];
 	const backendViewMap = buildBackendViewMap(structure);
 	const backendActionNames = buildBackendActionSet(structure);
 
 	for (const screenClass of screenClasses) {
+		if (featureDisabledClasses.has(screenClass.className)) {
+			continue;
+		}
+
 		for (const property of screenClass.properties.values()) {
 			const propertyName = normalizeMetaName(property.name);
 			if ((property.kind === 'view' || property.kind === 'viewCollection') && propertyName) {
@@ -209,7 +244,8 @@ function compareViewClassesWithGraph(
 	structure: GraphStructure,
 	document: vscode.TextDocument,
 	graphName: string,
-	suppression: SuppressionEngine
+	suppression: SuppressionEngine,
+	featureDisabledClasses: Set<string>
 ): vscode.Diagnostic[] {
 	const diagnostics: vscode.Diagnostic[] = [];
 	const backendViewMap = buildBackendViewMap(structure);
@@ -218,6 +254,10 @@ function compareViewClassesWithGraph(
 	const processedPairs = new Set<string>();
 
 	for (const screenClass of screenClasses) {
+		if (featureDisabledClasses.has(screenClass.className)) {
+			continue;
+		}
+
 		for (const property of screenClass.properties.values()) {
 			if ((property.kind !== 'view' && property.kind !== 'viewCollection') || !property.viewClassName) {
 				continue;
@@ -297,6 +337,51 @@ function compareViewClassesWithGraph(
 	return diagnostics;
 }
 
+async function collectFeatureInstalledDiagnostics(
+	sourceFile: ts.SourceFile,
+	document: vscode.TextDocument,
+	suppression: SuppressionEngine,
+	features?: FeatureModel[] | undefined
+): Promise<vscode.Diagnostic[]> {
+	const literals = findFeatureInstalledStringLiterals(sourceFile);
+	if (!literals.length) {
+		return [];
+	}
+
+	const featureList = features ?? (await getAvailableFeatures());
+	if (!featureList?.length) {
+		return [];
+	}
+
+	const knownFeatures = new Set(
+		featureList.map(feature => feature.featureName).filter((name): name is string => Boolean(name?.trim()))
+	);
+	if (!knownFeatures.size) {
+		return [];
+	}
+
+	const diagnostics: vscode.Diagnostic[] = [];
+	for (const info of literals) {
+		const literalValue = info.literal.text.trim();
+		if (!literalValue || knownFeatures.has(literalValue)) {
+			continue;
+		}
+
+		const range = new vscode.Range(
+			document.positionAt(info.literal.getStart()),
+			document.positionAt(info.literal.getEnd())
+		);
+		pushGraphDiagnostic(
+			diagnostics,
+			range,
+			`The @featureInstalled decorator references feature "${literalValue}" which is not available on the connected server.`,
+			suppression
+		);
+	}
+
+	return diagnostics;
+}
+
 function createPropertyDiagnostic(
 	document: vscode.TextDocument,
 	property: ClassPropertyInfo,
@@ -314,6 +399,81 @@ function createPropertyDiagnostic(
 	diagnostic.code = 'graphInfo';
 	diagnostic.source = 'graphInfo';
 	return diagnostic;
+}
+
+function buildDisabledFeatureSet(features: FeatureModel[] | undefined): Set<string> {
+	const disabled = new Set<string>();
+	if (!features?.length) {
+		return disabled;
+	}
+
+	for (const feature of features) {
+		if (feature.enabled !== false) {
+			continue;
+		}
+
+		const name = feature.featureName?.trim();
+		if (name) {
+			disabled.add(name);
+		}
+	}
+
+	return disabled;
+}
+
+function collectFeatureDisabledScreenClasses(
+	screenClasses: CollectedClassInfo[],
+	disabledFeatureNames: Set<string>
+): Set<string> {
+	const result = new Set<string>();
+	if (!disabledFeatureNames.size) {
+		return result;
+	}
+
+	for (const screenClass of screenClasses) {
+		if (classHasDisabledFeatureDecorator(screenClass, disabledFeatureNames)) {
+			result.add(screenClass.className);
+		}
+	}
+
+	return result;
+}
+
+function classHasDisabledFeatureDecorator(
+	classInfo: CollectedClassInfo,
+	disabledFeatureNames: Set<string>
+): boolean {
+	if (!disabledFeatureNames.size) {
+		return false;
+	}
+
+	const decorators = getNodeDecorators(classInfo.node);
+	if (!decorators?.length) {
+		return false;
+	}
+
+	for (const decorator of decorators) {
+		const expression = decorator.expression;
+		if (!ts.isCallExpression(expression)) {
+			continue;
+		}
+
+		const decoratorName = getDecoratorIdentifier(expression.expression as ts.LeftHandSideExpression);
+		if (!decoratorName || decoratorName.toLowerCase() !== 'featureinstalled') {
+			continue;
+		}
+
+		if (!expression.arguments.length) {
+			continue;
+		}
+
+		const literalValue = tryGetStringLiteral(expression.arguments[0]);
+		if (literalValue && disabledFeatureNames.has(literalValue)) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 function getLinkCommandTargets(node: ts.PropertyDeclaration): string[] {
@@ -348,33 +508,3 @@ function getLinkCommandTargets(node: ts.PropertyDeclaration): string[] {
 	return targets;
 }
 
-function getNodeDecorators(node: ts.Node): readonly ts.Decorator[] | undefined {
-	const tsAny = ts as unknown as { canHaveDecorators?: (node: ts.Node) => boolean; getDecorators?: (node: ts.Node) => readonly ts.Decorator[] | undefined };
-	if (typeof tsAny.canHaveDecorators === 'function' && typeof tsAny.getDecorators === 'function') {
-		if (tsAny.canHaveDecorators(node)) {
-			return tsAny.getDecorators(node);
-		}
-	}
-
-	return (node as ts.Node & { decorators?: readonly ts.Decorator[] }).decorators;
-}
-
-function getDecoratorIdentifier(expression: ts.LeftHandSideExpression): string | undefined {
-	if (ts.isIdentifier(expression)) {
-		return expression.text;
-	}
-
-	if (ts.isPropertyAccessExpression(expression) && ts.isIdentifier(expression.name)) {
-		return expression.name.text;
-	}
-
-	return undefined;
-}
-
-function tryGetStringLiteral(node: ts.Expression): string | undefined {
-	if (ts.isStringLiteralLike(node)) {
-		return node.text.trim();
-	}
-
-	return undefined;
-}

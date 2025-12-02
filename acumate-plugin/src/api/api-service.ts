@@ -1,8 +1,23 @@
 import { GraphModel } from "../model/graph-model";
 import { GraphStructure } from "../model/graph-structure";
-import { GraphAPIRoute, GraphAPIStructureRoute, AuthEndpoint, LogoutEndpoint } from "./constants";
+import { GraphAPIRoute, GraphAPIStructureRoute, AuthEndpoint, LogoutEndpoint, FeaturesRoute } from "./constants";
 import { IAcuMateApiClient } from "./acu-mate-api-client";
 import { AcuMateContext } from "../plugin-context";
+import { FeatureModel } from "../model/FeatureModel";
+
+interface FeatureSetsResponse {
+    sets?: FeatureSetEntry[];
+}
+
+interface FeatureSetEntry {
+    name?: string;
+    features?: FeatureEntry[];
+}
+
+interface FeatureEntry {
+    name?: string;
+    enabled?: boolean;
+}
 
 export class AcuMateApiClient implements IAcuMateApiClient {
 
@@ -128,5 +143,46 @@ export class AcuMateApiClient implements IAcuMateApiClient {
     public async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
         return await this.makeGetRequest<GraphStructure>(GraphAPIStructureRoute + graphName);
     }
+
+    public async getFeatures(): Promise<FeatureModel[] | undefined> {
+        const response = await this.makeGetRequest<FeatureSetsResponse | FeatureModel[]>(FeaturesRoute);
+        return normalizeFeatureResponse(response);
+    }
+}
+
+function normalizeFeatureResponse(response: FeatureSetsResponse | FeatureModel[] | undefined): FeatureModel[] | undefined {
+    if (!response) {
+        return undefined;
+    }
+
+    if (Array.isArray(response)) {
+        return response;
+    }
+
+    const sets = response.sets;
+    if (!Array.isArray(sets)) {
+        return undefined;
+    }
+
+    const flattened: FeatureModel[] = [];
+    for (const set of sets) {
+        if (!set?.name || !Array.isArray(set.features)) {
+            continue;
+        }
+
+        for (const feature of set.features) {
+            if (!feature?.name) {
+                continue;
+            }
+
+            flattened.push({
+                featureName: `${set.name}+${feature.name}`,
+                enabled: Boolean(feature.enabled),
+                featureSet: set.name
+            });
+        }
+    }
+
+    return flattened;
 }
 

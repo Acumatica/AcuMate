@@ -13,3 +13,4 @@ declare function createSingle<T>(ctor: new () => T): PXView<T>;
 declare function createCollection<T>(ctor: new () => T): PXViewCollection<T>;
 declare function graphInfo(options: any): ClassDecorator;
 declare function linkCommand(actionName: string): PropertyDecorator;
+declare function featureInstalled(featureConfig: string | ((fs: any) => boolean)): ClassDecorator;

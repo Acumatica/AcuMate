@@ -10,7 +10,9 @@ import {
 } from '../utils';
 import { AcuMateContext } from '../plugin-context';
 import { getAvailableGraphs } from '../services/graph-metadata-service';
+import { getAvailableFeatures } from '../services/feature-metadata-service';
 import { getGraphTypeLiteralAtPosition } from '../typescript/graph-info-utils';
+import { getFeatureInstalledLiteralAtPosition } from '../typescript/feature-installed-utils';
 import { buildBackendViewMap, normalizeMetaName } from '../backend-metadata-utils';
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
@@ -23,6 +25,11 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
     const graphTypeCompletions = await provideGraphTypeCompletions(document, position, sourceFile);
     if (graphTypeCompletions?.length) {
         return graphTypeCompletions;
+    }
+
+    const featureInstalledCompletions = await provideFeatureInstalledCompletions(document, position, sourceFile);
+    if (featureInstalledCompletions?.length) {
+        return featureInstalledCompletions;
     }
 
     let activeClassName: string | undefined;
@@ -235,4 +242,42 @@ function getStringContentRange(document: vscode.TextDocument, literal: ts.String
     }
 
     return new vscode.Range(document.positionAt(literal.getStart()), document.positionAt(literal.getEnd()));
+}
+
+async function provideFeatureInstalledCompletions(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    sourceFile: ts.SourceFile
+): Promise<vscode.CompletionItem[] | undefined> {
+    const offset = document.offsetAt(position);
+    const literalInfo = getFeatureInstalledLiteralAtPosition(sourceFile, offset);
+    if (!literalInfo) {
+        return undefined;
+    }
+
+    const features = await getAvailableFeatures();
+    if (!features?.length) {
+        return undefined;
+    }
+
+    const range = getStringContentRange(document, literalInfo.literal);
+    const items: vscode.CompletionItem[] = [];
+    for (const feature of features) {
+        if (!feature?.featureName) {
+            continue;
+        }
+
+        const item = new vscode.CompletionItem(feature.featureName, vscode.CompletionItemKind.EnumMember);
+        item.insertText = feature.featureName;
+        item.range = range;
+        item.sortText = feature.featureName.toLowerCase();
+        item.detail = feature.enabled ? 'Enabled feature' : 'Feature (disabled)';
+        const status = feature.enabled
+            ? 'This feature is enabled on the connected server.'
+            : 'This feature exists but is disabled on the connected server.';
+        item.documentation = new vscode.MarkdownString(status);
+        items.push(item);
+    }
+
+    return items.length ? items : undefined;
 }
