@@ -71,7 +71,7 @@ describe('getAttributeContext integration', () => {
 describe('findParentViewName', () => {
 	it('returns using view attribute when present', async () => {
 		const { text, offset } = extractOffset('<qp-fieldset view.bind="ProdItemSelected"><using view="ItemConfiguration"><field name="|"></field></using></qp-fieldset>');
-		const document = await vscode.workspace.openTextDocument({ language: 'html', content: text });
+		await vscode.workspace.openTextDocument({ language: 'html', content: text });
 		const dom = parseDocumentDom(text);
 		assert.ok(dom);
 		const node = findNodeAtOffset(dom!, offset);
@@ -82,7 +82,7 @@ describe('findParentViewName', () => {
 
 	it('falls back to ancestor view.bind when using lacks view attribute', async () => {
 		const { text, offset } = extractOffset('<qp-fieldset view.bind="CurrentDocument"><using><field name="|"></field></using></qp-fieldset>');
-		const document = await vscode.workspace.openTextDocument({ language: 'html', content: text });
+		await vscode.workspace.openTextDocument({ language: 'html', content: text });
 		const dom = parseDocumentDom(text);
 		assert.ok(dom);
 		const node = findNodeAtOffset(dom!, offset);

@@ -5,8 +5,8 @@ import { getClientControlsMetadata } from '../../services/client-controls-servic
 import { ensureClientControlsFixtures } from '../utils/clientControlsFixtures';
 
 describe('client-controls metadata discovery', () => {
-const nodeModulesProjectRoot = path.resolve(__dirname, '../../../src/test/fixtures/client-controls-project');
-const nodeModulesHtmlPath = path.join(nodeModulesProjectRoot, 'src', 'screens', 'Sample', 'Sample.html');
+	const nodeModulesProjectRoot = path.resolve(__dirname, '../../../src/test/fixtures/client-controls-project');
+	const nodeModulesHtmlPath = path.join(nodeModulesProjectRoot, 'src', 'screens', 'Sample', 'Sample.html');
 
 	const inlineProjectRoot = path.resolve(__dirname, '../../../src/test/fixtures/client-controls-inline-project');
 	const inlineHtmlPath = path.join(inlineProjectRoot, 'src', 'screens', 'Sample', 'Sample.html');

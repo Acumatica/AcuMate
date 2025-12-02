@@ -251,8 +251,8 @@ export function findParentViewName(node: any): string | undefined {
 		}
 
 		if (current.name === 'using') {
-			const usingView = current.attribs?.['view'];
-			if (typeof usingView === 'string' && usingView.length) {
+			const usingView = current.attribs?.view;
+			if (usingView) {
 				return usingView;
 			}
 		}

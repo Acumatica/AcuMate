@@ -163,7 +163,7 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		const currentValue = attributeContext.value ?? '';
-		const trimmedValue = currentValue.trimLeft();
+		const trimmedValue = currentValue.trimStart();
 		if (trimmedValue && !trimmedValue.startsWith('{')) {
 			return undefined;
 		}
@@ -467,7 +467,6 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 	private createControlCompletionItem(control: ClientControlMetadata, replaceRange: vscode.Range): vscode.CompletionItem {
 		const item = new vscode.CompletionItem(control.tagName, vscode.CompletionItemKind.Class);
-		item.kind = vscode.CompletionItemKind.Class;
 		item.range = replaceRange;
 		item.detail = control.config?.displayName ?? control.className;
 		item.documentation = this.buildControlDocumentation(control);
