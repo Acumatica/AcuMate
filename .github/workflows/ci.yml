@@ -25,11 +25,13 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
+        working-directory: ./acumate-plugin
         run: npm ci
         env:
           VSCODE_SKIP_POSTINSTALL: true
 
       - name: Run tests
+        working-directory: ./acumate-plugin
         run: npm test
         env:
           VSCODE_SKIP_POSTINSTALL: true
