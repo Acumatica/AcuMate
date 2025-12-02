@@ -64,6 +64,20 @@ describe('createScreenExtension scaffolding', () => {
 		assert.strictEqual(selectViewsStub.called, false);
 	});
 
+	it('aborts when backend usage is disabled', async () => {
+		AcuMateContext.ConfigurationService = {
+			useBackend: false,
+		} as any;
+
+		const infoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined as any);
+		const nameStub = sinon.stub(setScreenExtensionNameModule, 'setScreenExtensionName');
+
+		await createScreenExtension();
+
+		assert.ok(infoStub.calledOnce);
+		assert.strictEqual(nameStub.called, false);
+	});
+
 	it('creates screen extension artifacts when inputs are provided', async () => {
 		stubWorkspaceFolders('C:/repo');
 		stubActiveEditor('C:/repo/screen/src/screens/SO/SO301000/SO301000.ts');
@@ -117,17 +131,4 @@ describe('createScreenExtension scaffolding', () => {
 		assert.strictEqual(warningStub.called, false);
 	});
 
-	it('aborts when backend usage is disabled', async () => {
-		AcuMateContext.ConfigurationService = {
-			useBackend: false,
-		} as any;
-
-		const infoStub = sinon.stub(vscode.window, 'showInformationMessage').resolves(undefined as any);
-		const nameStub = sinon.stub(setScreenExtensionNameModule, 'setScreenExtensionName');
-
-		await createScreenExtension();
-
-		assert.ok(infoStub.calledOnce);
-		assert.strictEqual(nameStub.called, false);
-	});
 });
