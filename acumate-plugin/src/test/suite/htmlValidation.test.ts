@@ -290,7 +290,7 @@ describe('HTML validation diagnostics', () => {
 			'Expected diagnostic for unknown config property'
 		);
 		assert.ok(
-			diagnostics.some(d => d.message.includes('must be valid JSON')),
+			diagnostics.some(d => d.message.includes('must be valid object')),
 			'Expected diagnostic for invalid config JSON'
 		);
 	});

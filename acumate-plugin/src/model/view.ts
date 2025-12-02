@@ -17,5 +17,6 @@ export class Field extends BaseMetaItem {
     public displayName?: string;
 	public typeName?: string;
     public extension?: string;
+    public defaultControlType?: string;
 }
 

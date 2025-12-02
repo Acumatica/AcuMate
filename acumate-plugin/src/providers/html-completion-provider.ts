@@ -11,6 +11,7 @@ import {
 	collectActionProperties,
 	extractConfigPropertyNames,
 	filterClassesBySource,
+	tryGetGraphType,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -25,6 +26,8 @@ import {
 } from '../services/client-controls-service';
 import { getScreenTemplates } from '../services/screen-template-service';
 import { getIncludeMetadata, IncludeMetadata } from '../services/include-service';
+import { AcuMateContext } from '../plugin-context';
+import { buildBackendViewMap, BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
 
 // Registers completions so HTML view bindings stay in sync with PX metadata.
 export function registerHtmlCompletionProvider(context: vscode.ExtensionContext) {
@@ -139,7 +142,8 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 				return undefined;
 			}
 
-			return this.createFieldCompletions(viewClass.properties);
+			const backendFields = await this.loadBackendFieldsForView(viewName, screenClasses);
+			return this.createFieldCompletions(viewClass.properties, backendFields);
 		}
 
 		return undefined;
@@ -529,7 +533,10 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 	}
 
 	// Builds the suggestion set for <field name="..."> attributes scoped to a PXView.
-	private createFieldCompletions(properties: Map<string, ClassPropertyInfo>): vscode.CompletionItem[] {
+	private createFieldCompletions(
+		properties: Map<string, ClassPropertyInfo>,
+		backendFields?: Map<string, BackendFieldMetadata>
+	): vscode.CompletionItem[] {
 		const items: vscode.CompletionItem[] = [];
 
 		for (const [name, property] of properties) {
@@ -538,11 +545,65 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			}
 
 			const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Field);
-			item.detail = property.typeName ?? 'PXFieldState';
+			const normalizedName = backendFields ? normalizeMetaName(name) : undefined;
+			const backendField = normalizedName && backendFields ? backendFields.get(normalizedName) : undefined;
+			const baseDetail = property.typeName ?? 'PXFieldState';
+			if (backendField?.field.defaultControlType) {
+				item.detail = `${baseDetail} • default: ${backendField.field.defaultControlType}`;
+				const markdown = new vscode.MarkdownString(
+					`Default control: \`${backendField.field.defaultControlType}\``
+				);
+				if (backendField.field.displayName) {
+					markdown.appendMarkdown(`\n\n**${backendField.field.displayName}**`);
+				}
+				markdown.isTrusted = false;
+				item.documentation = markdown;
+			}
+			else {
+				item.detail = baseDetail;
+			}
 			items.push(item);
 		}
 
 		return items;
+	}
+
+	private resolveGraphName(screenClasses: CollectedClassInfo[]): string | undefined {
+		for (const screenClass of screenClasses) {
+			const sourceText = screenClass.sourceFile.getFullText?.() ?? screenClass.sourceFile.text;
+			const graphType = tryGetGraphType(sourceText);
+			if (graphType) {
+				return graphType;
+			}
+		}
+		return undefined;
+	}
+
+	private async loadBackendFieldsForView(
+		viewName: string,
+		screenClasses: CollectedClassInfo[]
+	): Promise<Map<string, BackendFieldMetadata> | undefined> {
+		if (!AcuMateContext.ConfigurationService?.useBackend || !AcuMateContext.ApiService) {
+			return undefined;
+		}
+
+		const graphName = this.resolveGraphName(screenClasses);
+		if (!graphName) {
+			return undefined;
+		}
+
+		const graphStructure = await AcuMateContext.ApiService.getGraphStructure(graphName);
+		if (!graphStructure) {
+			return undefined;
+		}
+
+		const backendViews = buildBackendViewMap(graphStructure);
+		const normalizedViewName = normalizeMetaName(viewName);
+		if (!normalizedViewName) {
+			return undefined;
+		}
+
+		return backendViews.get(normalizedViewName)?.fields;
 	}
 
 	private createActionCompletions(screenClasses: CollectedClassInfo[]): vscode.CompletionItem[] {

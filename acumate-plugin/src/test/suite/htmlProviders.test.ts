@@ -5,6 +5,12 @@ import vscode from 'vscode';
 import { HtmlCompletionProvider } from '../../providers/html-completion-provider';
 import { HtmlDefinitionProvider } from '../../providers/html-definition-provider';
 import { ensureClientControlsFixtures } from '../utils/clientControlsFixtures';
+import { AcuMateContext } from '../../plugin-context';
+import { IAcuMateApiClient } from '../../api/acu-mate-api-client';
+import { GraphStructure } from '../../model/graph-structure';
+import { GraphModel } from '../../model/graph-model';
+import { FeatureModel } from '../../model/FeatureModel';
+import { ConfigurationService } from '../../services/configuration-service';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
@@ -42,10 +48,38 @@ const screenSelectorHtmlPath = path.join(
 	'extensions',
 	'SO301000_FieldSelectors.html'
 );
+const fieldControlHtmlPath = path.join(fixturesRoot, 'FieldControlInfo.html');
+const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
+
+class HtmlMockApiClient implements IAcuMateApiClient {
+	constructor(private readonly structures: Record<string, GraphStructure | undefined> = {}) {}
+
+	async getGraphs(): Promise<GraphModel[] | undefined> {
+		return [];
+	}
+
+	async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
+		return this.structures[graphName];
+	}
+
+	async getFeatures(): Promise<FeatureModel[] | undefined> {
+		return [];
+	}
+}
+
+const backendConfigStub = {
+	get useBackend() {
+		return true;
+	}
+} as ConfigurationService;
 
 before(function () {
 	this.timeout(20000);
 	return ensureClientControlsFixtures();
+});
+
+before(() => {
+	AcuMateContext.ConfigurationService = backendConfigStub;
 });
 
 function positionAt(document: vscode.TextDocument, search: string, delta = 0, fromIndex = 0): vscode.Position {
@@ -98,6 +132,37 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No field completions returned');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('gridField'), 'gridField not suggested');
+	});
+
+	it('includes default control metadata in field completions when backend data is available', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						BillShipmentSource: {
+							name: 'BillShipmentSource',
+							displayName: 'Ship-To Address',
+							defaultControlType: 'qp-drop-down'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(fieldControlHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name=""', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'Expected field completions with backend metadata');
+		const fieldItem = completions?.find(item => item.label === 'BillShipmentSource');
+		assert.ok(fieldItem, 'BillShipmentSource completion missing');
+		assert.ok(
+			fieldItem?.detail?.includes('qp-drop-down'),
+			'Field completion should mention default control type'
+		);
 	});
 
 	it('suggests view names for using view attribute', async () => {

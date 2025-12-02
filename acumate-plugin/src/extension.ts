@@ -17,6 +17,7 @@ import { registerHtmlDefinitionProvider } from './providers/html-definition-prov
 import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
 import { registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
 import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
+import { registerTsHoverProvider } from './providers/ts-hover-provider';
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -206,6 +207,8 @@ function createIntelliSenseProviders(context: vscode.ExtensionContext) {
 	);
 
 	context.subscriptions.push(provider);
+
+	registerTsHoverProvider(context);
 
 	/*provider = vscode.languages.registerCompletionItemProvider(
 		{ language:'html', scheme:'file'},

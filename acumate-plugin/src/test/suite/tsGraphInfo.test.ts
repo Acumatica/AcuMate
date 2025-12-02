@@ -10,6 +10,7 @@ import { GraphModel } from '../../model/graph-model';
 import { GraphStructure } from '../../model/graph-structure';
 import { FeatureModel } from '../../model/FeatureModel';
 import { clearFeatureMetadataCache } from '../../services/feature-metadata-service';
+import { provideTSFieldHover } from '../../providers/ts-hover-provider';
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/typescript');
 const completionFixture = path.join(fixturesRoot, 'GraphInfoScreen.ts');
@@ -245,6 +246,40 @@ describe('graphInfo decorator assistance', () => {
 		assert.ok(labels.includes('SuggestedField'), 'PXView field completion should include backend fields not yet declared');
 		assert.ok(!labels.includes('ExistingField'), 'existing PXView fields should not be suggested again');
 	});
+
+		it('shows backend field metadata when hovering PXView fields', async () => {
+			const graphStructure: GraphStructure = {
+				name: backendGraphName,
+				views: {
+					Document: {
+						name: 'Document',
+						fields: {
+							OrderNbr: {
+								name: 'OrderNbr',
+								displayName: 'Order Number',
+								typeName: 'System.String',
+								defaultControlType: 'qp-text-box'
+							}
+						}
+					}
+				}
+			};
+			AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+			const document = await vscode.workspace.openTextDocument(viewFieldMatchFixture);
+			const marker = 'OrderNbr';
+			const offset = document.getText().indexOf(marker);
+			assert.ok(offset >= 0, 'hover marker not found');
+			const position = document.positionAt(offset);
+			const hover = await provideTSFieldHover(document, position);
+			assert.ok(hover, 'expected hover result');
+			const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+			const first = contents[0];
+			const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+			assert.ok(/Order Number/.test(value), 'hover should show display name');
+			assert.ok(/System\.String/.test(value), 'hover should show backend type name');
+			assert.ok(/qp-text-box/.test(value), 'hover should show default control type');
+		});
 
 	it('respects acumate-disable-next-line directives for graphInfo diagnostics', async () => {
 		const graphStructure: GraphStructure = {
