@@ -451,7 +451,7 @@ function validateDom(
         diagnostics,
         suppression,
         range,
-        `The ${node.name} config.bind value must be valid JSON matching ${definition.typeName}.`
+        `The ${node.name} config.bind value must be valid object matching ${definition.typeName}.`
       );
       return;
     }
