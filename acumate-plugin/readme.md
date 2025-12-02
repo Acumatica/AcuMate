@@ -2,7 +2,7 @@
 
 ## Description
 
-**AcuMate** is a Visual Studio Code extension designed specifically for working with the **Acumatica ERP** platform's Modern UI. This extension streamlines development tasks, providing tools to improve productivity, consistency, and ease of use when working with Acumatica. AcuMate offers customizable settings to connect seamlessly with your backend, manage authentication, optimize caching, and enforce code quality standards with integrated Prettier support. 
+**AcuMate** is a Visual Studio Code extension designed specifically for working with the **Acumatica ERP** platform's Modern UI. This extension streamlines development tasks, providing tools to improve productivity, consistency, and ease of use when working with Acumatica. 
 
 ## Settings
 
@@ -18,11 +18,8 @@ The AcuMate extension provides a range of settings to configure its behavior. Ea
 | `acuMate.tenant`                 | `string`  | `""`              | Specifies the tenant to use.                                                                    |
 | `acuMate.useCache`               | `boolean` | `true`            | Enables caching of server responses.                                                            |
 | `acuMate.useBackend`             | `boolean` | `true`            | Enables the use of the backend for the plugin. Disabling this may cause some features to stop working. |
-| `acuMate.useAuthentification`    | `boolean` | `true`            | Uses credentials to access the Acumatica backend.                                               |
 | `acuMate.usePrettier`            | `boolean` | `true`            | Applies Prettier formatting to generated files.                                                 |
 | `acuMate.clearUsages`            | `boolean` | `true`            | Runs the `organizeUsages` command on generated files.                                           |
-
-Each of these settings can be adjusted to optimize your development experience with the AcuMate extension.
 
 
 ## Features
@@ -79,14 +76,6 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
 - GraphInfo warnings inside TypeScript files respect both `// acumate-disable-next-line graphInfo` and `// acumate-disable-file graphInfo`, so you can either silence a single property or disable the validator for the entire file.
 - HTML and TypeScript diagnostics now expose two lightbulb options: **Suppress with acumate-disable-next-line** inserts the scoped directive above the offending line, while **Suppress file with acumate-disable-file** drops the file-wide directive at the top of the document automatically.
 
-### Quality & CI
-
-1. **Automated Tests**  
-   - Run `npm test` locally to compile, lint, and execute the VS Code integration suites (metadata, HTML providers, validator).
-   - The GitHub Actions workflow in `.github/workflows/ci.yml` mirrors this command on pushes and pull requests across Node 18.x and 20.x, ensuring extensions remain stable before merges.
-
-
-
 ## Commands
 
 The **AcuMate** extension provides several commands to streamline development tasks. Each command is accessible through the command palette in VS Code, categorized under "AcuMate."
@@ -109,4 +98,10 @@ The **AcuMate** extension provides several commands to streamline development ta
 | `acumate.watchCurrentScreen`       | **Watch Current Screen**             | Watches the currently active screen for changes and rebuilds as needed.                                     |
 | `acumate.repeatLastBuildCommand`   | **Repeat Last Build Command**        | Repeats the last executed build command, useful for quick iterations.                                       |
 | `acumate.dropCache`                | **Drop Local Cache**                 | Clears the local cache, ensuring that the next build retrieves fresh data from the backend.                 |
+
+### Quality & CI
+
+1. **Automated Tests**  
+   - Run `npm test` locally to compile, lint, and execute the VS Code integration suites (metadata, HTML providers, validator).
+   - The GitHub Actions workflow in `.github/workflows/ci.yml` mirrors this command on pushes and pull requests across Node 18.x and 20.x, ensuring extensions remain stable before merges.
 

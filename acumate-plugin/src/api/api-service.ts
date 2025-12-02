@@ -72,14 +72,12 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         }
 
         try {
-            if (AcuMateContext.ConfigurationService.useAuthentification) {
-                const authResponse = await this.auth();
+            const authResponse = await this.auth();
 
-                if (authResponse.status !== 200 && authResponse.status !== 204) {
-                    const errorBody = await authResponse.text().catch(() => "");
-                    console.error(`Authentication failed with status ${authResponse.status}: ${errorBody}`);
-                    return undefined;
-                }
+            if (authResponse.status !== 200 && authResponse.status !== 204) {
+                const errorBody = await authResponse.text().catch(() => "");
+                console.error(`Authentication failed with status ${authResponse.status}: ${errorBody}`);
+                return undefined;
             }
 
             const url = AcuMateContext.ConfigurationService.backedUrl!+route;
@@ -92,12 +90,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
                 method:'GET',
                 headers
             };
-            if (AcuMateContext.ConfigurationService.useAuthentification) {
-                settings.credentials = `include`;
-            }
-            else {
-                settings.credentials = `same-origin`;
-            }
+            settings.credentials = `include`;
             const response = await fetch(url, settings);
 
             if (!response.ok) {
@@ -123,9 +116,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             console.error('Error making GET request:', error);
         }
         finally {
-            if (AcuMateContext.ConfigurationService.useAuthentification) {
-                await this.logout();
-            }
+            await this.logout();
         }
     }
 
