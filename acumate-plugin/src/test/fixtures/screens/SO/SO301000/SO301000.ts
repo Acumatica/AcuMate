@@ -8,6 +8,10 @@ export class SOOrder extends PXView {
 	BlanketOpenQty!: PXFieldState;
 }
 
+@graphInfo({
+	graphType: "PX.SM.ProjectNewUiFrontendFileMaintenance",
+	primaryView: "Document"
+})
 export class SO301000 extends PXScreen {
 	BaseView!: PXView<SO301000BaseView>;
 	CurrentDocument!: PXView<SOOrder>;

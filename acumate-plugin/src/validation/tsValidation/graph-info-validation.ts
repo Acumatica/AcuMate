@@ -6,7 +6,14 @@ import { findGraphTypeLiterals } from '../../typescript/graph-info-utils';
 import { AcuMateContext } from '../../plugin-context';
 import { GraphModel } from '../../model/graph-model';
 import { GraphStructure } from '../../model/graph-structure';
-import { getClassPropertiesFromTs, CollectedClassInfo, ClassPropertyInfo, createClassInfoLookup } from '../../utils';
+import {
+	getClassPropertiesFromTs,
+	CollectedClassInfo,
+	ClassPropertyInfo,
+	createClassInfoLookup,
+	isScreenLikeClass,
+	tryGetGraphTypeFromExtension
+} from '../../utils';
 import { buildBackendActionSet, buildBackendViewMap, normalizeMetaName } from '../../backend-metadata-utils';
 import { createSuppressionEngine, SuppressionEngine } from '../../diagnostics/suppression';
 
@@ -72,32 +79,40 @@ const graphs = graphsOverride ?? (await getAvailableGraphs());
 	const diagnostics: vscode.Diagnostic[] = [];
 	const normalizedDocumentPath = path.normalize(document.fileName);
 
-	for (const info of literals) {
-		const graphName = info.literal.text.trim();
-		if (!graphName || validGraphNames.has(graphName)) {
-			continue;
+	if (literals.length) {
+		for (const info of literals) {
+			const graphName = info.literal.text.trim();
+			if (!graphName || validGraphNames.has(graphName)) {
+				continue;
+			}
+
+			const range = new vscode.Range(
+				document.positionAt(info.literal.getStart()),
+				document.positionAt(info.literal.getEnd())
+			);
+			pushGraphDiagnostic(
+				diagnostics,
+				range,
+				`The graphType "${graphName}" is not available on the connected server.`,
+				suppression
+			);
 		}
-
-		const range = new vscode.Range(
-			document.positionAt(info.literal.getStart()),
-			document.positionAt(info.literal.getEnd())
-		);
-		pushGraphDiagnostic(
-			diagnostics,
-			range,
-			`The graphType "${graphName}" is not available on the connected server.`,
-			suppression
-		);
 	}
 
+	let graphName: string | undefined;
 	const firstLiteral = literals[0];
-	if (!firstLiteral) {
-		return diagnostics;
-	}
-
-	const graphName = firstLiteral.literal.text.trim();
-	if (!graphName || !validGraphNames.has(graphName)) {
-		return diagnostics;
+	if (firstLiteral) {
+		const literalValue = firstLiteral.literal.text.trim();
+		if (!literalValue || !validGraphNames.has(literalValue)) {
+			return diagnostics;
+		}
+		graphName = literalValue;
+	} else {
+		const extensionGraph = tryGetGraphTypeFromExtension(document.fileName);
+		if (!extensionGraph || !validGraphNames.has(extensionGraph)) {
+			return diagnostics;
+		}
+		graphName = extensionGraph;
 	}
 
 	const structure = await AcuMateContext.ApiService.getGraphStructure(graphName);
@@ -108,7 +123,7 @@ const graphs = graphsOverride ?? (await getAvailableGraphs());
 	const classInfos = getClassPropertiesFromTs(documentText, document.fileName);
 	const classInfoLookup = createClassInfoLookup(classInfos);
 	const screenClasses = classInfos.filter(
-		info => info.type === 'PXScreen' && path.normalize(info.sourceFile.fileName) === normalizedDocumentPath
+		info => path.normalize(info.sourceFile.fileName) === normalizedDocumentPath && isScreenLikeClass(info)
 	);
 	if (!screenClasses.length) {
 		return diagnostics;

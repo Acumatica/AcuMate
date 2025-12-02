@@ -1,6 +1,13 @@
 import vscode from 'vscode';
 import ts from 'typescript';
-import { buildClassInheritance, tryGetGraphType, getClassPropertiesFromTs, createClassInfoLookup } from '../utils';
+import {
+    buildClassInheritance,
+    tryGetGraphType,
+    getClassPropertiesFromTs,
+    createClassInfoLookup,
+    isScreenLikeClass,
+    tryGetGraphTypeFromExtension
+} from '../utils';
 import { AcuMateContext } from '../plugin-context';
 import { getAvailableGraphs } from '../services/graph-metadata-service';
 import { getGraphTypeLiteralAtPosition } from '../typescript/graph-info-utils';
@@ -8,7 +15,10 @@ import { buildBackendViewMap, normalizeMetaName } from '../backend-metadata-util
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
 
-    const sourceFile = ts.createSourceFile(document.fileName, document.getText(), ts.ScriptTarget.Latest, true);
+    const documentText = document.getText();
+    const sourceFile = ts.createSourceFile(document.fileName, documentText, ts.ScriptTarget.Latest, true);
+    const classInfos = getClassPropertiesFromTs(documentText, document.fileName);
+    const classInfoLookup = createClassInfoLookup(classInfos);
 
     const graphTypeCompletions = await provideGraphTypeCompletions(document, position, sourceFile);
     if (graphTypeCompletions?.length) {
@@ -25,17 +35,17 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
         }
 
         if (ts.isClassDeclaration(node) && node.name) {
-            const inheritanceInfo = buildClassInheritance(node);
-            const screenOrViewItem = inheritanceInfo.chain.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
-            if (screenOrViewItem) {
-                const { line: startLine } = document.positionAt(node.getStart(sourceFile));
-                const { line: endLine } = document.positionAt(node.getEnd());
+            const { line: startLine } = document.positionAt(node.getStart(sourceFile));
+            const { line: endLine } = document.positionAt(node.getEnd());
 
-                if (position.line >= startLine && position.line <= endLine) {
-                    activeClassName = node.name.text;
+            if (position.line >= startLine && position.line <= endLine) {
+                activeClassName = node.name.text;
+                const inheritanceInfo = buildClassInheritance(node);
+                const screenOrViewItem = inheritanceInfo.chain.find(i => i.escapedText === "PXScreen" || i.escapedText === "PXView");
+                if (screenOrViewItem) {
                     activeClassKind = screenOrViewItem.escapedText as 'PXScreen' | 'PXView';
-                    return;
                 }
+                return;
             }
         }
 
@@ -45,11 +55,20 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
 
 
     findClassAndCheckPosition(sourceFile);
+    if (!activeClassKind && activeClassName) {
+        const classInfo = classInfoLookup.get(activeClassName);
+        if (classInfo && isScreenLikeClass(classInfo)) {
+            activeClassKind = 'PXScreen';
+        }
+    }
 
     const suggestions: vscode.CompletionItem[] = [];
+    const resolveGraphName = (): string | undefined => {
+        return tryGetGraphType(documentText) ?? tryGetGraphTypeFromExtension(document.fileName);
+    };
 
     if (activeClassKind === 'PXScreen') {
-        const graphName = tryGetGraphType(document.getText());
+        const graphName = resolveGraphName();
 
         if (!graphName) {
             return;
@@ -89,7 +108,7 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
         }
     }
     else if (activeClassKind === 'PXView' && activeClassName) {
-        const graphName = tryGetGraphType(document.getText());
+        const graphName = resolveGraphName();
         if (!graphName) {
             return;
         }
@@ -100,8 +119,6 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
             return;
         }
 
-        const classInfos = getClassPropertiesFromTs(document.getText(), document.fileName);
-        const classInfoLookup = createClassInfoLookup(classInfos);
         const viewClassInfo = classInfoLookup.get(activeClassName);
         if (!viewClassInfo) {
             return;

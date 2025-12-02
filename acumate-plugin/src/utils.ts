@@ -670,7 +670,7 @@ export function getRelatedTsFiles(htmlFilePath: string): string[] {
 		related.add(path.normalize(direct));
 	}
 
-	const screenTs = tryGetScreenTsFromExtension(htmlFilePath);
+	const screenTs = getScreenTsFromExtension(htmlFilePath);
 	if (screenTs) {
 		related.add(path.normalize(screenTs));
 	}
@@ -678,8 +678,8 @@ export function getRelatedTsFiles(htmlFilePath: string): string[] {
 	return [...related];
 }
 
-function tryGetScreenTsFromExtension(htmlFilePath: string): string | undefined {
-	const normalized = path.normalize(htmlFilePath);
+export function getScreenTsFromExtension(filePath: string): string | undefined {
+	const normalized = path.normalize(filePath);
 	const lowerNormalized = normalized.toLowerCase();
 	const marker = `${path.sep}extensions${path.sep}`.toLowerCase();
 	const markerIndex = lowerNormalized.lastIndexOf(marker);
@@ -698,6 +698,21 @@ function tryGetScreenTsFromExtension(htmlFilePath: string): string | undefined {
 
 	const candidate = path.join(screenDir, `${screenName}.ts`);
 	return fs.existsSync(candidate) ? candidate : undefined;
+}
+
+export function tryGetGraphTypeFromExtension(filePath: string): string | undefined {
+	const screenTs = getScreenTsFromExtension(filePath);
+	if (!screenTs || !fs.existsSync(screenTs)) {
+		return undefined;
+	}
+
+	try {
+		const baseContent = fs.readFileSync(screenTs, 'utf-8');
+		return tryGetGraphType(baseContent);
+	}
+	catch {
+		return undefined;
+	}
 }
 
 export function loadClassInfosFromFiles(tsFilePaths: string[]): CollectedClassInfo[] {
