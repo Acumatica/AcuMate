@@ -1,0 +1,38 @@
+<template>
+	<qp-include-parameters
+		fs-id.required
+		contact-view.required
+		fs-wg-container="Contact_Contact"
+		fs-caption="Contact"
+		override-fieldname="OverrideContact"
+		override-wg-container
+	></qp-include-parameters>
+
+	<qp-fieldset
+		id="{{fs-id}}"
+		view.bind="{{contact-view}}"
+		caption="{{fs-caption}}"
+		some-ignored-attr
+		wg-container="{{fs-wg-container}}"
+	>
+		{{#override-wg-container}}
+		<using wg-container="{{override-wg-container}}">
+		{{/override-wg-container}}
+		{{#override-fieldname}}
+		<field name="{{override-fieldname}}"></field>
+		{{/override-fieldname}}
+		{{#override-wg-container}}
+		</using>
+		{{/override-wg-container}}
+		
+		<field name="FullName"></field>
+		<field name="Attention"></field>
+		<field name="Email"></field>
+		<field name="Phone1">
+			<qp-field slot="label" control-state.bind="{{contact-view}}.Phone1Type"></qp-field>
+		</field>
+		<field name="Phone2">
+			<qp-field slot="label" control-state.bind="{{contact-view}}.Phone2Type"></qp-field>
+		</field>
+	</qp-fieldset>
+</template>

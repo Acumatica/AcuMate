@@ -752,6 +752,53 @@ export function collectActionProperties(classInfos: CollectedClassInfo[]): Map<s
 	}
 	return actions;
 }
+
+export function parseConfigObject(rawValue: string | undefined): Record<string, unknown> | undefined {
+	if (!rawValue) {
+		return undefined;
+	}
+
+	const trimmed = rawValue.trim();
+	if (!trimmed) {
+		return undefined;
+	}
+
+	const withoutQuotes = trimmed.replace(/^['"]|['"]$/g, '');
+	const candidate = withoutQuotes.startsWith('{') ? withoutQuotes : trimmed;
+	if (!candidate.trim().startsWith('{')) {
+		return undefined;
+	}
+
+	try {
+		const parsed = jsonic(candidate);
+		if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+			return parsed as Record<string, unknown>;
+		}
+	}
+	catch {
+		return undefined;
+	}
+
+	return undefined;
+}
+
+export function extractConfigPropertyNames(rawValue: string | undefined): string[] {
+	const names = new Set<string>();
+	const parsed = parseConfigObject(rawValue);
+	if (parsed) {
+		Object.keys(parsed).forEach(name => names.add(name));
+	}
+
+	if (rawValue) {
+		const regex = /"([^"\\\n]+)"\s*:/g;
+		let match: RegExpExecArray | null;
+		while ((match = regex.exec(rawValue))) {
+			names.add(match[1]);
+		}
+	}
+
+	return [...names];
+}
   
   
 

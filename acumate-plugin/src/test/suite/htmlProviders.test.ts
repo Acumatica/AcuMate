@@ -7,6 +7,9 @@ import { HtmlDefinitionProvider } from '../../providers/html-definition-provider
 
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
+const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
+const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
+const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -173,6 +176,48 @@ describe('HTML completion provider integration', () => {
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('ConfigurationID'), 'ConfigurationID not suggested');
 	});
+
+	it('suggests qp-include parameters declared by referenced file', async () => {
+		const document = await vscode.workspace.openTextDocument(includeHostPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, '	></qp-include>', 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No parameter completions returned for qp-include');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('override-fieldname'), 'override-fieldname not suggested');
+		assert.ok(labels.includes('override-wg-container'), 'override-wg-container not suggested');
+	});
+
+	it('suggests qp-template names sourced from ScreenTemplates', async () => {
+		const document = await vscode.workspace.openTextDocument(qpTemplateFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name=""', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for qp-template name');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('17-17-14'), '17-17-14 template not suggested');
+	});
+
+	it('suggests view + field pairs for control-state.bind', async () => {
+		const document = await vscode.workspace.openTextDocument(path.join(fixturesRoot, 'TestScreen.html'));
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'control-state.bind=""', 'control-state.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for control-state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('mainView.customerName'), 'mainView.customerName not suggested');
+	});
+
+	it('suggests config properties for client controls', async () => {
+		const document = await vscode.workspace.openTextDocument(configCompletionPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, "config.bind='{  }'", "config.bind='{ ".length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for config.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('enabled'), 'enabled config property not suggested');
+		assert.ok(labels.includes('dialogResult'), 'dialogResult config property not suggested');
+	});
 });
 
 describe('HTML definition provider integration', () => {
@@ -331,6 +376,36 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
 			'Expected action definition inside TestScreen.ts'
+		);
+	});
+
+	it('navigates from qp-include url to referenced file', async () => {
+		const document = await vscode.workspace.openTextDocument(includeHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'url="src/test/fixtures/includes/form-contact-document.html"',
+			'url="'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('form-contact-document.html')),
+			'Expected navigation to include template file'
+		);
+	});
+
+	it('navigates from control-state.bind to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(path.join(fixturesRoot, 'TestScreen.html'));
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'control-state.bind="mainView.customerName"', 'control-state.bind="'.length + 'mainView.'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
+			'Expected control-state definition inside TestScreen.ts'
 		);
 	});
 });

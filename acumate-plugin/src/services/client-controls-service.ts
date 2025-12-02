@@ -62,6 +62,10 @@ export function getClientControlsMetadata(options: ClientControlsLookupOptions =
 	return controls;
 }
 
+export function getClientControlsPackageRoot(options: ClientControlsLookupOptions = {}): string | undefined {
+	return findClientControlsPackage(options);
+}
+
 function findClientControlsPackage(options: ClientControlsLookupOptions): string | undefined {
 	const searchRoots: string[] = [];
 	if (options.startingPath) {
