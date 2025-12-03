@@ -216,7 +216,7 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		else {
 			placeholder = '${1:null}';
 		}
-		return new vscode.SnippetString(`"${name}": ${placeholder}`);
+		return new vscode.SnippetString(`${name}: ${placeholder}`);
 	}
 
 	private tryProvideControlTypeCompletions(
@@ -439,7 +439,7 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 	private createIncludeParameterSnippet(parameter: IncludeMetadata['parameters'][number]): vscode.SnippetString {
 		const placeholder = parameter.defaultValue ? `\${1:${parameter.defaultValue}}` : '${1}';
-		return new vscode.SnippetString(`${parameter.name}="${placeholder}"`);
+		return new vscode.SnippetString(`${parameter.name}=${placeholder}`);
 	}
 
 	private getTagCompletionContext(
