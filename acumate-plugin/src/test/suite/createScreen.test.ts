@@ -127,7 +127,7 @@ describe('createScreen scaffolding', () => {
 		assert.strictEqual(htmlCall.args[1], 'SO301000.html');
 
 		assert.ok(runNpmCommandStub.calledOnce);
-		assert.strictEqual(runNpmCommandStub.firstCall.args[0], 'prettier . --write');
+		assert.strictEqual(runNpmCommandStub.firstCall.args[0], 'prettier ./*.ts --write');
 		assert.ok(runNpmCommandStub.firstCall.args[1].includes('SO301000'));
 
 		assert.ok(showTextDocumentStub.calledOnce);
