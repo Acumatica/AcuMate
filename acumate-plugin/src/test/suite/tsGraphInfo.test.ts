@@ -27,6 +27,10 @@ const extensionFixture = path.resolve(
 	__dirname,
 	'../../../src/test/fixtures/screens/AR/AR201000/extensions/AR201000_Extension.ts'
 );
+const developmentExtensionFixture = path.resolve(
+	__dirname,
+	'../../../src/test/fixtures/development/screens/AR/AR201000/extensions/AR201000_DevelopmentExtension.ts'
+);
 const linkCommandInvalidFixture = path.join(fixturesRoot, 'GraphInfoLinkCommandInvalid.ts');
 const linkCommandValidFixture = path.join(fixturesRoot, 'GraphInfoLinkCommandValid.ts');
 const suppressedFileFixture = path.join(fixturesRoot, 'GraphInfoScreenFileSuppressed.ts');
@@ -341,6 +345,24 @@ describe('graphInfo decorator assistance', () => {
 		assert.ok(
 			diagnostics.some(diag => diag.message.includes('MissingBackendAction')),
 			'Expected linkCommand diagnostic inside screen extension file'
+		);
+	});
+
+	it('reuses base screen metadata for development screen extensions', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'ExistingBackendAction' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(developmentExtensionFixture);
+		const diagnostics = await collectGraphInfoDiagnostics(document, sampleGraphs);
+		assert.ok(
+			diagnostics.some(diag => diag.message.includes('MissingBackendAction')),
+			'Expected development extension to reuse base screen metadata for diagnostics'
 		);
 	});
 

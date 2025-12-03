@@ -680,24 +680,40 @@ export function getRelatedTsFiles(htmlFilePath: string): string[] {
 
 export function getScreenTsFromExtension(filePath: string): string | undefined {
 	const normalized = path.normalize(filePath);
-	const lowerNormalized = normalized.toLowerCase();
-	const marker = `${path.sep}extensions${path.sep}`.toLowerCase();
-	const markerIndex = lowerNormalized.lastIndexOf(marker);
+	const forwardPath = normalized.split(path.sep).join('/');
+	const lowerForward = forwardPath.toLowerCase();
+	const marker = '/extensions/';
+	const markerIndex = lowerForward.lastIndexOf(marker);
 	if (markerIndex === -1) {
 		return undefined;
 	}
 
-	const screenDir = normalized.substring(0, markerIndex);
-	if (!screenDir) {
+	const screenDirForward = forwardPath.substring(0, markerIndex);
+	if (!screenDirForward) {
 		return undefined;
 	}
-	const screenName = path.basename(screenDir);
+
+	const screenNameIndex = screenDirForward.lastIndexOf('/');
+	const screenName = screenNameIndex === -1 ? screenDirForward : screenDirForward.substring(screenNameIndex + 1);
 	if (!screenName) {
 		return undefined;
 	}
 
-	const candidate = path.join(screenDir, `${screenName}.ts`);
-	return fs.existsSync(candidate) ? candidate : undefined;
+	const candidateDirs = new Set<string>([screenDirForward]);
+	const developmentPattern = /\/development\//i;
+	if (developmentPattern.test(screenDirForward)) {
+		candidateDirs.add(screenDirForward.replace(developmentPattern, '/'));
+	}
+
+	for (const candidateDirForward of candidateDirs) {
+		const candidateDir = path.normalize(candidateDirForward.split('/').join(path.sep));
+		const candidate = path.join(candidateDir, `${screenName}.ts`);
+		if (fs.existsSync(candidate)) {
+			return candidate;
+		}
+	}
+
+	return undefined;
 }
 
 export function tryGetGraphTypeFromExtension(filePath: string): string | undefined {

@@ -12,7 +12,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node-version: [18.x, 20.x]
+        node-version: [22.x]
 
     steps:
       - name: Checkout
@@ -23,13 +23,16 @@ jobs:
         with:
           node-version: ${{ matrix.node-version }}
           cache: 'npm'
+          cache-dependency-path: acumate-plugin/package-lock.json
 
       - name: Install dependencies
+        working-directory: ./acumate-plugin
         run: npm ci
         env:
           VSCODE_SKIP_POSTINSTALL: true
 
       - name: Run tests
-        run: npm test
+        working-directory: ./acumate-plugin
+        run: xvfb-run -a npm test
         env:
           VSCODE_SKIP_POSTINSTALL: true

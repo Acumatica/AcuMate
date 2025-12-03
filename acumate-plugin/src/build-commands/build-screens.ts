@@ -57,6 +57,37 @@ const buildCommands = [
 
 const getModulesCommand = 'npm run getmodules';
 
+type BuildCommandWindow = Pick<typeof window, 'showQuickPick' | 'showInputBox' | 'createTerminal'>;
+
+type BuildCommandDependencies = {
+    window: BuildCommandWindow;
+    fs: Pick<typeof fs, 'existsSync'>;
+    getFrontendSourcesPath: typeof getFrontendSourcesPath;
+    getOpenedScreenId: typeof getOpenedScreenId;
+    getScreenAppPath: typeof getScreenAppPath;
+    getScreensSrcPath: typeof getScreensSrcPath;
+};
+
+const defaultDeps: BuildCommandDependencies = {
+    window,
+    fs,
+    getFrontendSourcesPath,
+    getOpenedScreenId,
+    getScreenAppPath,
+    getScreensSrcPath,
+};
+
+function resolveDeps(overrides?: Partial<BuildCommandDependencies>): BuildCommandDependencies {
+    return {
+        window: overrides?.window ?? defaultDeps.window,
+        fs: overrides?.fs ?? defaultDeps.fs,
+        getFrontendSourcesPath: overrides?.getFrontendSourcesPath ?? defaultDeps.getFrontendSourcesPath,
+        getOpenedScreenId: overrides?.getOpenedScreenId ?? defaultDeps.getOpenedScreenId,
+        getScreenAppPath: overrides?.getScreenAppPath ?? defaultDeps.getScreenAppPath,
+        getScreensSrcPath: overrides?.getScreensSrcPath ?? defaultDeps.getScreensSrcPath,
+    };
+}
+
 export type CommandsCache = {
     lastEnteredNames?: string;
     lastEnteredModules?: string;
@@ -76,8 +107,9 @@ interface IBuildParameters {
     watch?: boolean;
 };
 
-export async function openBuildMenu() {
-    const result = await window.showQuickPick<QuickPickItem>(buildCommands.map(item => ({
+export async function openBuildMenu(deps?: Partial<BuildCommandDependencies>) {
+    const env = resolveDeps(deps);
+    const result = await env.window.showQuickPick<QuickPickItem>(buildCommands.map(item => ({
         label: item.description,
         kind: item.separator ? QuickPickItemKind.Separator : QuickPickItemKind.Default,
     } as QuickPickItem)), {
@@ -90,8 +122,9 @@ export async function openBuildMenu() {
     return buildCommands.find(item => item.description === result.label)?.command;
 }
 
-export async function buildScreens(params: IBuildParameters) {
-    const terminal = window.createTerminal(title);
+export async function buildScreens(params: IBuildParameters, deps?: Partial<BuildCommandDependencies>) {
+    const env = resolveDeps(deps);
+    const terminal = env.window.createTerminal(title);
     let command = `npm run ${params.watch ? 'watch' : 'build'}`; // include build-all option?
     let result;
     
@@ -100,14 +133,14 @@ export async function buildScreens(params: IBuildParameters) {
     }
 
     if (params.currentScreen) {
-        command += ` --- --env screenIds="${getOpenedScreenId()}"`;
+        command += ` --- --env screenIds="${env.getOpenedScreenId()}"`;
     }
 
     else if (params.byNames) {
         const prompt = 'Enter screen IDs separated by commas';
         const placeHolder = 'e.g. SM301000,AU201000,...';
         if (!params.noPrompt) {
-            result = await window.showInputBox({
+            result = await env.window.showInputBox({
                 title,
                 placeHolder,
                 prompt,
@@ -129,7 +162,7 @@ export async function buildScreens(params: IBuildParameters) {
         const prompt = 'Enter screen modules separated by commas';
         const placeHolder = 'eg SO,AU,...';
         if (!params.noPrompt) {
-            result = await window.showInputBox({
+            result = await env.window.showInputBox({
                 title,
                 placeHolder,
                 prompt,
@@ -147,12 +180,12 @@ export async function buildScreens(params: IBuildParameters) {
         }
     }
 
-    if (!nodeModulesExists()) {
-        terminal.sendText(`cd ${getFrontendSourcesPath()}`);
+    if (!nodeModulesExists(env)) {
+        terminal.sendText(`cd ${env.getFrontendSourcesPath()}`);
         terminal.sendText(getModulesCommand);
     }
 
-    terminal.sendText(`cd ${getScreensSrcPath()}`);
+    terminal.sendText(`cd ${env.getScreensSrcPath()}`);
     terminal.sendText(command);
     terminal.show();
 
@@ -181,7 +214,12 @@ export async function buildScreens(params: IBuildParameters) {
     return cache;
 }
 
-function nodeModulesExists(): boolean {
-    const path = `${getScreenAppPath()}\\node_modules`;
-    return fs.existsSync(path);
+function nodeModulesExists(deps: BuildCommandDependencies): boolean {
+    const screenPath = deps.getScreenAppPath();
+    if (!screenPath) {
+        return false;
+    }
+
+    const path = `${screenPath}\\node_modules`;
+    return deps.fs.existsSync(path);
 }
