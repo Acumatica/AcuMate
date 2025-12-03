@@ -1,4 +1,4 @@
-import { checkFileExists, createFile, runNpmCommand, screensPath } from "../../utils";
+import { checkFileExists, createFile, runNpmCommand, screensPath, workspacePath } from "../../utils";
 import { selectActions } from "../common/select-actions";
 import { selectFields } from "../common/select-fields";
 import { selectGraphType } from "./select-graph-type";
@@ -86,16 +86,13 @@ export async function createScreen() {
     }
 
 	const folderPath = screensPath + screenId?.substring(0, 2) + "\\" + screenId;
+	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
+	const fileUri = vscode.Uri.joinPath(workspaceFolderUri, folderPath, screenId + ".ts");
 
-	if (vscode.workspace.workspaceFolders) {
-		const workspaceFolder = vscode.workspace.workspaceFolders[0];
-		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, folderPath, screenId + ".ts");
-
-		if (await checkFileExists(fileUri)) {
-			const selection = await vscode.window.showWarningMessage(`Screen ${screenId} already exists. Do you want to override it?`, `OK`, `Cancel`);
-			if (selection === "Cancel") {
-				return undefined;
-			}
+	if (await checkFileExists(fileUri)) {
+		const selection = await vscode.window.showWarningMessage(`Screen ${screenId} already exists. Do you want to override it?`, `OK`, `Cancel`);
+		if (selection === "Cancel") {
+			return undefined;
 		}
 	}
 
@@ -127,11 +124,9 @@ export async function createScreen() {
     const uri = await createFile(folderPath, screenId + ".ts", tsCode);
 	await createFile(folderPath, screenId + ".html", htmlTemplate);
 
-	if (vscode.workspace.workspaceFolders && AcuMateContext.ConfigurationService.usePrettier) {
-		const workspaceFolder = vscode.workspace.workspaceFolders[0];
-		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, folderPath);
-
-		await runNpmCommand('prettier . --write', fileUri.fsPath);
+	if (uri && AcuMateContext.ConfigurationService.usePrettier) {
+		const fileUri = vscode.Uri.joinPath(workspaceFolderUri, folderPath);
+		await runNpmCommand('prettier ./*.ts --write', fileUri.path.replace('/', ''));
 	}
 
 	if (uri) {

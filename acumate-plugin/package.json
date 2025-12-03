@@ -181,6 +181,7 @@
     "tar": "^7.5.2"
   },
   "dependencies": {
+    "find-config": "^1.0.0",
     "css-select": "^5.1.0",
     "handlebars": "^4.7.8",
     "htmlparser2": "^9.1.0",

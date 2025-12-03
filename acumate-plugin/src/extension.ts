@@ -12,6 +12,7 @@ import { createScreen } from './scaffolding/create-screen/create-screen';
 import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
 import { provideTSCompletionItems } from './completionItemProviders/ts-completion-provider';
 const fs = require(`fs`);
+const findConfig = require('find-config');
 import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
 import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
@@ -19,6 +20,7 @@ import { registerHtmlHoverProvider } from './providers/html-hover-provider';
 import { registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
 import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
 import { registerTsHoverProvider } from './providers/ts-hover-provider';
+import { getFrontendSourcesPath } from './utils';
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -232,8 +234,13 @@ function init(context: vscode.ExtensionContext) {
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
 
 	AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidator');
+
+	AcuMateContext.repositoryPath = getRepositoryPath();
 }
 
+function getRepositoryPath(): string | undefined {
+	return findConfig('config', { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? getFrontendSourcesPath(), dir: '.git' }).replace('.git\\config', '');
+}
 
 
 export function deactivate() {}
