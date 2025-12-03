@@ -1,19 +1,19 @@
 import vscode from 'vscode';
 import * as path from 'path';
+import { AcuMateContext } from "./plugin-context";
 const jsonic = require('jsonic');
 const { exec } = require('child_process');
 const fs = require(`fs`);
 
 export const screensPath = 'screen\\src\\screens\\';
+export const workspacePath = 'WebSites\\Pure\\Site\\FrontendSources\\';
 
 import ts from 'typescript';
 
 export async function createFile(path: string, fileName: string, content: string): Promise<vscode.Uri | undefined> {
-	const workspaceFoldersList = vscode.workspace.workspaceFolders;
-	const openedFilePath = getOpenedFilePath();
-	if (workspaceFoldersList || openedFilePath) {
-		const workspaceFolder = workspaceFoldersList ? workspaceFoldersList[0] : { uri: vscode.Uri.file(getFrontendSourcesPath()!) };
-		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, path, fileName);
+	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
+	if (workspaceFolderUri) {
+		const fileUri = vscode.Uri.joinPath(workspaceFolderUri, path, fileName);
 
 		await vscode.workspace.fs.writeFile(fileUri, Buffer.from(content, 'utf-8'));
 		return fileUri;
