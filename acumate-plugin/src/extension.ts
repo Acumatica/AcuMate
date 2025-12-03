@@ -1,4 +1,6 @@
 import vscode from 'vscode';
+import path from 'path';
+import * as fs from 'fs';
 import { CachedDataService } from './api/cached-data-service';
 import { AcuMateApiClient } from './api/api-service';
 import { AcuMateContext } from './plugin-context';
@@ -11,7 +13,6 @@ import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/bui
 import { createScreen } from './scaffolding/create-screen/create-screen';
 import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
 import { provideTSCompletionItems } from './completionItemProviders/ts-completion-provider';
-const fs = require(`fs`);
 import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
 import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
@@ -22,6 +23,7 @@ import { registerTsHoverProvider } from './providers/ts-hover-provider';
 
 const HTML_VALIDATION_DEBOUNCE_MS = 250;
 const pendingHtmlValidationTimers = new Map<string, NodeJS.Timeout>();
+const htmlValidationOutput = vscode.window.createOutputChannel('AcuMate Validation');
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -249,6 +251,140 @@ function createCommands(context: vscode.ExtensionContext) {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
 	});
 	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('acumate.validateScreens', async () => {
+		await runWorkspaceScreenValidation();
+	});
+	context.subscriptions.push(disposable);
+}
+
+async function runWorkspaceScreenValidation() {
+	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+	if (!workspaceFolder) {
+		vscode.window.showWarningMessage('Open a workspace folder before running AcuMate screen validation.');
+		return;
+	}
+
+	const defaultRoot = path.join(workspaceFolder.uri.fsPath, 'src', 'screens');
+	const defaultExists = fsExists(defaultRoot);
+	const initialValue = defaultExists ? defaultRoot : workspaceFolder.uri.fsPath;
+	const targetInput = await vscode.window.showInputBox({
+		title: 'Screen validation root',
+		prompt: 'Folder containing HTML screens (absolute path or relative to workspace).',
+		value: initialValue,
+		ignoreFocusOut: true
+	});
+	if (!targetInput) {
+		return;
+	}
+
+	const resolvedRoot = path.isAbsolute(targetInput)
+		? path.normalize(targetInput)
+		: path.normalize(path.join(workspaceFolder.uri.fsPath, targetInput));
+	const stats = safeStat(resolvedRoot);
+	if (!stats?.isDirectory()) {
+		vscode.window.showErrorMessage(`Folder does not exist: ${resolvedRoot}`);
+		return;
+	}
+
+	const htmlFiles = collectHtmlFiles(resolvedRoot);
+	if (!htmlFiles.length) {
+		vscode.window.showInformationMessage(`No HTML files found under ${resolvedRoot}.`);
+		return;
+	}
+
+	htmlValidationOutput.clear();
+	htmlValidationOutput.appendLine(`[AcuMate] Validating ${htmlFiles.length} HTML files under ${resolvedRoot}`);
+
+	const issues: Array<{ file: string; diagnostics: vscode.Diagnostic[] }> = [];
+	await vscode.window.withProgress(
+		{
+			title: 'AcuMate HTML validation',
+			location: vscode.ProgressLocation.Notification,
+			cancellable: false
+		},
+		async progress => {
+			for (const file of htmlFiles) {
+				const relative = path.relative(workspaceFolder.uri.fsPath, file);
+				progress.report({ message: relative, increment: (1 / htmlFiles.length) * 100 });
+				const document = await vscode.workspace.openTextDocument(file);
+				await validateHtmlFile(document);
+				const diagnostics = [...(AcuMateContext.HtmlValidator?.get(document.uri) ?? [])];
+				if (diagnostics.length) {
+					issues.push({ file, diagnostics });
+				}
+				AcuMateContext.HtmlValidator?.delete(document.uri);
+			}
+		}
+	);
+
+	const totalDiagnostics = issues.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
+	if (!totalDiagnostics) {
+		htmlValidationOutput.appendLine('[AcuMate] No diagnostics reported.');
+		vscode.window.showInformationMessage(`AcuMate validation complete: ${htmlFiles.length} files, no diagnostics.`);
+		return;
+	}
+
+	for (const entry of issues) {
+		htmlValidationOutput.appendLine(path.relative(workspaceFolder.uri.fsPath, entry.file) || entry.file);
+		for (const diag of entry.diagnostics) {
+			const severity = diag.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
+			const line = (diag.range?.start?.line ?? 0) + 1;
+			const normalizedMessage = diag.message.replace(/\s+/g, ' ').trim();
+			htmlValidationOutput.appendLine(`  [${severity}] line ${line}: ${normalizedMessage}`);
+		}
+		htmlValidationOutput.appendLine('');
+	}
+
+	const summary = `AcuMate validation complete: ${totalDiagnostics} diagnostics across ${issues.length} file(s).`;
+	htmlValidationOutput.appendLine(`[AcuMate] ${summary}`);
+	const choice = await vscode.window.showInformationMessage(summary, 'Open Output');
+	if (choice === 'Open Output') {
+		htmlValidationOutput.show(true);
+	}
+}
+
+function collectHtmlFiles(root: string): string[] {
+	const stack: string[] = [root];
+	const files: string[] = [];
+	const excluded = new Set(['node_modules', '.git', '.vscode-test', 'out', 'dist', 'bin', 'obj']);
+
+	while (stack.length) {
+		const current = stack.pop()!;
+		const stats = safeStat(current);
+		if (!stats) {
+			continue;
+		}
+
+		if (stats.isDirectory()) {
+			for (const entry of fs.readdirSync(current)) {
+				if (excluded.has(entry)) {
+					continue;
+				}
+				stack.push(path.join(current, entry));
+			}
+			continue;
+		}
+
+		if (stats.isFile() && current.toLowerCase().endsWith('.html')) {
+			files.push(current);
+		}
+	}
+
+	return files.sort((a, b) => a.localeCompare(b));
+}
+
+function safeStat(targetPath: string): fs.Stats | undefined {
+	try {
+		return fs.statSync(targetPath);
+	}
+	catch {
+		return undefined;
+	}
+}
+
+function fsExists(targetPath: string): boolean {
+	return Boolean(safeStat(targetPath));
 }
 
 function createIntelliSenseProviders(context: vscode.ExtensionContext) {
