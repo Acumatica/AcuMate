@@ -285,6 +285,54 @@ describe('graphInfo decorator assistance', () => {
 			assert.ok(/qp-text-box/.test(value), 'hover should show default control type');
 		});
 
+		it('shows backend metadata when hovering PXView properties', async () => {
+			const graphStructure: GraphStructure = {
+				name: backendGraphName,
+				views: {
+					Document: {
+						name: 'Document',
+						displayName: 'Bill Of Materials',
+						cacheType: 'AMBomMatl',
+						cacheName: 'BOM Material'
+					}
+				}
+			};
+			AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+			const document = await vscode.workspace.openTextDocument(viewFieldMatchFixture);
+			const marker = 'Document = createSingle';
+			const markerIndex = document.getText().indexOf(marker);
+			assert.ok(markerIndex >= 0, 'view property marker not found');
+			const position = document.positionAt(markerIndex + 1);
+			const hover = await provideTSFieldHover(document, position);
+			assert.ok(hover, 'expected hover result for PXView property');
+			const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+			const first = contents[0];
+			const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+			assert.ok(/AMBomMatl/.test(value), 'hover should show cache type');
+			assert.ok(/BOM Material/.test(value), 'hover should show cache name');
+		});
+
+		it('shows PXAction display names when hovering PXActionState properties', async () => {
+			const graphStructure: GraphStructure = {
+				name: backendGraphName,
+				actions: [{ name: 'SaveAction', displayName: 'Save Current Document' }]
+			};
+			AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+			const document = await vscode.workspace.openTextDocument(matchFixture);
+			const marker = 'SaveAction!: PXActionState';
+			const markerIndex = document.getText().indexOf(marker);
+			assert.ok(markerIndex >= 0, 'PXAction property marker not found');
+			const position = document.positionAt(markerIndex + 1);
+			const hover = await provideTSFieldHover(document, position);
+			assert.ok(hover, 'expected hover result for PXActionState property');
+			const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+			const first = contents[0];
+			const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+			assert.ok(/Save Current Document/.test(value), 'hover should surface PXAction display name');
+		});
+
 	it('respects acumate-disable-next-line directives for graphInfo diagnostics', async () => {
 		const graphStructure: GraphStructure = {
 			name: backendGraphName,

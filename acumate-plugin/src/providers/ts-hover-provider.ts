@@ -8,7 +8,14 @@ import {
 	tryGetGraphTypeFromExtension
 } from '../utils';
 import { AcuMateContext } from '../plugin-context';
-import { buildBackendViewMap, BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
+import { GraphStructure } from '../model/graph-structure';
+import {
+	buildBackendViewMap,
+	BackendFieldMetadata,
+	BackendViewMetadata,
+	buildBackendActionMap,
+	normalizeMetaName
+} from '../backend-metadata-utils';
 
 export function registerTsHoverProvider(context: vscode.ExtensionContext) {
 	const selector: vscode.DocumentSelector = [{ language: 'typescript', scheme: 'file' }];
@@ -35,7 +42,7 @@ export async function provideTSFieldHover(
 	}
 
 	const offset = document.offsetAt(position);
-	const hoverTarget = findHoverTarget(classInfos, document.fileName, offset);
+	const hoverTarget = findHoverPropertyTarget(classInfos, document.fileName, offset);
 	if (!hoverTarget) {
 		return undefined;
 	}
@@ -51,68 +58,44 @@ export async function provideTSFieldHover(
 	}
 
 	const backendViews = buildBackendViewMap(graphStructure);
-	if (!backendViews.size) {
-		return undefined;
-	}
-
-	const referencingViews = collectReferencingViews(classInfos, hoverTarget.classInfo.className);
-	if (!referencingViews.size) {
-		return undefined;
-	}
-
-	const normalizedFieldName = normalizeMetaName(hoverTarget.property.name);
-	if (!normalizedFieldName) {
-		return undefined;
-	}
-
-	let matchedField: BackendFieldMetadata | undefined;
-	let matchedViewName: string | undefined;
-	for (const viewKey of referencingViews) {
-		const backendView = backendViews.get(viewKey);
-		if (!backendView) {
-			continue;
-		}
-
-		const candidate = backendView.fields.get(normalizedFieldName);
-		if (candidate) {
-			matchedField = candidate;
-			matchedViewName = backendView.viewName;
-			break;
-		}
-	}
-
-	if (!matchedField) {
-		return undefined;
-	}
-
-	const markdown = buildHoverMarkdown(matchedField, matchedViewName, hoverTarget.property);
-	if (!markdown) {
-		return undefined;
-	}
 
 	const range = new vscode.Range(
 		document.positionAt(hoverTarget.property.node.name.getStart()),
 		document.positionAt(hoverTarget.property.node.name.getEnd())
 	);
-	return new vscode.Hover(markdown, range);
+
+	if (hoverTarget.property.kind === 'field' && hoverTarget.classInfo.type === 'PXView') {
+		const markdown = buildFieldHoverMarkdown(classInfos, hoverTarget, backendViews);
+		if (markdown) {
+			return new vscode.Hover(markdown, range);
+		}
+	}
+
+	if (hoverTarget.property.kind === 'view' || hoverTarget.property.kind === 'viewCollection') {
+		const markdown = buildViewHoverMarkdown(hoverTarget.property, backendViews);
+		if (markdown) {
+			return new vscode.Hover(markdown, range);
+		}
+	}
+
+	if (hoverTarget.property.kind === 'action') {
+		const markdown = buildActionHoverMarkdown(hoverTarget.property, graphStructure);
+		if (markdown) {
+			return new vscode.Hover(markdown, range);
+		}
+	}
+
+	return undefined;
 }
 
-function findHoverTarget(
+function findHoverPropertyTarget(
 	classInfos: CollectedClassInfo[],
 	documentPath: string,
 	offset: number
 ): { classInfo: CollectedClassInfo; property: ClassPropertyInfo } | undefined {
 	const normalizedDocumentPath = path.normalize(documentPath).toLowerCase();
 	for (const classInfo of classInfos) {
-		if (classInfo.type !== 'PXView') {
-			continue;
-		}
-
 		for (const property of classInfo.properties.values()) {
-			if (property.kind !== 'field') {
-				continue;
-			}
-
 			const propertyPath = path.normalize(property.sourceFile.fileName).toLowerCase();
 			if (propertyPath !== normalizedDocumentPath) {
 				continue;
@@ -148,7 +131,112 @@ function collectReferencingViews(classInfos: CollectedClassInfo[], targetClassNa
 	return referencing;
 }
 
-function buildHoverMarkdown(
+
+function buildFieldHoverMarkdown(
+	classInfos: CollectedClassInfo[],
+	hoverTarget: { classInfo: CollectedClassInfo; property: ClassPropertyInfo },
+	backendViews: Map<string, BackendViewMetadata>
+): vscode.MarkdownString | undefined {
+	const referencingViews = collectReferencingViews(classInfos, hoverTarget.classInfo.className);
+	if (!referencingViews.size) {
+		return undefined;
+	}
+
+	const normalizedFieldName = normalizeMetaName(hoverTarget.property.name);
+	if (!normalizedFieldName) {
+		return undefined;
+	}
+
+	let matchedField: BackendFieldMetadata | undefined;
+	let matchedViewName: string | undefined;
+	for (const viewKey of referencingViews) {
+		const backendView = backendViews.get(viewKey);
+		if (!backendView) {
+			continue;
+		}
+
+		const candidate = backendView.fields.get(normalizedFieldName);
+		if (candidate) {
+			matchedField = candidate;
+			matchedViewName = backendView.viewName;
+			break;
+		}
+	}
+
+	if (!matchedField) {
+		return undefined;
+	}
+
+	return createFieldMarkdown(matchedField, matchedViewName, hoverTarget.property);
+}
+
+function buildViewHoverMarkdown(
+	property: ClassPropertyInfo,
+	backendViews: Map<string, BackendViewMetadata>
+): vscode.MarkdownString | undefined {
+	const normalizedViewName = normalizeMetaName(property.name);
+	if (!normalizedViewName) {
+		return undefined;
+	}
+
+	const backendView = backendViews.get(normalizedViewName);
+	if (!backendView) {
+		return undefined;
+	}
+
+	const title = backendView.view.displayName ?? backendView.viewName ?? property.name;
+	if (!title) {
+		return undefined;
+	}
+
+	const details: string[] = [];
+	if (backendView.view.cacheType) {
+		details.push(`- Cache type: \`${backendView.view.cacheType}\``);
+	}
+	if (backendView.view.cacheName) {
+		details.push(`- Cache name: \`${backendView.view.cacheName}\``);
+	}
+	if (!details.length) {
+		details.push(`- View: \`${backendView.viewName}\``);
+	}
+
+	const markdown = new vscode.MarkdownString([`**${title}**`, ...details].join('\n'));
+	markdown.isTrusted = false;
+	return markdown;
+}
+
+function buildActionHoverMarkdown(
+	property: ClassPropertyInfo,
+	structure: GraphStructure
+): vscode.MarkdownString | undefined {
+	const backendActions = buildBackendActionMap(structure);
+	if (!backendActions.size) {
+		return undefined;
+	}
+
+	const normalizedActionName = normalizeMetaName(property.name);
+	if (!normalizedActionName) {
+		return undefined;
+	}
+
+	const backendAction = backendActions.get(normalizedActionName);
+	if (!backendAction) {
+		return undefined;
+	}
+
+	const title = backendAction.action.displayName ?? backendAction.actionName ?? property.name;
+	if (!title) {
+		return undefined;
+	}
+
+	const actionName = backendAction.action.name ?? property.name;
+	const details = [`- Action: \`${actionName}\``];
+	const markdown = new vscode.MarkdownString([`**${title}**`, ...details].join('\n'));
+	markdown.isTrusted = false;
+	return markdown;
+}
+
+function createFieldMarkdown(
 	fieldMetadata: BackendFieldMetadata,
 	viewName: string | undefined,
 	property: ClassPropertyInfo
