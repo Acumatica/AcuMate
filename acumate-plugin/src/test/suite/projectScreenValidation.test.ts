@@ -6,59 +6,62 @@ import { validateHtmlFile } from '../../validation/htmlValidation/html-validatio
 import { AcuMateContext } from '../../plugin-context';
 
 const screenRootSetting = process.env.SCREEN_VALIDATION_ROOT;
-const shouldSkip = !screenRootSetting;
-const describeMaybe = shouldSkip ? describe.skip : describe;
 
-describeMaybe('Project screen validation', () => {
-	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+if (!screenRootSetting) {
+	console.warn('[acumate] Skipping project screen validation test because SCREEN_VALIDATION_ROOT is not set.');
+}
+else {
+	describe('Project screen validation', () => {
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
 
-	before(() => {
-		if (!AcuMateContext.HtmlValidator) {
-			AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidatorProject');
-		}
-	});
-
-	it('reports no HTML diagnostics under configured screens root', async function () {
-		this.timeout(600000);
-
-		const resolvedRoot = path.resolve(workspaceRoot, screenRootSetting!);
-
-		if (!fs.existsSync(resolvedRoot) || !fs.statSync(resolvedRoot).isDirectory()) {
-			throw new Error(`SCREEN_VALIDATION_ROOT path does not exist: ${resolvedRoot}`);
-		}
-
-		const htmlFiles = collectHtmlFiles(resolvedRoot);
-		if (!htmlFiles.length) {
-			throw new Error(`No HTML files found under ${resolvedRoot}`);
-		}
-
-		console.log(`[acumate] Validating ${htmlFiles.length} HTML files under ${resolvedRoot}`);
-
-		const failures: { file: string; diagnostics: vscode.Diagnostic[] }[] = [];
-		for (const file of htmlFiles) {
-			const document = await vscode.workspace.openTextDocument(file);
-			await validateHtmlFile(document);
-			const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
-			if (diagnostics.length) {
-				failures.push({ file, diagnostics: [...diagnostics] });
+		before(() => {
+			if (!AcuMateContext.HtmlValidator) {
+				AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidatorProject');
 			}
-			AcuMateContext.HtmlValidator?.delete(document.uri);
-		}
+		});
 
-		if (failures.length) {
-			const totalDiagnostics = failures.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
-			console.warn(
-				`[acumate] Validation complete with ${totalDiagnostics} diagnostics across ${failures.length} file(s).`
-			);
-			for (const entry of failures) {
-				console.warn(formatDiagnosticSummary(entry.file, entry.diagnostics));
+		it('reports no HTML diagnostics under configured screens root', async function () {
+			this.timeout(600000);
+
+			const resolvedRoot = path.resolve(workspaceRoot, screenRootSetting!);
+
+			if (!fs.existsSync(resolvedRoot) || !fs.statSync(resolvedRoot).isDirectory()) {
+				throw new Error(`SCREEN_VALIDATION_ROOT path does not exist: ${resolvedRoot}`);
 			}
-		}
-		else {
-			console.log('[acumate] Validation complete with no diagnostics.');
-		}
+
+			const htmlFiles = collectHtmlFiles(resolvedRoot);
+			if (!htmlFiles.length) {
+				throw new Error(`No HTML files found under ${resolvedRoot}`);
+			}
+
+			console.log(`[acumate] Validating ${htmlFiles.length} HTML files under ${resolvedRoot}`);
+
+			const failures: { file: string; diagnostics: vscode.Diagnostic[] }[] = [];
+			for (const file of htmlFiles) {
+				const document = await vscode.workspace.openTextDocument(file);
+				await validateHtmlFile(document);
+				const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+				if (diagnostics.length) {
+					failures.push({ file, diagnostics: [...diagnostics] });
+				}
+				AcuMateContext.HtmlValidator?.delete(document.uri);
+			}
+
+			if (failures.length) {
+				const totalDiagnostics = failures.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
+				console.warn(
+					`[acumate] Validation complete with ${totalDiagnostics} diagnostics across ${failures.length} file(s).`
+				);
+				for (const entry of failures) {
+					console.warn(formatDiagnosticSummary(entry.file, entry.diagnostics));
+				}
+			}
+			else {
+				console.log('[acumate] Validation complete with no diagnostics.');
+			}
+		});
 	});
-});
+}
 
 function collectHtmlFiles(root: string): string[] {
 	const files: string[] = [];

@@ -6,60 +6,64 @@ import { collectGraphInfoDiagnostics } from '../../validation/tsValidation/graph
 import { AcuMateContext } from '../../plugin-context';
 
 const tsRootSetting = process.env.TS_SCREEN_VALIDATION_ROOT;
-const describeMaybe = tsRootSetting ? describe : describe.skip;
 
-describeMaybe('Project TypeScript validation', () => {
-	const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
+if (!tsRootSetting) {
+	console.warn('[acumate] Skipping project TypeScript validation test because TS_SCREEN_VALIDATION_ROOT is not set.');
+}
+else {
+	describe('Project TypeScript validation', () => {
+		const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd();
 
-	it('reports graphInfo diagnostics under configured TypeScript root', async function () {
-		this.timeout(600000);
+		it('reports graphInfo diagnostics under configured TypeScript root', async function () {
+			this.timeout(600000);
 
-		if (!AcuMateContext.ConfigurationService?.useBackend) {
-			this.skip();
-			return;
-		}
+			if (!AcuMateContext.ConfigurationService?.useBackend) {
+				this.skip();
+				return;
+			}
 
-		const resolvedRoot = path.resolve(workspaceRoot, tsRootSetting!);
-		if (!fs.existsSync(resolvedRoot) || !fs.statSync(resolvedRoot).isDirectory()) {
-			throw new Error(`TS_SCREEN_VALIDATION_ROOT path does not exist: ${resolvedRoot}`);
-		}
+			const resolvedRoot = path.resolve(workspaceRoot, tsRootSetting!);
+			if (!fs.existsSync(resolvedRoot) || !fs.statSync(resolvedRoot).isDirectory()) {
+				throw new Error(`TS_SCREEN_VALIDATION_ROOT path does not exist: ${resolvedRoot}`);
+			}
 
-		const tsFiles = collectTypeScriptFiles(resolvedRoot);
-		if (!tsFiles.length) {
-			throw new Error(`No TypeScript files found under ${resolvedRoot}`);
-		}
+			const tsFiles = collectTypeScriptFiles(resolvedRoot);
+			if (!tsFiles.length) {
+				throw new Error(`No TypeScript files found under ${resolvedRoot}`);
+			}
 
-		console.log(`[acumate] Validating ${tsFiles.length} TypeScript files under ${resolvedRoot}`);
+			console.log(`[acumate] Validating ${tsFiles.length} TypeScript files under ${resolvedRoot}`);
 
-		const failures: { file: string; diagnostics: vscode.Diagnostic[] }[] = [];
-		for (const file of tsFiles) {
-			try {
-				const document = await vscode.workspace.openTextDocument(file);
-				const diagnostics = await collectGraphInfoDiagnostics(document);
-				if (diagnostics.length) {
-					failures.push({ file, diagnostics: [...diagnostics] });
+			const failures: { file: string; diagnostics: vscode.Diagnostic[] }[] = [];
+			for (const file of tsFiles) {
+				try {
+					const document = await vscode.workspace.openTextDocument(file);
+					const diagnostics = await collectGraphInfoDiagnostics(document);
+					if (diagnostics.length) {
+						failures.push({ file, diagnostics: [...diagnostics] });
+					}
+				}
+				catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					console.warn(`[acumate] Failed to validate ${file}: ${message}`);
 				}
 			}
-			catch (error) {
-				const message = error instanceof Error ? error.message : String(error);
-				console.warn(`[acumate] Failed to validate ${file}: ${message}`);
-			}
-		}
 
-		if (failures.length) {
-			const totalDiagnostics = failures.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
-			console.warn(
-				`[acumate] Validation complete with ${totalDiagnostics} diagnostics across ${failures.length} file(s).`
-			);
-			for (const entry of failures) {
-				console.warn(formatDiagnosticSummary(entry.file, entry.diagnostics));
+			if (failures.length) {
+				const totalDiagnostics = failures.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
+				console.warn(
+					`[acumate] Validation complete with ${totalDiagnostics} diagnostics across ${failures.length} file(s).`
+				);
+				for (const entry of failures) {
+					console.warn(formatDiagnosticSummary(entry.file, entry.diagnostics));
+				}
 			}
-		}
-		else {
-			console.log('[acumate] Validation complete with no diagnostics.');
-		}
+			else {
+				console.log('[acumate] Validation complete with no diagnostics.');
+			}
+		});
 	});
-});
+}
 
 function collectTypeScriptFiles(root: string): string[] {
 	const files: string[] = [];
