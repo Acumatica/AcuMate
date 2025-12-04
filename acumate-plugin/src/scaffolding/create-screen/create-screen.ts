@@ -135,10 +135,14 @@ export async function createScreen() {
 		if (AcuMateContext.ConfigurationService.clearUsages) {
 			const handler = vscode.workspace.onDidChangeTextDocument(doc => {
 				if (doc.document.uri.path === document.uri.path) {
-					doc.document.save();
-					handler.dispose();
+					try {
+						doc.document.save();
+					} finally {
+						handler.dispose();
+					}
 				}
 			});
+			setTimeout(() => handler.dispose(), 5000); // Fallback timeout
 			await vscode.commands.executeCommand('editor.action.organizeImports');
 		}
 	}
