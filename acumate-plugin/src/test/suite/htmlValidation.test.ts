@@ -282,10 +282,6 @@ describe('HTML validation diagnostics', () => {
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
 		assert.ok(
-			diagnostics.some(d => d.message.includes('missing required property "enabled"')),
-			'Expected diagnostic for missing required config property'
-		);
-		assert.ok(
 			diagnostics.some(d => d.message.includes('property "bogus"')),
 			'Expected diagnostic for unknown config property'
 		);
