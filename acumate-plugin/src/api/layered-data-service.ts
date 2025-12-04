@@ -8,6 +8,10 @@ import { FeatureModel } from "../model/FeatureModel";
 
 export class LayeredDataService implements IAcuMateApiClient {
 
+    private inflightGraphs?: Promise<GraphModel[] | undefined>;
+    private inflightFeatures?: Promise<FeatureModel[] | undefined>;
+    private readonly inflightStructures = new Map<string, Promise<GraphStructure | undefined>>();
+
     constructor(private cacheService: CachedDataService, private apiService: AcuMateApiClient) {
 
     }
@@ -18,9 +22,21 @@ export class LayeredDataService implements IAcuMateApiClient {
             return cachedResult;
         }
 
-        const apiResult = await this.apiService.getGraphs();
-        this.cacheService.store(GraphAPICache, apiResult);
-        return apiResult;
+        if (this.inflightGraphs) {
+            return this.inflightGraphs;
+        }
+
+        this.inflightGraphs = this.apiService
+            .getGraphs()
+            .then(result => {
+                this.cacheService.store(GraphAPICache, result);
+                return result;
+            })
+            .finally(() => {
+                this.inflightGraphs = undefined;
+            });
+
+        return this.inflightGraphs;
 
     }
 
@@ -30,9 +46,23 @@ export class LayeredDataService implements IAcuMateApiClient {
             return cachedResult;
         }
 
-        const apiResult = await this.apiService.getGraphStructure(graphName);
-        this.cacheService.store(GraphAPIStructureCachePrefix + graphName, apiResult);
-        return apiResult;
+        const existing = this.inflightStructures.get(graphName);
+        if (existing) {
+            return existing;
+        }
+
+        const pending = this.apiService
+            .getGraphStructure(graphName)
+            .then(result => {
+                this.cacheService.store(GraphAPIStructureCachePrefix + graphName, result);
+                return result;
+            })
+            .finally(() => {
+                this.inflightStructures.delete(graphName);
+            });
+
+        this.inflightStructures.set(graphName, pending);
+        return pending;
     }
 
     async getFeatures(): Promise<FeatureModel[] | undefined> {
@@ -41,8 +71,20 @@ export class LayeredDataService implements IAcuMateApiClient {
             return cachedResult;
         }
 
-        const apiResult = await this.apiService.getFeatures();
-        this.cacheService.store(FeaturesCache, apiResult);
-        return apiResult;
+        if (this.inflightFeatures) {
+            return this.inflightFeatures;
+        }
+
+        this.inflightFeatures = this.apiService
+            .getFeatures()
+            .then(result => {
+                this.cacheService.store(FeaturesCache, result);
+                return result;
+            })
+            .finally(() => {
+                this.inflightFeatures = undefined;
+            });
+
+        return this.inflightFeatures;
     }
 }
