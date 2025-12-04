@@ -20,7 +20,7 @@ else {
 			}
 		});
 
-		it('reports no HTML diagnostics under configured screens root', async function () {
+		it('validates HTML screens under configured root', async function () {
 			this.timeout(600000);
 
 			const resolvedRoot = path.resolve(workspaceRoot, screenRootSetting!);
