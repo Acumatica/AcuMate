@@ -125,7 +125,7 @@ describe('createScreenExtension scaffolding', () => {
 		assert.strictEqual(createFileStub.getCall(1).args[1], 'SO301000Ext.html');
 
 		assert.ok(runNpmCommandStub.calledOnce);
-		assert.strictEqual(runNpmCommandStub.firstCall.args[0], 'prettier . --write');
+		assert.strictEqual(runNpmCommandStub.firstCall.args[0], 'prettier ./*.ts --write');
 		assert.ok(showTextDocumentStub.calledOnce);
 		assert.ok(executeCommandStub.calledOnceWithExactly('editor.action.organizeImports'));
 		assert.strictEqual(warningStub.called, false);

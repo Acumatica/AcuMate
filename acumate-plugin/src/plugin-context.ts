@@ -6,4 +6,5 @@ export class AcuMateContext {
     public static ApiService: IAcuMateApiClient;
 	public static ConfigurationService: ConfigurationService;
 	public static HtmlValidator: vscode.DiagnosticCollection;
+	public static repositoryPath: string | undefined;
 }

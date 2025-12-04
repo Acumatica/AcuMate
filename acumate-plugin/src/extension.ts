@@ -13,6 +13,7 @@ import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/bui
 import { createScreen } from './scaffolding/create-screen/create-screen';
 import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
 import { provideTSCompletionItems } from './completionItemProviders/ts-completion-provider';
+const findConfig = require('find-config');
 import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
 import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
@@ -20,6 +21,7 @@ import { registerHtmlHoverProvider } from './providers/html-hover-provider';
 import { collectGraphInfoDiagnostics, registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
 import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
 import { registerTsHoverProvider } from './providers/ts-hover-provider';
+import { getFrontendSourcesPath } from './utils';
 
 const HTML_VALIDATION_DEBOUNCE_MS = 250;
 const pendingHtmlValidationTimers = new Map<string, NodeJS.Timeout>();
@@ -601,8 +603,13 @@ function init(context: vscode.ExtensionContext) {
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
 
 	AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidator');
+
+	AcuMateContext.repositoryPath = getRepositoryPath();
 }
 
+function getRepositoryPath(): string | undefined {
+	return findConfig('config', { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? getFrontendSourcesPath(), dir: '.git' }).replace('.git\\config', '');
+}
 
 
 export function deactivate() {}

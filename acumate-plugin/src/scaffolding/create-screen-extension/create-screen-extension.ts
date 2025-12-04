@@ -1,5 +1,5 @@
 import path from 'path';
-import { checkFileExists, createFile, runNpmCommand, tryGetGraphType } from "../../utils";
+import { checkFileExists, createFile, runNpmCommand, tryGetGraphType, screensPath, workspacePath } from "../../utils";
 import vscode from "vscode";
 import Handlebars from 'handlebars';
 import { setScreenExtensionName } from "./set-screen-extension-name";
@@ -82,32 +82,29 @@ export async function createScreenExtension() {
         return;
     }
 
-    const fileUri = activeEditor.document.uri;
-    const fileName = path.parse(activeEditor.document.fileName).name;
+    const currentFileUri = activeEditor.document.uri;
+    const currentFileName = path.parse(activeEditor.document.fileName).name;
 
-    if (!fileUri.toString().includes("screen/src/screens/" + fileName?.substring(0, 2) + "/" + fileName)) {
-        await vscode.window.showErrorMessage(`File ${fileName} is not a screen`, `OK`);
+    if (!currentFileUri.toString().includes("screen/src/screens/" + currentFileName?.substring(0, 2) + "/" + currentFileName)) {
+        await vscode.window.showErrorMessage(`File ${currentFileName} is not a screen`, `OK`);
         return;
     }
 
-    const screenId = fileName;
-
-	const folderPath = "screen\\src\\screens\\" + screenId?.substring(0, 2) + "\\" + screenId + "\\extensions";
+    const screenId = currentFileName;
 
     const screenExtensionName = await setScreenExtensionName();
 	if (!screenExtensionName) {
         return;
     }
 
-	if (vscode.workspace.workspaceFolders) {
-		const workspaceFolder = vscode.workspace.workspaceFolders[0];
-		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, folderPath, screenExtensionName + ".ts");
+	const folderPath = screensPath + screenId?.substring(0, 2) + "\\" + screenId + "\\extensions";;
+	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
+	const fileUri = vscode.Uri.joinPath(workspaceFolderUri, folderPath, screenExtensionName + ".ts");
 
-		if (await checkFileExists(fileUri)) {
-			const selection = await vscode.window.showWarningMessage(`Screen extension ${screenExtensionName} already exists. Do you want to override it?`, `OK`, `Cancel`);
-			if (selection === "Cancel") {
-				return undefined;
-			}
+	if (await checkFileExists(fileUri)) {
+		const selection = await vscode.window.showWarningMessage(`Screen extension ${screenExtensionName} already exists. Do you want to override it?`, `OK`, `Cancel`);
+		if (selection === "Cancel") {
+			return undefined;
 		}
 	}
 
@@ -140,11 +137,9 @@ export async function createScreenExtension() {
     const uri = await createFile(folderPath, screenExtensionName + ".ts", tsCode);
 	await createFile(folderPath, screenExtensionName + ".html", htmlTemplate);
 
-    if (vscode.workspace.workspaceFolders && AcuMateContext.ConfigurationService.usePrettier) {
-		const workspaceFolder = vscode.workspace.workspaceFolders[0];
-		const fileUri = vscode.Uri.joinPath(workspaceFolder.uri, folderPath);
-
-		await runNpmCommand('prettier . --write', fileUri.fsPath);
+	if (uri && AcuMateContext.ConfigurationService.usePrettier) {
+		const fileUri = vscode.Uri.joinPath(workspaceFolderUri, folderPath);
+		await runNpmCommand('prettier ./*.ts --write', fileUri.path.replace('/', ''));
 	}
 
 	if (uri) {
