@@ -133,7 +133,17 @@ export async function createScreen() {
 		const document = await vscode.workspace.openTextDocument(uri);
 		await vscode.window.showTextDocument(document);
 		if (AcuMateContext.ConfigurationService.clearUsages) {
-			await vscode.commands.executeCommand(`editor.action.organizeImports`);
+			const handler = vscode.workspace.onDidChangeTextDocument(doc => {
+				if (doc.document.uri.path === document.uri.path) {
+					try {
+						doc.document.save();
+					} finally {
+						handler.dispose();
+					}
+				}
+			});
+			setTimeout(() => handler.dispose(), 5000); // Fallback timeout
+			await vscode.commands.executeCommand('editor.action.organizeImports');
 		}
 	}
 }

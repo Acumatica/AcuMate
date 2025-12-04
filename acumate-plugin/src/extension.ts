@@ -307,6 +307,8 @@ function init(context: vscode.ExtensionContext) {
 	AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidator');
 
 	AcuMateContext.repositoryPath = getRepositoryPath();
+
+	vscode.commands.executeCommand('typescript.restartTsServer');
 }
 
 function getRepositoryPath(): string | undefined {
