@@ -8,7 +8,7 @@ const child = spawn(npmCmd, ['test'], {
 	cwd: repoRoot,
 	env: {
 		...process.env,
-		SCREEN_VALIDATION_ROOT: process.env.SCREEN_VALIDATION_ROOT || 'src/screens'
+		TS_SCREEN_VALIDATION_ROOT: process.env.TS_SCREEN_VALIDATION_ROOT || 'src/screens'
 	},
 	stdio: 'inherit'
 });

@@ -113,6 +113,7 @@ The **AcuMate** extension provides several commands to streamline development ta
 | `acumate.repeatLastBuildCommand`   | **Repeat Last Build Command**        | Repeats the last executed build command, useful for quick iterations.                                       |
 | `acumate.dropCache`                | **Drop Local Cache**                 | Clears the local cache, ensuring that the next build retrieves fresh data from the backend.                 |
 | `acumate.validateScreens`          | **Validate Screens (HTML)**          | Scans every `.html` under `src/screens` (or a folder you choose) and logs validator diagnostics to the **AcuMate Validation** output channel without failing on warnings. |
+| `acumate.validateTypeScriptScreens`| **Validate Screens (TypeScript)**    | Iterates through screen `.ts` files, runs the backend-powered `graphInfo` validator, and streams any warnings/errors to the **AcuMate Validation** output channel so you can review them without interrupting development. |
 
 ### Quality & CI
 
@@ -121,5 +122,6 @@ The **AcuMate** extension provides several commands to streamline development ta
    - The GitHub Actions workflow in `.github/workflows/ci.yml` performs `npm ci` + `npm test` for every pull request (regardless of branch) and on pushes to `main`, using a Node 18.x / 20.x matrix to catch regressions before and after merges.
 2. **Project Screen Validation**  
    - Inside VS Code, run **AcuMate: Validate Screens (HTML)** to queue the validator against all HTML files beneath `src/screens` (or any folder you input). Results are aggregated in the **AcuMate Validation** output channel so you can inspect warnings without breaking your workflow.
-   - From the CLI, run `npm run validate:screens` to execute the same scan headlessly via the VS Code test runner (`SCREEN_VALIDATION_ROOT` defaults to `src/screens` but can be overridden). The script never fails on warnings; it simply dumps a consolidated summary so you can check that the extension processes every file without crashing.
+   - For TypeScript coverage, run **AcuMate: Validate Screens (TypeScript)** to traverse the same folder structure, execute `collectGraphInfoDiagnostics` for each screen `.ts`, and summarize backend metadata mismatches in the output channel (requires `acuMate.useBackend = true`).
+   - From the CLI, run `npm run validate:screens` (HTML) or `npm run validate:screens:ts` (TypeScript) to execute the same scans headlessly via the VS Code test runner. Override the roots with `SCREEN_VALIDATION_ROOT` or `TS_SCREEN_VALIDATION_ROOT` environment variables when needed. Both scripts log summaries instead of failing on warnings, ensuring automated runs focus on catching crashes.
 

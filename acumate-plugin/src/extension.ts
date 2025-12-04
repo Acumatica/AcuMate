@@ -17,13 +17,13 @@ import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
 import { registerHtmlCompletionProvider } from './providers/html-completion-provider';
 import { registerHtmlHoverProvider } from './providers/html-hover-provider';
-import { registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
+import { collectGraphInfoDiagnostics, registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
 import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
 import { registerTsHoverProvider } from './providers/ts-hover-provider';
 
 const HTML_VALIDATION_DEBOUNCE_MS = 250;
 const pendingHtmlValidationTimers = new Map<string, NodeJS.Timeout>();
-const htmlValidationOutput = vscode.window.createOutputChannel('AcuMate Validation');
+const validationOutput = vscode.window.createOutputChannel('AcuMate Validation');
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -256,6 +256,11 @@ function createCommands(context: vscode.ExtensionContext) {
 		await runWorkspaceScreenValidation();
 	});
 	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('acumate.validateTypeScriptScreens', async () => {
+		await runWorkspaceTypeScriptValidation();
+	});
+	context.subscriptions.push(disposable);
 }
 
 async function runWorkspaceScreenValidation() {
@@ -293,8 +298,8 @@ async function runWorkspaceScreenValidation() {
 		return;
 	}
 
-	htmlValidationOutput.clear();
-	htmlValidationOutput.appendLine(`[AcuMate] Validating ${htmlFiles.length} HTML files under ${resolvedRoot}`);
+	validationOutput.clear();
+	validationOutput.appendLine(`[AcuMate] Validating ${htmlFiles.length} HTML files under ${resolvedRoot}`);
 
 	const issues: Array<{ file: string; diagnostics: vscode.Diagnostic[] }> = [];
 	await vscode.window.withProgress(
@@ -320,27 +325,18 @@ async function runWorkspaceScreenValidation() {
 
 	const totalDiagnostics = issues.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
 	if (!totalDiagnostics) {
-		htmlValidationOutput.appendLine('[AcuMate] No diagnostics reported.');
+		validationOutput.appendLine('[AcuMate] No diagnostics reported.');
 		vscode.window.showInformationMessage(`AcuMate validation complete: ${htmlFiles.length} files, no diagnostics.`);
 		return;
 	}
 
-	for (const entry of issues) {
-		htmlValidationOutput.appendLine(path.relative(workspaceFolder.uri.fsPath, entry.file) || entry.file);
-		for (const diag of entry.diagnostics) {
-			const severity = diag.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
-			const line = (diag.range?.start?.line ?? 0) + 1;
-			const normalizedMessage = diag.message.replace(/\s+/g, ' ').trim();
-			htmlValidationOutput.appendLine(`  [${severity}] line ${line}: ${normalizedMessage}`);
-		}
-		htmlValidationOutput.appendLine('');
-	}
+	appendDiagnosticsToOutput(workspaceFolder.uri.fsPath, issues);
 
 	const summary = `AcuMate validation complete: ${totalDiagnostics} diagnostics across ${issues.length} file(s).`;
-	htmlValidationOutput.appendLine(`[AcuMate] ${summary}`);
+	validationOutput.appendLine(`[AcuMate] ${summary}`);
 	const choice = await vscode.window.showInformationMessage(summary, 'Open Output');
 	if (choice === 'Open Output') {
-		htmlValidationOutput.show(true);
+		validationOutput.show(true);
 	}
 }
 
@@ -372,6 +368,148 @@ function collectHtmlFiles(root: string): string[] {
 	}
 
 	return files.sort((a, b) => a.localeCompare(b));
+}
+
+async function runWorkspaceTypeScriptValidation() {
+	const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
+	if (!workspaceFolder) {
+		vscode.window.showWarningMessage('Open a workspace folder before running AcuMate TypeScript validation.');
+		return;
+	}
+
+	if (!AcuMateContext.ConfigurationService?.useBackend) {
+		vscode.window.showWarningMessage('TypeScript validation requires backend metadata. Enable acuMate.useBackend to continue.');
+		return;
+	}
+
+	if (!AcuMateContext.ApiService) {
+		vscode.window.showErrorMessage('AcuMate backend client is not initialized yet. Try again once initialization completes.');
+		return;
+	}
+
+	const defaultRoot = path.join(workspaceFolder.uri.fsPath, 'src', 'screens');
+	const defaultExists = fsExists(defaultRoot);
+	const initialValue = defaultExists ? defaultRoot : workspaceFolder.uri.fsPath;
+	const targetInput = await vscode.window.showInputBox({
+		title: 'TypeScript validation root',
+		prompt: 'Folder containing screen TypeScript files (absolute path or relative to workspace).',
+		value: initialValue,
+		ignoreFocusOut: true
+	});
+	if (!targetInput) {
+		return;
+	}
+
+	const resolvedRoot = path.isAbsolute(targetInput)
+		? path.normalize(targetInput)
+		: path.normalize(path.join(workspaceFolder.uri.fsPath, targetInput));
+	const stats = safeStat(resolvedRoot);
+	if (!stats?.isDirectory()) {
+		vscode.window.showErrorMessage(`Folder does not exist: ${resolvedRoot}`);
+		return;
+	}
+
+	const tsFiles = collectTypeScriptFiles(resolvedRoot);
+	if (!tsFiles.length) {
+		vscode.window.showInformationMessage(`No TypeScript files found under ${resolvedRoot}.`);
+		return;
+	}
+
+	validationOutput.clear();
+	validationOutput.appendLine(`[AcuMate] Validating ${tsFiles.length} TypeScript files under ${resolvedRoot}`);
+
+	const issues: Array<{ file: string; diagnostics: vscode.Diagnostic[] }> = [];
+	await vscode.window.withProgress(
+		{
+			title: 'AcuMate TypeScript validation',
+			location: vscode.ProgressLocation.Notification,
+			cancellable: false
+		},
+		async progress => {
+			for (const file of tsFiles) {
+				const relative = path.relative(workspaceFolder.uri.fsPath, file);
+				progress.report({ message: relative, increment: (1 / tsFiles.length) * 100 });
+				try {
+					const document = await vscode.workspace.openTextDocument(file);
+					const diagnostics = await collectGraphInfoDiagnostics(document);
+					if (diagnostics.length) {
+						issues.push({ file, diagnostics });
+					}
+				}
+				catch (error) {
+					const message = error instanceof Error ? error.message : String(error);
+					validationOutput.appendLine(`[AcuMate] Failed to validate ${relative || file}: ${message}`);
+				}
+			}
+		}
+	);
+
+	const totalDiagnostics = issues.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
+	if (!totalDiagnostics) {
+		validationOutput.appendLine('[AcuMate] No diagnostics reported.');
+		vscode.window.showInformationMessage(`AcuMate TypeScript validation complete: ${tsFiles.length} files, no diagnostics.`);
+		return;
+	}
+
+	appendDiagnosticsToOutput(workspaceFolder.uri.fsPath, issues);
+
+	const summary = `AcuMate TypeScript validation complete: ${totalDiagnostics} diagnostics across ${issues.length} file(s).`;
+	validationOutput.appendLine(`[AcuMate] ${summary}`);
+	const choice = await vscode.window.showInformationMessage(summary, 'Open Output');
+	if (choice === 'Open Output') {
+		validationOutput.show(true);
+	}
+}
+
+function collectTypeScriptFiles(root: string): string[] {
+	const stack: string[] = [root];
+	const files: string[] = [];
+	const excluded = new Set(['node_modules', '.git', '.vscode-test', 'out', 'dist', 'bin', 'obj']);
+
+	while (stack.length) {
+		const current = stack.pop()!;
+		const stats = safeStat(current);
+		if (!stats) {
+			continue;
+		}
+
+		if (stats.isDirectory()) {
+			for (const entry of fs.readdirSync(current)) {
+				if (excluded.has(entry)) {
+					continue;
+				}
+				stack.push(path.join(current, entry));
+			}
+			continue;
+		}
+
+		if (!stats.isFile()) {
+			continue;
+		}
+
+		const normalized = current.toLowerCase();
+		if (normalized.endsWith('.ts') && !normalized.endsWith('.d.ts')) {
+			files.push(current);
+		}
+	}
+
+	return files.sort((a, b) => a.localeCompare(b));
+}
+
+function appendDiagnosticsToOutput(
+	workspaceRoot: string,
+	entries: Array<{ file: string; diagnostics: vscode.Diagnostic[] }>
+) {
+	for (const entry of entries) {
+		validationOutput.appendLine(path.relative(workspaceRoot, entry.file) || entry.file);
+		for (const diag of entry.diagnostics) {
+			const severity = diag.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
+			const line = (diag.range?.start?.line ?? 0) + 1;
+			const normalizedMessage = diag.message.replace(/\s+/g, ' ').trim();
+			validationOutput.appendLine(`  [${severity}] line ${line}: ${normalizedMessage}`);
+		}
+		validationOutput.appendLine('');
+	}
 }
 
 function safeStat(targetPath: string): fs.Stats | undefined {
