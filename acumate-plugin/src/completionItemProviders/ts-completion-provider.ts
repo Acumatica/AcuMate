@@ -13,6 +13,7 @@ import { getAvailableGraphs } from '../services/graph-metadata-service';
 import { getAvailableFeatures } from '../services/feature-metadata-service';
 import { getGraphTypeLiteralAtPosition } from '../typescript/graph-info-utils';
 import { getFeatureInstalledLiteralAtPosition } from '../typescript/feature-installed-utils';
+import { getLinkCommandLiteralAtPosition } from '../typescript/link-command-utils';
 import { buildBackendViewMap, normalizeMetaName } from '../backend-metadata-utils';
 
 export async function provideTSCompletionItems(document: vscode.TextDocument, position: vscode.Position, token: vscode.CancellationToken, context: vscode.CompletionContext): Promise<vscode.CompletionItem[] | undefined> {
@@ -30,6 +31,11 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
     const featureInstalledCompletions = await provideFeatureInstalledCompletions(document, position, sourceFile);
     if (featureInstalledCompletions?.length) {
         return featureInstalledCompletions;
+    }
+
+    const linkCommandCompletions = await provideLinkCommandCompletions(document, position, sourceFile, documentText);
+    if (linkCommandCompletions?.length) {
+        return linkCommandCompletions;
     }
 
     let activeClassName: string | undefined;
@@ -276,6 +282,51 @@ async function provideFeatureInstalledCompletions(
             ? 'This feature is enabled on the connected server.'
             : 'This feature exists but is disabled on the connected server.';
         item.documentation = new vscode.MarkdownString(status);
+        items.push(item);
+    }
+
+    return items.length ? items : undefined;
+}
+
+async function provideLinkCommandCompletions(
+    document: vscode.TextDocument,
+    position: vscode.Position,
+    sourceFile: ts.SourceFile,
+    documentText: string
+): Promise<vscode.CompletionItem[] | undefined> {
+    const offset = document.offsetAt(position);
+    const literalInfo = getLinkCommandLiteralAtPosition(sourceFile, offset);
+    if (!literalInfo) {
+        return undefined;
+    }
+
+    const graphName = tryGetGraphType(documentText) ?? tryGetGraphTypeFromExtension(document.fileName);
+    if (!graphName || !AcuMateContext.ApiService) {
+        return undefined;
+    }
+
+    const graphStructure = await AcuMateContext.ApiService.getGraphStructure(graphName);
+    if (!graphStructure?.actions?.length) {
+        return undefined;
+    }
+
+    const range = getStringContentRange(document, literalInfo.literal);
+    const items: vscode.CompletionItem[] = [];
+    for (const action of graphStructure.actions) {
+        if (!action?.name) {
+            continue;
+        }
+
+        const item = new vscode.CompletionItem(action.name, vscode.CompletionItemKind.EnumMember);
+        item.insertText = action.name;
+        item.range = range;
+        item.sortText = action.name.toLowerCase();
+        item.detail = action.displayName ? `${action.name} (${action.displayName})` : action.name;
+        const docLines = [`PXAction from graph ${graphName}.`];
+        if (action.displayName) {
+            docLines.push(`Display name: ${action.displayName}`);
+        }
+        item.documentation = new vscode.MarkdownString(docLines.join('\n\n'));
         items.push(item);
     }
 

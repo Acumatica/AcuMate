@@ -352,6 +352,29 @@ describe('graphInfo decorator assistance', () => {
 		);
 	});
 
+	it('suggests backend actions for linkCommand decorators', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'ExistingBackendAction', displayName: 'Existing Action' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(linkCommandValidFixture);
+		const marker = '@linkCommand("';
+		const caret = document.positionAt(document.getText().indexOf(marker) + marker.length);
+		const completions = await provideTSCompletionItems(
+			document,
+			caret,
+			new vscode.CancellationTokenSource().token,
+			{ triggerKind: vscode.CompletionTriggerKind.Invoke } as vscode.CompletionContext
+		);
+		const labels = (completions ?? []).map(item => item.label);
+		assert.ok(labels.includes('ExistingBackendAction'), 'linkCommand completion should include backend actions');
+	});
+
 	it('validates linkCommand decorators against backend actions', async () => {
 		const graphStructure: GraphStructure = {
 			name: backendGraphName,
