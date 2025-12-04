@@ -21,6 +21,7 @@ const matchFixture = path.join(fixturesRoot, 'GraphInfoScreenMatch.ts');
 const viewFieldMismatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMismatch.ts');
 const viewFieldMatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMatch.ts');
 const viewFieldCompletionFixture = path.join(fixturesRoot, 'GraphInfoViewFieldCompletion.ts');
+const viewFieldDoubleUnderscoreFixture = path.join(fixturesRoot, 'GraphInfoViewFieldDoubleUnderscore.ts');
 const caseInsensitiveFixture = path.join(fixturesRoot, 'GraphInfoScreenCaseInsensitive.ts');
 const suppressedFixture = path.join(fixturesRoot, 'GraphInfoScreenSuppressed.ts');
 const extensionFixture = path.resolve(
@@ -218,6 +219,29 @@ describe('graphInfo decorator assistance', () => {
 		const matchDocument = await vscode.workspace.openTextDocument(viewFieldMatchFixture);
 		const matchDiagnostics = await collectGraphInfoDiagnostics(matchDocument, sampleGraphs);
 		assert.strictEqual(matchDiagnostics.length, 0, 'expected no diagnostics when PXView fields align with backend metadata');
+	});
+
+	it('ignores PXView fields with double underscores when backend metadata is missing', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						ExistingField: { name: 'ExistingField' }
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(viewFieldDoubleUnderscoreFixture);
+		const diagnostics = await collectGraphInfoDiagnostics(document, sampleGraphs);
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			'expected double-underscore fields to skip backend metadata diagnostics'
+		);
 	});
 
 	it('suggests PXFieldState declarations for PXView classes from backend metadata', async () => {
