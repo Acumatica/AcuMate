@@ -131,6 +131,16 @@
         "command": "acumate.dropCache",
         "title": "Drop Local Cache",
         "category": "AcuMate"
+      },
+      {
+        "command": "acumate.validateScreens",
+        "title": "Validate Screens (HTML)",
+        "category": "AcuMate"
+      },
+      {
+        "command": "acumate.validateTypeScriptScreens",
+        "title": "Validate Screens (TypeScript)",
+        "category": "AcuMate"
       }
     ],
     "menus": {
@@ -164,7 +174,9 @@
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "validate:screens": "node ./scripts/validate-screens.js",
+    "validate:screens:ts": "node ./scripts/validate-ts-screens.js"
   },
   "devDependencies": {
     "@types/mocha": "^10.0.9",

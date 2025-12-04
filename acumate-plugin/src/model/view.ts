@@ -3,6 +3,7 @@ import { BaseMetaItem } from "./base-meta-item";
 export class View extends BaseMetaItem {
     public cacheType?: string;
     public cacheName?: string;
+    public displayName?: string;
     public extension?: string;
 
     public fields?: { [x: string] : Field };

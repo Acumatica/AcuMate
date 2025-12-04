@@ -11,7 +11,6 @@ import { buildScreens, CommandsCache, openBuildMenu } from './build-commands/bui
 import { createScreen } from './scaffolding/create-screen/create-screen';
 import { createScreenExtension } from './scaffolding/create-screen-extension/create-screen-extension';
 import { provideTSCompletionItems } from './completionItemProviders/ts-completion-provider';
-const fs = require(`fs`);
 const findConfig = require('find-config');
 import { validateHtmlFile } from './validation/htmlValidation/html-validation';
 import { registerHtmlDefinitionProvider } from './providers/html-definition-provider';
@@ -21,6 +20,10 @@ import { registerGraphInfoValidation } from './validation/tsValidation/graph-inf
 import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
 import { registerTsHoverProvider } from './providers/ts-hover-provider';
 import { getFrontendSourcesPath } from './utils';
+import { runWorkspaceScreenValidation, runWorkspaceTypeScriptValidation } from './validation/workspace-validation';
+
+const HTML_VALIDATION_DEBOUNCE_MS = 250;
+const pendingHtmlValidationTimers = new Map<string, NodeJS.Timeout>();
 
 export function activate(context: vscode.ExtensionContext) {
 	init(context);
@@ -30,7 +33,7 @@ export function activate(context: vscode.ExtensionContext) {
 
 	createCommands(context);
 
-	createHtmlDiagnostics();
+	createHtmlDiagnostics(context);
 
 	// HTML providers share the same metadata to supply navigation + IntelliSense inside markup.
 	registerHtmlDefinitionProvider(context);
@@ -41,16 +44,73 @@ export function activate(context: vscode.ExtensionContext) {
 
 }
 
-function createHtmlDiagnostics() {
-	vscode.workspace.onDidChangeTextDocument(event => {
+function createHtmlDiagnostics(context: vscode.ExtensionContext) {
+	const scheduleHtmlValidation = (document: vscode.TextDocument, immediate = false) => {
+		if (document.isClosed) {
+			return;
+		}
+		const key = document.uri.toString();
+		const existing = pendingHtmlValidationTimers.get(key);
+		if (existing) {
+			clearTimeout(existing);
+			pendingHtmlValidationTimers.delete(key);
+		}
+
+		const runValidation = () => {
+			pendingHtmlValidationTimers.delete(key);
+			if (!document.isClosed) {
+				validateHtmlFile(document);
+			}
+		};
+
+		if (immediate) {
+			runValidation();
+			return;
+		}
+
+		const handle = setTimeout(runValidation, HTML_VALIDATION_DEBOUNCE_MS);
+		pendingHtmlValidationTimers.set(key, handle);
+	};
+
+	const changeDisposable = vscode.workspace.onDidChangeTextDocument(event => {
 		if (event.document.languageId === 'html') {
-			validateHtmlFile(event.document);
+			scheduleHtmlValidation(event.document);
 		}
 	});
+	context.subscriptions.push(changeDisposable);
 
-	vscode.workspace.onDidOpenTextDocument(doc => {
+	const openDisposable = vscode.workspace.onDidOpenTextDocument(doc => {
 		if (doc.languageId === 'html') {
-			validateHtmlFile(doc);
+			scheduleHtmlValidation(doc, true);
+		}
+	});
+	context.subscriptions.push(openDisposable);
+
+	const activeEditorDisposable = vscode.window.onDidChangeActiveTextEditor(editor => {
+		if (editor?.document.languageId === 'html') {
+			scheduleHtmlValidation(editor.document, true);
+		}
+	});
+	context.subscriptions.push(activeEditorDisposable);
+
+	const closeDisposable = vscode.workspace.onDidCloseTextDocument(doc => {
+		if (doc.languageId !== 'html') {
+			return;
+		}
+
+		const key = doc.uri.toString();
+		const pending = pendingHtmlValidationTimers.get(key);
+		if (pending) {
+			clearTimeout(pending);
+			pendingHtmlValidationTimers.delete(key);
+		}
+		AcuMateContext.HtmlValidator.delete(doc.uri);
+	});
+	context.subscriptions.push(closeDisposable);
+
+	vscode.workspace.textDocuments.forEach(doc => {
+		if (doc.languageId === 'html') {
+			scheduleHtmlValidation(doc, true);
 		}
 	});
 }
@@ -191,7 +251,18 @@ function createCommands(context: vscode.ExtensionContext) {
 		context.globalState.keys().forEach(key => context.globalState.update(key, undefined));
 	});
 	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('acumate.validateScreens', async () => {
+		await runWorkspaceScreenValidation();
+	});
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('acumate.validateTypeScriptScreens', async () => {
+		await runWorkspaceTypeScriptValidation();
+	});
+	context.subscriptions.push(disposable);
 }
+
 
 function createIntelliSenseProviders(context: vscode.ExtensionContext) {
 	if (!AcuMateContext.ConfigurationService.useBackend) {

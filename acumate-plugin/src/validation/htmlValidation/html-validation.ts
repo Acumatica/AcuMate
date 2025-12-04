@@ -461,7 +461,8 @@ function validateDom(
     }
 
     const providedKeys = new Set(Object.keys(configObject));
-    for (const property of definition.properties) {
+    // commented out to reduce noise in diagnostics
+    /*for (const property of definition.properties) {
       if (!property.optional && !providedKeys.has(property.name)) {
         pushHtmlDiagnostic(
           diagnostics,
@@ -470,7 +471,7 @@ function validateDom(
           `The ${node.name} config.bind is missing required property "${property.name}".`
         );
       }
-    }
+    }*/
 
     for (const key of providedKeys) {
       if (!definition.properties.some((property) => property.name === key)) {

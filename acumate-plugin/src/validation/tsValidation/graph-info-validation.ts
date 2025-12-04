@@ -283,7 +283,7 @@ function compareViewClassesWithGraph(
 			const backendFields = backendView?.fields;
 			if (backendView && backendFields?.size) {
 				for (const fieldProperty of viewClassInfo.properties.values()) {
-					if (fieldProperty.kind !== 'field') {
+					if (fieldProperty.kind !== 'field' || shouldIgnoreFieldDiagnostics(fieldProperty)) {
 						continue;
 					}
 
@@ -307,7 +307,7 @@ function compareViewClassesWithGraph(
 			}
 
 			for (const fieldProperty of viewClassInfo.properties.values()) {
-				if (fieldProperty.kind !== 'field') {
+				if (fieldProperty.kind !== 'field' || shouldIgnoreFieldDiagnostics(fieldProperty)) {
 					continue;
 				}
 
@@ -399,6 +399,10 @@ function createPropertyDiagnostic(
 	diagnostic.code = 'graphInfo';
 	diagnostic.source = 'graphInfo';
 	return diagnostic;
+}
+
+function shouldIgnoreFieldDiagnostics(property: ClassPropertyInfo): boolean {
+	return property.name?.includes('__') ?? false;
 }
 
 function buildDisabledFeatureSet(features: FeatureModel[] | undefined): Set<string> {

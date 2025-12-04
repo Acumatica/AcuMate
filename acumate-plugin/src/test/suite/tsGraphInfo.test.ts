@@ -21,6 +21,7 @@ const matchFixture = path.join(fixturesRoot, 'GraphInfoScreenMatch.ts');
 const viewFieldMismatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMismatch.ts');
 const viewFieldMatchFixture = path.join(fixturesRoot, 'GraphInfoViewFieldMatch.ts');
 const viewFieldCompletionFixture = path.join(fixturesRoot, 'GraphInfoViewFieldCompletion.ts');
+const viewFieldDoubleUnderscoreFixture = path.join(fixturesRoot, 'GraphInfoViewFieldDoubleUnderscore.ts');
 const caseInsensitiveFixture = path.join(fixturesRoot, 'GraphInfoScreenCaseInsensitive.ts');
 const suppressedFixture = path.join(fixturesRoot, 'GraphInfoScreenSuppressed.ts');
 const extensionFixture = path.resolve(
@@ -220,6 +221,29 @@ describe('graphInfo decorator assistance', () => {
 		assert.strictEqual(matchDiagnostics.length, 0, 'expected no diagnostics when PXView fields align with backend metadata');
 	});
 
+	it('ignores PXView fields with double underscores when backend metadata is missing', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: {
+					name: 'Document',
+					fields: {
+						ExistingField: { name: 'ExistingField' }
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(viewFieldDoubleUnderscoreFixture);
+		const diagnostics = await collectGraphInfoDiagnostics(document, sampleGraphs);
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			'expected double-underscore fields to skip backend metadata diagnostics'
+		);
+	});
+
 	it('suggests PXFieldState declarations for PXView classes from backend metadata', async () => {
 		const graphStructure: GraphStructure = {
 			name: backendGraphName,
@@ -285,6 +309,54 @@ describe('graphInfo decorator assistance', () => {
 			assert.ok(/qp-text-box/.test(value), 'hover should show default control type');
 		});
 
+		it('shows backend metadata when hovering PXView properties', async () => {
+			const graphStructure: GraphStructure = {
+				name: backendGraphName,
+				views: {
+					Document: {
+						name: 'Document',
+						displayName: 'Bill Of Materials',
+						cacheType: 'AMBomMatl',
+						cacheName: 'BOM Material'
+					}
+				}
+			};
+			AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+			const document = await vscode.workspace.openTextDocument(viewFieldMatchFixture);
+			const marker = 'Document = createSingle';
+			const markerIndex = document.getText().indexOf(marker);
+			assert.ok(markerIndex >= 0, 'view property marker not found');
+			const position = document.positionAt(markerIndex + 1);
+			const hover = await provideTSFieldHover(document, position);
+			assert.ok(hover, 'expected hover result for PXView property');
+			const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+			const first = contents[0];
+			const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+			assert.ok(/AMBomMatl/.test(value), 'hover should show cache type');
+			assert.ok(/BOM Material/.test(value), 'hover should show cache name');
+		});
+
+		it('shows PXAction display names when hovering PXActionState properties', async () => {
+			const graphStructure: GraphStructure = {
+				name: backendGraphName,
+				actions: [{ name: 'SaveAction', displayName: 'Save Current Document' }]
+			};
+			AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+			const document = await vscode.workspace.openTextDocument(matchFixture);
+			const marker = 'SaveAction!: PXActionState';
+			const markerIndex = document.getText().indexOf(marker);
+			assert.ok(markerIndex >= 0, 'PXAction property marker not found');
+			const position = document.positionAt(markerIndex + 1);
+			const hover = await provideTSFieldHover(document, position);
+			assert.ok(hover, 'expected hover result for PXActionState property');
+			const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+			const first = contents[0];
+			const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+			assert.ok(/Save Current Document/.test(value), 'hover should surface PXAction display name');
+		});
+
 	it('respects acumate-disable-next-line directives for graphInfo diagnostics', async () => {
 		const graphStructure: GraphStructure = {
 			name: backendGraphName,
@@ -302,6 +374,29 @@ describe('graphInfo decorator assistance', () => {
 			0,
 			'Expected acumate-disable-next-line to suppress graphInfo diagnostics'
 		);
+	});
+
+	it('suggests backend actions for linkCommand decorators', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				Document: { name: 'Document' }
+			},
+			actions: [{ name: 'ExistingBackendAction', displayName: 'Existing Action' }]
+		};
+		AcuMateContext.ApiService = new MockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(linkCommandValidFixture);
+		const marker = '@linkCommand("';
+		const caret = document.positionAt(document.getText().indexOf(marker) + marker.length);
+		const completions = await provideTSCompletionItems(
+			document,
+			caret,
+			new vscode.CancellationTokenSource().token,
+			{ triggerKind: vscode.CompletionTriggerKind.Invoke } as vscode.CompletionContext
+		);
+		const labels = (completions ?? []).map(item => item.label);
+		assert.ok(labels.includes('ExistingBackendAction'), 'linkCommand completion should include backend actions');
 	});
 
 	it('validates linkCommand decorators against backend actions', async () => {

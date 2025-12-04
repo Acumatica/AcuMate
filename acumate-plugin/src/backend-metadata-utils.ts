@@ -1,5 +1,5 @@
 import { GraphStructure } from './model/graph-structure';
-import { Field, View } from './model/view';
+import { Action, Field, View } from './model/view';
 
 export interface BackendFieldMetadata {
 	fieldName: string;
@@ -14,6 +14,12 @@ export interface BackendViewMetadata {
 	fields: Map<string, BackendFieldMetadata>;
 }
 
+export interface BackendActionMetadata {
+	actionName: string;
+	normalizedName: string;
+	action: Action;
+}
+
 export function normalizeMetaName(value: string | undefined): string | undefined {
 	if (typeof value !== 'string') {
 		return undefined;
@@ -25,14 +31,35 @@ export function normalizeMetaName(value: string | undefined): string | undefined
 
 export function buildBackendActionSet(structure: GraphStructure | undefined): Set<string> {
 	const actions = new Set<string>();
+	const map = buildBackendActionMap(structure);
+	for (const key of map.keys()) {
+		actions.add(key);
+	}
+	return actions;
+}
+
+export function buildBackendActionMap(structure: GraphStructure | undefined): Map<string, BackendActionMetadata> {
+	const actions = new Map<string, BackendActionMetadata>();
 	if (!structure?.actions) {
 		return actions;
 	}
 
 	for (const action of structure.actions) {
-		const normalized = normalizeMetaName(action?.name);
-		if (normalized) {
-			actions.add(normalized);
+		if (!action) {
+			continue;
+		}
+
+		const normalized = normalizeMetaName(action.name);
+		if (!normalized) {
+			continue;
+		}
+
+		if (!actions.has(normalized)) {
+			actions.set(normalized, {
+				actionName: action.name ?? normalized,
+				normalizedName: normalized,
+				action
+			});
 		}
 	}
 
