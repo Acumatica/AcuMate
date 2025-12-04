@@ -302,14 +302,20 @@ async function runWorkspaceScreenValidation() {
 	validationOutput.appendLine(`[AcuMate] Validating ${htmlFiles.length} HTML files under ${resolvedRoot}`);
 
 	const issues: Array<{ file: string; diagnostics: vscode.Diagnostic[] }> = [];
-	await vscode.window.withProgress(
+	const cancelled = await vscode.window.withProgress(
 		{
 			title: 'AcuMate HTML validation',
 			location: vscode.ProgressLocation.Notification,
-			cancellable: false
+			cancellable: true
 		},
-		async progress => {
-			for (const file of htmlFiles) {
+		async (progress, token) => {
+			for (let index = 0; index < htmlFiles.length; index++) {
+				if (token.isCancellationRequested) {
+					validationOutput.appendLine('[AcuMate] HTML validation cancelled by user.');
+					return true;
+				}
+
+				const file = htmlFiles[index];
 				const relative = path.relative(workspaceFolder.uri.fsPath, file);
 				progress.report({ message: relative, increment: (1 / htmlFiles.length) * 100 });
 				const document = await vscode.workspace.openTextDocument(file);
@@ -320,10 +326,22 @@ async function runWorkspaceScreenValidation() {
 				}
 				AcuMateContext.HtmlValidator?.delete(document.uri);
 			}
+
+			return false;
 		}
 	);
 
 	const totalDiagnostics = issues.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
+	if (cancelled) {
+		const summary = `AcuMate HTML validation cancelled after processing ${issues.length} file(s).`;
+		validationOutput.appendLine(`[AcuMate] ${summary}`);
+		vscode.window.showInformationMessage(summary, 'Open Output').then(choice => {
+			if (choice === 'Open Output') {
+				validationOutput.show(true);
+			}
+		});
+		return;
+	}
 	if (!totalDiagnostics) {
 		validationOutput.appendLine('[AcuMate] No diagnostics reported.');
 		vscode.window.showInformationMessage(`AcuMate validation complete: ${htmlFiles.length} files, no diagnostics.`);
@@ -419,14 +437,20 @@ async function runWorkspaceTypeScriptValidation() {
 	validationOutput.appendLine(`[AcuMate] Validating ${tsFiles.length} TypeScript files under ${resolvedRoot}`);
 
 	const issues: Array<{ file: string; diagnostics: vscode.Diagnostic[] }> = [];
-	await vscode.window.withProgress(
+	const cancelled = await vscode.window.withProgress(
 		{
 			title: 'AcuMate TypeScript validation',
 			location: vscode.ProgressLocation.Notification,
-			cancellable: false
+			cancellable: true
 		},
-		async progress => {
-			for (const file of tsFiles) {
+		async (progress, token) => {
+			for (let index = 0; index < tsFiles.length; index++) {
+				if (token.isCancellationRequested) {
+					validationOutput.appendLine('[AcuMate] TypeScript validation cancelled by user.');
+					return true;
+				}
+
+				const file = tsFiles[index];
 				const relative = path.relative(workspaceFolder.uri.fsPath, file);
 				progress.report({ message: relative, increment: (1 / tsFiles.length) * 100 });
 				try {
@@ -441,10 +465,21 @@ async function runWorkspaceTypeScriptValidation() {
 					validationOutput.appendLine(`[AcuMate] Failed to validate ${relative || file}: ${message}`);
 				}
 			}
+
+			return false;
 		}
 	);
 
 	const totalDiagnostics = issues.reduce((sum, entry) => sum + entry.diagnostics.length, 0);
+	if (cancelled) {
+		const summary = `AcuMate TypeScript validation cancelled after processing ${issues.length} file(s).`;
+		validationOutput.appendLine(`[AcuMate] ${summary}`);
+		const choice = await vscode.window.showInformationMessage(summary, 'Open Output');
+		if (choice === 'Open Output') {
+			validationOutput.show(true);
+		}
+		return;
+	}
 	if (!totalDiagnostics) {
 		validationOutput.appendLine('[AcuMate] No diagnostics reported.');
 		vscode.window.showInformationMessage(`AcuMate TypeScript validation complete: ${tsFiles.length} files, no diagnostics.`);
