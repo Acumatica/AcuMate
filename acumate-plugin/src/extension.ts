@@ -29,6 +29,7 @@ const OPEN_SETTINGS_LABEL = 'Open AcuMate Settings';
 
 let backendConfigWarningShown = false;
 let backendDisabledLogged = false;
+let backendFeaturesInitialized = false;
 
 function reportBackendConfigurationState() {
 	if (!AcuMateContext.ConfigurationService.useBackend) {
@@ -72,6 +73,27 @@ function reportBackendConfigurationState() {
 
 function logCommandInvocation(commandId: string, details?: Record<string, unknown>) {
 	logInfo(`Command ${commandId} invoked`, details ?? {});
+}
+
+function registerConfigurationWatcher(context: vscode.ExtensionContext) {
+	const disposable = vscode.workspace.onDidChangeConfiguration(event => {
+		if (!event.affectsConfiguration('acuMate')) {
+			return;
+		}
+
+		logInfo('Detected acuMate settings change. Reloading configuration.');
+		AcuMateContext.ConfigurationService.reload();
+		backendConfigWarningShown = false;
+		backendDisabledLogged = false;
+		reportBackendConfigurationState();
+
+		if (AcuMateContext.ConfigurationService.useBackend && !backendFeaturesInitialized) {
+			logInfo('Backend enabled after settings change. Initializing IntelliSense providers.');
+			createIntelliSenseProviders(context);
+		}
+	});
+
+	context.subscriptions.push(disposable);
 }
 
 export function activate(context: vscode.ExtensionContext) {
@@ -344,6 +366,10 @@ function createCommands(context: vscode.ExtensionContext) {
 
 
 function createIntelliSenseProviders(context: vscode.ExtensionContext) {
+	if (backendFeaturesInitialized) {
+		return;
+	}
+
 	if (!AcuMateContext.ConfigurationService.useBackend) {
 		logWarn('Skipping TypeScript IntelliSense providers because acuMate.useBackend is disabled.');
 		return;
@@ -364,6 +390,8 @@ function createIntelliSenseProviders(context: vscode.ExtensionContext) {
 	context.subscriptions.push(provider);
 
 	registerTsHoverProvider(context);
+	backendFeaturesInitialized = true;
+	logInfo('TypeScript IntelliSense providers initialized.');
 
 	/*provider = vscode.languages.registerCompletionItemProvider(
 		{ language:'html', scheme:'file'},
@@ -385,6 +413,7 @@ function init(context: vscode.ExtensionContext) {
 	const apiClient = new AcuMateApiClient();
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
 	reportBackendConfigurationState();
+	registerConfigurationWatcher(context);
 
 	AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidator');
 

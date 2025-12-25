@@ -7,6 +7,10 @@ export class ConfigurationService {
         this.config =  workspace.getConfiguration("acuMate");
     }
 
+    reload(): void {
+        this.config = workspace.getConfiguration("acuMate");
+    }
+
     get backedUrl() : string | undefined {
         return this.config.get("backedUrl");
     }
