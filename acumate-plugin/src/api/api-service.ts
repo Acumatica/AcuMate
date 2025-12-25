@@ -4,6 +4,7 @@ import { GraphAPIRoute, GraphAPIStructureRoute, AuthEndpoint, LogoutEndpoint, Fe
 import { IAcuMateApiClient } from "./acu-mate-api-client";
 import { AcuMateContext } from "../plugin-context";
 import { FeatureModel } from "../model/FeatureModel";
+import { logError, logInfo } from "../logging/logger";
 
 interface FeatureSetsResponse {
     sets?: FeatureSetEntry[];
@@ -63,6 +64,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             return;
         }
 
+        logInfo('Logging out from AcuMate backend.');
         const response = await fetch(AcuMateContext.ConfigurationService.backedUrl!+LogoutEndpoint, {
             method:'POST',
             headers: {
@@ -74,24 +76,26 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         this.sessionCookieHeader = undefined;
 
         if (response.ok) {
-            console.log('Logged out successfully.');
+            logInfo('Backend session closed successfully.');
         } else {
             const errorBody = await response.text().catch(() => "");
-            console.error(`Authentication failed with status ${response.status}: ${errorBody}`);
+            logError('Backend logout failed.', { status: response.status, errorBody });
         }
     }
 
     private async makeGetRequest<T>(route: string): Promise<T | undefined> {
         if (!AcuMateContext.ConfigurationService.useBackend) {
+            logInfo('Skipped backend request because acuMate.useBackend is disabled.', { route });
             return undefined;
         }
 
         try {
+            logInfo('Authenticating before backend request.', { route });
             const authResponse = await this.auth();
 
             if (authResponse.status !== 200 && authResponse.status !== 204) {
                 const errorBody = await authResponse.text().catch(() => "");
-                console.error(`Authentication failed with status ${authResponse.status}: ${errorBody}`);
+                logError('AcuMate backend authentication failed.', { status: authResponse.status, errorBody });
                 return undefined;
             }
 
@@ -106,29 +110,33 @@ export class AcuMateApiClient implements IAcuMateApiClient {
                 headers
             };
             settings.credentials = `include`;
+            logInfo('Issuing backend GET request.', { url });
             const response = await fetch(url, settings);
 
             if (!response.ok) {
                 const errorBody = await response.text().catch(() => "");
-                console.error(`GET ${url} failed with status ${response.status}: ${errorBody}`);
+                logError('Backend GET request failed.', { url, status: response.status, errorBody });
                 return undefined;
             }
 
             const contentType = response.headers.get("content-type") ?? "";
             if (!contentType.includes("application/json")) {
                 const errorBody = await response.text().catch(() => "");
-                console.error(`GET ${url} returned non-JSON content (${contentType}): ${errorBody}`);
+                logError('Backend GET returned unexpected content type.', { url, contentType, errorBody });
                 return undefined;
             }
 
             const data = await response.json();
-
-            console.log(data);
+            const summary: Record<string, unknown> = { url };
+            if (Array.isArray(data)) {
+                summary.items = data.length;
+            }
+            logInfo('Backend GET succeeded.', summary);
 
             return data as T;
         }
         catch (error) {
-            console.error('Error making GET request:', error);
+            logError('Unexpected error during backend GET request.', { route, error });
         }
         finally {
             await this.logout();
