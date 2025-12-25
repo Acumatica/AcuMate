@@ -62,7 +62,9 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
    - Verifies `<field name="...">` entries against the PXView resolved from the surrounding markup and ignores deliberate `unbound replace-content` placeholders.
    - Validates `state.bind` attributes point to PXAction members, and `qp-field control-state.bind` values follow the `<view>.<field>` format with existing fields.
    - Enforces `<qp-panel id="...">` bindings by making sure the id maps to an existing PXView, and reuses that view context when checking footer `<qp-button state.bind="...">` actions so dialogs only reference actions exposed by their owning view.
+   - Requires `qp-panel` nodes and all `qp-*` controls to define `id` attributes (except for `qp-field`, `qp-label`, and `qp-include`) so missing identifiers and misbound panels are caught before packaging.
    - Enforces Acumatica-specific constructs: required qp-include parameters, rejection of undeclared include attributes, and qp-template name checks sourced from ScreenTemplates metadata.
+   - Guards `<qp-template name="record-*">` usages so record templates only validate when the markup sits inside a `<qp-data-feed>` container, matching runtime restrictions.
    - Leverages client-controls config schemas to inspect `config.bind` JSON on qp-* controls, reporting malformed JSON, missing required properties, and unknown keys before runtime.
    - Parses customization attributes such as `before`, `after`, `append`, `prepend`, `move`, and ensures their CSS selectors resolve against the base screen HTML so misplaced selectors surface immediately instead of at publish time.
    - Integrates these diagnostics with ESLint + VS Code so warnings surface consistently in editors and CI.
@@ -76,6 +78,13 @@ The **AcuMate** extension for Visual Studio Code offers a range of powerful feat
    - Offers IntelliSense suggestions for available `view.bind` values sourced from the PXScreen metadata.  
    - Provides field name suggestions that automatically scope to the closest parent view binding, so only valid fields appear.  
    - Attribute parsing tolerates empty values (`view.bind=""`) to keep suggestions responsive while editing.
+   - Template name completions automatically filter out `record-*` entries unless the caret is inside a `<qp-data-feed>`, keeping suggestions aligned with validation rules.
+
+   ### Logging & Observability
+
+   - All extension subsystems log to a single **AcuMate** output channel, making it easy to trace backend requests, caching behavior, and command execution without hunting through multiple panes.
+   - Every AcuMate command writes a structured log entry (arguments + timing) so build/validation flows can be audited when integrating with CI or troubleshooting user reports.
+   - Backend API calls, cache hits/misses, and configuration reloads emit detailed log lines, giving immediate visibility into why a control lookup or metadata request might have failed.
 
 4. **Backend Field Hovers**  
    - Hovering over `<field name="...">` or `<qp-field name="...">` immediately shows backend metadata (display name, type, default control type, originating view) sourced from the same data that powers TypeScript hovers.
