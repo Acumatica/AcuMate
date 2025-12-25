@@ -16,6 +16,8 @@ import { ConfigurationService } from '../../services/configuration-service';
 const fixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/html');
 const usingFixturePath = path.join(fixturesRoot, 'TestScreenUsing.html');
 const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
+const qpTemplateRecordInsidePath = path.join(fixturesRoot, 'TestQpTemplateRecordInside.html');
+const qpTemplateRecordOutsidePath = path.join(fixturesRoot, 'TestQpTemplateRecordOutside.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
 const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
@@ -318,6 +320,26 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No completions returned for qp-template name');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('17-17-14'), '17-17-14 template not suggested');
+	});
+
+	it('suggests record-prefixed qp-template names inside qp-data-feed', async () => {
+		const document = await vscode.workspace.openTextDocument(qpTemplateRecordInsidePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="record-1"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'Expected qp-template completions inside qp-data-feed');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('record-1'), 'record-1 template should be suggested inside qp-data-feed');
+	});
+
+	it('omits record-prefixed qp-template names outside qp-data-feed', async () => {
+		const document = await vscode.workspace.openTextDocument(qpTemplateRecordOutsidePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="record-1"', 'name="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'Expected qp-template completions outside qp-data-feed');
+		const labels = completions.map(item => item.label);
+		assert.ok(!labels.includes('record-1'), 'record-1 template should not be suggested outside qp-data-feed');
 	});
 
 	it('suggests view + field pairs for control-state.bind', async () => {

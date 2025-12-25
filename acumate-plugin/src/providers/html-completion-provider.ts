@@ -74,7 +74,7 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return includeCompletions;
 		}
 
-		const templateCompletions = this.tryProvideTemplateNameCompletions(document, attributeContext);
+		const templateCompletions = this.tryProvideTemplateNameCompletions(document, attributeContext, position);
 		if (templateCompletions) {
 			return templateCompletions;
 		}
@@ -330,7 +330,8 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 	private tryProvideTemplateNameCompletions(
 		document: vscode.TextDocument,
-		attributeContext: ReturnType<typeof getAttributeContext>
+		attributeContext: ReturnType<typeof getAttributeContext>,
+		position: vscode.Position
 	): vscode.CompletionItem[] | undefined {
 		if (!attributeContext || attributeContext.attributeName !== 'name' || attributeContext.tagName !== 'qp-template') {
 			return undefined;
@@ -342,10 +343,19 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return undefined;
 		}
 
-		const prefix = (attributeContext.value ?? '').toLowerCase();
+		const valueText = attributeContext.value ?? '';
+		const valueStart = document.offsetAt(attributeContext.valueRange.start);
+		const caretOffset = document.offsetAt(position);
+		const relativeLength = Math.max(0, Math.min(valueText.length, caretOffset - valueStart));
+		const prefix = valueText.substring(0, relativeLength).toLowerCase();
+		const insideDataFeed = this.isInsideDataFeed(attributeContext.node);
 		const items: vscode.CompletionItem[] = [];
-		for (const templateName of templates) {
+		for (const rawName of templates) {
+			const templateName = rawName.trim();
 			if (prefix && !templateName.toLowerCase().startsWith(prefix)) {
+				continue;
+			}
+			if (templateName.startsWith('record-') && !insideDataFeed) {
 				continue;
 			}
 			const item = new vscode.CompletionItem(templateName, vscode.CompletionItemKind.EnumMember);
@@ -354,6 +364,20 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		return items.length ? items : undefined;
+	}
+
+	private isInsideDataFeed(node: any): boolean {
+		let current = node?.parent ?? node?.parentNode;
+		while (current) {
+			if (current.type === 'tag') {
+				const name = typeof current.name === 'string' ? current.name.toLowerCase() : undefined;
+				if (name === 'qp-data-feed') {
+					return true;
+				}
+			}
+			current = current.parent ?? current.parentNode;
+		}
+		return false;
 	}
 
 	private getIncludeAttributeNameContext(

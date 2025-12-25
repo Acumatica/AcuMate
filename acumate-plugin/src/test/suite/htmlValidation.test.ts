@@ -268,6 +268,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('allows record-prefixed qp-template names inside qp-data-feed', async () => {
+		const document = await openFixtureDocument('TestQpTemplateRecordInside.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			'Expected no diagnostics when record-* templates reside inside qp-data-feed'
+		);
+	});
+
+	it('reports record-prefixed qp-template names outside qp-data-feed', async () => {
+		const document = await openFixtureDocument('TestQpTemplateRecordOutside.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('record-') && d.message.includes('qp-data-feed')),
+			'Expected diagnostic when record-* qp-template is outside qp-data-feed'
+		);
+	});
+
 	it('accepts qp-field control-state bindings when view + field exist', async () => {
 		const document = await openFixtureDocument('TestScreen.html');
 		await validateHtmlFile(document);
