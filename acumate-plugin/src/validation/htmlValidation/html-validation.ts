@@ -32,6 +32,7 @@ import { AcuMateContext } from "../../plugin-context";
 import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
 
 const includeIntrinsicAttributes = new Set(["id", "class", "style", "slot"]);
+const idOptionalTags = new Set(["qp-field", "qp-label", "qp-include"]);
 
 function pushHtmlDiagnostic(
   diagnostics: vscode.Diagnostic[],
@@ -163,6 +164,24 @@ function validateDom(
   // Custom validation logic goes here
   dom.forEach((node) => {
     let nextPanelViewContext = panelViewContext;
+    const normalizedTagName =
+      node.type === "tag" && typeof node.name === "string" ? node.name.toLowerCase() : "";
+    const elementId = node.type === "tag" ? getElementId(node) : "";
+
+    if (node.type === "tag") {
+      const requiresIdAttribute =
+        normalizedTagName === "qp-panel" ||
+        (normalizedTagName && controlMetadata.has(normalizedTagName) && !idOptionalTags.has(normalizedTagName));
+      if (requiresIdAttribute && !elementId.length) {
+        const range = getRange(content, node);
+        const message =
+          normalizedTagName === "qp-panel"
+            ? "The <qp-panel> element must define an id attribute."
+            : `The <${node.name}> element must define an id attribute.`;
+        pushHtmlDiagnostic(diagnostics, suppression, range, message);
+      }
+    }
+
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
@@ -189,9 +208,8 @@ function validateDom(
     }
 
     if (hasScreenMetadata && node.type === "tag" && node.name === "qp-panel") {
-      const panelId = typeof node.attribs?.id === "string" ? node.attribs.id.trim() : "";
-      if (panelId.length) {
-        const viewResolution = resolveView(panelId);
+      if (elementId.length) {
+        const viewResolution = resolveView(elementId);
         if (!viewResolution) {
           const range = getRange(content, node);
           pushHtmlDiagnostic(
@@ -291,7 +309,6 @@ function validateDom(
     ) {
       const viewSpecified = node.attribs.name.includes(".");
       const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
-      
 
       const isUnboundReplacement =
         Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
@@ -320,7 +337,7 @@ function validateDom(
         }
       }
     }
-    // Recursively validate child nodes
+
     if ((<any>node).children) {
       validateDom(
         (<any>node).children,
@@ -720,6 +737,11 @@ function getAttributeValueRange(
   }
 
   return undefined;
+}
+
+function getElementId(node: any): string {
+  const rawId = node.attribs?.id;
+  return typeof rawId === "string" ? rawId.trim() : "";
 }
 
 // Converts parser indices into VS Code ranges for diagnostics.
