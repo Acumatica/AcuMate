@@ -1,0 +1,13 @@
+<qp-root>
+	<qp-fieldset id="Form" view.bind="mainView">
+		<qp-field control-state.bind="mainView.customerName"></qp-field>
+		<qp-label text="Customer"></qp-label>
+	</qp-fieldset>
+	<qp-include
+		url="src/test/fixtures/includes/form-contact-document.html"
+		fs-id="fsShipToContact-Addresses"
+		contact-view="Shipping_Contact"
+		fs-wg-container="Shipping_Contact_formD"
+		fs-caption="Ship-To Contact"
+	></qp-include>
+</qp-root>

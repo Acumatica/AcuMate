@@ -18,6 +18,7 @@ import { findParentViewName } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
+import { AcuMateContext } from "../../plugin-context";
 import {
   getBaseScreenDocument,
   isCustomizationSelectorAttribute,
@@ -25,13 +26,12 @@ import {
   BaseScreenDocument,
   getCustomizationSelectorAttributes,
 } from "../../services/screen-html-service";
+import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
-import { AcuMateContext } from "../../plugin-context";
-import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
-
 const includeIntrinsicAttributes = new Set(["id", "class", "style", "slot"]);
+const idOptionalTags = new Set(["qp-field", "qp-label", "qp-include"]);
 
 function pushHtmlDiagnostic(
   diagnostics: vscode.Diagnostic[],
@@ -103,7 +103,8 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           controlMetadata,
           baseScreenDocument,
           suppression,
-          undefined
+          undefined,
+          false
         );
       }
     },
@@ -135,7 +136,8 @@ function validateDom(
   controlMetadata: Map<string, ClientControlMetadata>,
   baseScreenDocument: BaseScreenDocument | undefined,
   suppression: SuppressionEngine,
-  panelViewContext?: CollectedClassInfo
+  panelViewContext?: CollectedClassInfo,
+  isInsideDataFeed = false
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = filterScreenLikeClasses(relevantClassInfos);
@@ -163,6 +165,26 @@ function validateDom(
   // Custom validation logic goes here
   dom.forEach((node) => {
     let nextPanelViewContext = panelViewContext;
+    const normalizedTagName =
+      node.type === "tag" && typeof node.name === "string" ? node.name.toLowerCase() : "";
+    const elementId = node.type === "tag" ? getElementId(node) : "";
+    const nodeIsDataFeed = normalizedTagName === "qp-data-feed";
+    const currentDataFeedContext = isInsideDataFeed || nodeIsDataFeed;
+
+    if (node.type === "tag") {
+      const requiresIdAttribute =
+        normalizedTagName === "qp-panel" ||
+        (normalizedTagName && controlMetadata.has(normalizedTagName) && !idOptionalTags.has(normalizedTagName));
+      if (requiresIdAttribute && !elementId.length) {
+        const range = getRange(content, node);
+        const message =
+          normalizedTagName === "qp-panel"
+            ? "The <qp-panel> element must define an id attribute."
+            : `The <${node.name}> element must define an id attribute.`;
+        pushHtmlDiagnostic(diagnostics, suppression, range, message);
+      }
+    }
+
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
@@ -189,9 +211,8 @@ function validateDom(
     }
 
     if (hasScreenMetadata && node.type === "tag" && node.name === "qp-panel") {
-      const panelId = typeof node.attribs?.id === "string" ? node.attribs.id.trim() : "";
-      if (panelId.length) {
-        const viewResolution = resolveView(panelId);
+      if (elementId.length) {
+        const viewResolution = resolveView(elementId);
         if (!viewResolution) {
           const range = getRange(content, node);
           pushHtmlDiagnostic(
@@ -250,7 +271,7 @@ function validateDom(
       typeof node.attribs?.name === "string" &&
       node.attribs.name.length
     ) {
-      validateTemplateName(node.attribs.name, node);
+      validateTemplateName(node.attribs.name, node, currentDataFeedContext);
     }
 
     if (
@@ -291,7 +312,6 @@ function validateDom(
     ) {
       const viewSpecified = node.attribs.name.includes(".");
       const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
-      
 
       const isUnboundReplacement =
         Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
@@ -320,7 +340,7 @@ function validateDom(
         }
       }
     }
-    // Recursively validate child nodes
+
     if ((<any>node).children) {
       validateDom(
         (<any>node).children,
@@ -334,22 +354,35 @@ function validateDom(
         controlMetadata,
         baseScreenDocument,
         suppression,
-        nextPanelViewContext
+        nextPanelViewContext,
+        currentDataFeedContext
       );
     }
   });
-  function validateTemplateName(templateName: string, node: any) {
-    if (!screenTemplateNames.size) {
-      return;
-    }
-
-    if (!screenTemplateNames.has(templateName)) {
+  function validateTemplateName(templateName: string, node: any, insideDataFeed: boolean) {
+    const normalizedTemplateName = templateName.trim();
+    if (normalizedTemplateName.startsWith("record-") && !insideDataFeed) {
       const range = getRange(content, node);
       pushHtmlDiagnostic(
         diagnostics,
         suppression,
         range,
-        `The qp-template name "${templateName}" is not one of the predefined screen templates.`
+        "Templates prefixed with record- can only be used inside a <qp-data-feed> element."
+      );
+      return;
+    }
+
+    if (!screenTemplateNames.size) {
+      return;
+    }
+
+    if (!screenTemplateNames.has(normalizedTemplateName)) {
+      const range = getRange(content, node);
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
+        range,
+        `The qp-template name "${normalizedTemplateName}" is not one of the predefined screen templates.`
       );
     }
   }
@@ -720,6 +753,11 @@ function getAttributeValueRange(
   }
 
   return undefined;
+}
+
+function getElementId(node: any): string {
+  const rawId = node.attribs?.id;
+  return typeof rawId === "string" ? rawId.trim() : "";
 }
 
 // Converts parser indices into VS Code ranges for diagnostics.

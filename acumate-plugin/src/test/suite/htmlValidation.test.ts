@@ -158,6 +158,16 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('reports qp-panel elements that omit id attributes', async () => {
+		const document = await openFixtureDocument('TestPanelMissingId.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('<qp-panel> element must define an id attribute')),
+			'Expected diagnostic when qp-panel is missing id attribute'
+		);
+	});
+
 	it('allows suppressing html diagnostics via acumate-disable-next-line directives', async () => {
 		const document = await openFixtureDocument('TestPanelInvalidSuppressed.html');
 		await validateHtmlFile(document);
@@ -191,6 +201,23 @@ describe('HTML validation diagnostics', () => {
 			diagnostics.some(d => d.message.includes('state.bind attribute must reference a valid PXAction')),
 			'Expected invalid PXAction diagnostic when qp-panel footer button references unknown action'
 		);
+	});
+
+	it('reports qp controls that omit id attributes', async () => {
+		const document = await openFixtureDocument('TestControlMissingId.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('<qp-button> element must define an id attribute')),
+			'Expected diagnostic when qp-* control does not define id attribute'
+		);
+	});
+
+	it('accepts qp-field, qp-label, and qp-include without id attributes', async () => {
+		const document = await openFixtureDocument('TestControlIdOptional.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics when id-less qp controls are whitelisted');
 	});
 
 	it('accepts qp-include markup when required parameters are satisfied', async () => {
@@ -238,6 +265,27 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('qp-template name')),
 			'Expected diagnostic for invalid qp-template name'
+		);
+	});
+
+	it('allows record-prefixed qp-template names inside qp-data-feed', async () => {
+		const document = await openFixtureDocument('TestQpTemplateRecordInside.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			'Expected no diagnostics when record-* templates reside inside qp-data-feed'
+		);
+	});
+
+	it('reports record-prefixed qp-template names outside qp-data-feed', async () => {
+		const document = await openFixtureDocument('TestQpTemplateRecordOutside.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('record-') && d.message.includes('qp-data-feed')),
+			'Expected diagnostic when record-* qp-template is outside qp-data-feed'
 		);
 	});
 
