@@ -22,9 +22,9 @@
     "ValueChanged": {
 		"prefix": ["hook", "handleEvent", "valueChanged"],
 		"body": [
-			"@handleEvent(CustomEventType.ValueChanged, { view: \"${1:ViewName}\" })",
-			"on${1:ViewName}Changed(args: ValueChangedHandlerArgs<${2:ViewType}>) {",
-            "   $3",
+			"@handleEvent(CustomEventType.ValueChanged, { view: \"${1:ViewName}\", field: \"${2:FieldName}\" })",
+			"on${1:ViewName}Changed(args: ValueChangedHandlerArgs<${3:ViewType}>) {",
+            "   $4",
             "}"
 		],
 		"description": "ValueChanged event hook"
