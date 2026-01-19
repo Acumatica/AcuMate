@@ -4,7 +4,7 @@
   "description": "Acumatica Modern UI code helper",
   "repository": "https://github.com/Acumatica/AcuMate/",
   "publisher": "acumatica",
-  "icon": "images/acumate.png",
+  "icon": "images/acumatica.png",
   "version": "1.0.0",
   "engines": {
     "vscode": "^1.54.0"
