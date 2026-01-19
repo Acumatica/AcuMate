@@ -84,15 +84,20 @@ export function buildBackendViewMap(structure: GraphStructure | undefined): Map<
 			continue;
 		}
 
-		const metadata: BackendViewMetadata = {
-			viewName: view.name ?? key,
-			normalizedName: lookupKey,
-			view,
-			fields: buildBackendFieldMap(view),
-		};
+		let metadata = views.get(lookupKey);
+		if (!metadata) {
+			metadata = {
+				viewName: view.name ?? key,
+				normalizedName: lookupKey,
+				view,
+				fields: buildBackendFieldMap(view),
+			};
+			views.set(lookupKey, metadata);
+		} else {
+			mergeBackendFields(metadata.fields, view);
+		}
 
-		views.set(lookupKey, metadata);
-		if (normalizedKey && normalizedKey !== lookupKey && !views.has(normalizedKey)) {
+		if (normalizedKey && !views.has(normalizedKey)) {
 			views.set(normalizedKey, metadata);
 		}
 	}
@@ -131,4 +136,13 @@ export function buildBackendFieldMap(view: View | undefined): Map<string, Backen
 	}
 
 	return fields;
+}
+
+function mergeBackendFields(target: Map<string, BackendFieldMetadata>, sourceView: View) {
+	const incomingFields = buildBackendFieldMap(sourceView);
+	for (const [fieldKey, fieldMetadata] of incomingFields) {
+		if (!target.has(fieldKey)) {
+			target.set(fieldKey, fieldMetadata);
+		}
+	}
 }

@@ -370,6 +370,16 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('validates customization selectors on non-field elements', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('after selector') && d.message.includes('tab-PutAway111')),
+			'Expected diagnostic when qp-tab after selector targets missing element'
+		);
+	});
+
 	it('derives view metadata from selector targets when <field> lacks a parent view', async () => {
 		const document = await vscode.workspace.openTextDocument(screenSelectorExtensionFixture);
 		await validateHtmlFile(document);
