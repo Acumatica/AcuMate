@@ -183,6 +183,8 @@ function validateDom(
             : `The <${node.name}> element must define an id attribute.`;
         pushHtmlDiagnostic(diagnostics, suppression, range, message);
       }
+
+      validateCustomizationSelectors(node);
     }
 
     if (
@@ -292,10 +294,6 @@ function validateDom(
       validateConfigBinding(node.attribs["config.bind"], node);
     }
 
-    if (node.type === "tag" && node.name === "field") {
-      validateFieldCustomizationSelectors(node);
-    }
-
     if (
       node.type === "tag" &&
       (node.name === "field" || node.name === "qp-field") &&
@@ -387,7 +385,7 @@ function validateDom(
     }
   }
 
-  function validateFieldCustomizationSelectors(node: any) {
+  function validateCustomizationSelectors(node: any) {
     if (!baseScreenDocument) {
       return;
     }
