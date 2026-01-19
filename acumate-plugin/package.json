@@ -5,7 +5,7 @@
   "repository": "https://github.com/Acumatica/AcuMate/",
   "publisher": "acumatica",
   "icon": "images/acumate.png",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "engines": {
     "vscode": "^1.54.0"
   },
