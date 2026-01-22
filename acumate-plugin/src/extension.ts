@@ -50,9 +50,6 @@ function reportBackendConfigurationState() {
 	if (!AcuMateContext.ConfigurationService.password?.trim()) {
 		missing.push('acuMate.password');
 	}
-	if (!AcuMateContext.ConfigurationService.tenant?.trim()) {
-		missing.push('acuMate.tenant');
-	}
 
 	if (missing.length) {
 		const warning = `AcuMate backend is enabled but missing required settings: ${missing.join(', ')}`;

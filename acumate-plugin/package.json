@@ -5,7 +5,7 @@
   "repository": "https://github.com/Acumatica/AcuMate/",
   "publisher": "acumatica",
   "icon": "images/acumatica.png",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "engines": {
     "vscode": "^1.54.0"
   },
@@ -37,7 +37,7 @@
         },
         "acuMate.tenant": {
           "type": "string",
-          "description": "Tenant to use."
+          "description": "Tenant to use (leave empty for single-tenant sites)."
         },
         "acuMate.useCache": {
           "type": "boolean",

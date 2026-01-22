@@ -7,6 +7,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 ## [Unreleased]
 ### Added
 - Draft section for upcoming fixes and features.
+  
+## [1.0.1] - 2026-01-22
+### Fixed
+- Removed the requirement for `acuMate.tenant`, allowing single-tenant Acumatica instances to leave the setting empty without blocking backend-powered features.
 
 ## [1.0.0] - 2026-01-20
 ### Added
