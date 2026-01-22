@@ -1,71 +1,42 @@
-# acumate README
+# AcuMate
 
-This is the README for your extension "acumate". After writing up a brief description, we recommend including the following sections.
+AcuMate is Acumatica's open-source Visual Studio Code plugin for building Modern UI screens. 
 
-## Features
+## VS Code extension
+- Surfaces backend metadata directly in TypeScript hovers and IntelliSense, validating `@graphInfo`, `@featureInstalled`, and `@linkCommand` decorators against the connected site.
+- Adds Acumatica-aware HTML tooling (validation, go-to-definition, completions) for `view.bind`, `qp-*` controls, templates, and action bindings.
+- Provides project scaffolding: Create Screen / Screen Extension wizards, build menus, validation runners, and quick fixes for suppressing diagnostics when needed.
+- Streams logs and validation output through dedicated VS Code channels so long-running metadata requests and builds stay traceable.
 
-Describe specific features of your extension including screenshots of your extension in action. Image paths are relative to this README file.
+## Getting Started
 
-For example if there is an image subfolder under your extension project workspace:
+### Prerequisites
+- Node.js 18 LTS or newer (the extension CI runs on Node 18/20).
+- VS Code 1.54+ for local extension development.
 
-\!\[feature X\]\(images/feature-x.png\)
+### Install / develop the VS Code extension
+1. `cd acumate-plugin`
+2. `npm install`
+3. `npm run compile` (or `npm run watch` while iterating)
+4. Launch VS Code with the `Run Extension` target or package the extension via `npm run vscode:prepublish` and install the generated `.vsix`.
+5. Run `npm test` to execute the integration suite, or `npm run validate:screens` / `npm run validate:screens:ts` to trigger the HTML and TypeScript validators headlessly.
 
-> Tip: Many popular extensions utilize animations. This is an excellent way to show off your extension! We recommend short, focused animations that are easy to follow.
+## Repository Structure
 
-## Requirements
+```
+acumate-plugin/     # VS Code extension source, scripts, and tests
+acumate-linter/     # Standalone ESLint plugin shared by CI + editors
+VSCode/             # VS Code workspace settings used for local development
+CHANGELOG.md        # Release notes for both packages
+vsc-extension-quickstart.md  # Legacy notes for extension authors
+```
 
-If you have any requirements or dependencies, add a section describing those and how to install and configure them.
+Refer to [acumate-plugin/readme.md](acumate-plugin/readme.md) for the full extension features list, settings reference, and command catalog.
 
-## Extension Settings
+## Development Workflow
+- Run `npm run lint` inside `acumate-plugin` before opening a PR; the CI workflow mirrors `npm ci && npm test`.
+- When editing shared logic (e.g., metadata helpers), update both documentation and tests—diagnostics surface in VS Code and via CLI.
 
-Include if your extension adds any VS Code settings through the `contributes.configuration` extension point.
-
-For example:
-
-This extension contributes the following settings:
-
-* `myExtension.enable`: Enable/disable this extension.
-* `myExtension.thing`: Set to `blah` to do something.
-
-## Known Issues
-
-Calling out known issues can help limit users opening duplicate issues against your extension.
-
-## Release Notes
-
-Users appreciate release notes as you update your extension.
-
-### 1.0.0
-
-Initial release of ...
-
-### 1.0.1
-
-Fixed issue #.
-
-### 1.1.0
-
-Added features X, Y, and Z.
-
----
-
-## Following extension guidelines
-
-Ensure that you've read through the extensions guidelines and follow the best practices for creating your extension.
-
-* [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines)
-
-## Working with Markdown
-
-You can author your README using Visual Studio Code. Here are some useful editor keyboard shortcuts:
-
-* Split the editor (`Cmd+\` on macOS or `Ctrl+\` on Windows and Linux).
-* Toggle preview (`Shift+Cmd+V` on macOS or `Shift+Ctrl+V` on Windows and Linux).
-* Press `Ctrl+Space` (Windows, Linux, macOS) to see a list of Markdown snippets.
-
-## For more information
-
-* [Visual Studio Code's Markdown Support](http://code.visualstudio.com/docs/languages/markdown)
-* [Markdown Syntax Reference](https://help.github.com/articles/markdown-basics/)
-
-**Enjoy!**
+## Contributing
+- File bugs and feature requests through GitHub issues.
+- Add entries to [CHANGELOG.md](CHANGELOG.md) under **Unreleased** for every PR.
