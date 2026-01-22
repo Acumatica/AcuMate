@@ -44,7 +44,7 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         const data = {
             "name" : AcuMateContext.ConfigurationService.login,
             "password" : AcuMateContext.ConfigurationService.password,
-            "tenant" : AcuMateContext.ConfigurationService.tenant
+            "tenant" : AcuMateContext.ConfigurationService.tenant?.trim() || undefined
         };
         const response = await fetch(AcuMateContext.ConfigurationService.backedUrl!+AuthEndpoint, {
             method:'POST',
