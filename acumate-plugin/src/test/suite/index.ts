@@ -3,7 +3,8 @@ import Mocha from 'mocha';
 import { glob } from 'glob';
 
 export function run(): Promise<void> {
-	const mocha = new Mocha({ ui: 'bdd', color: true });
+	const grep = process.env.ACUMATE_TEST_GREP;
+	const mocha = new Mocha({ ui: 'bdd', color: true, grep: grep ? new RegExp(grep) : undefined });
 	const testsRoot = path.resolve(__dirname, '.');
 
 	return new Promise((resolve, reject) => {

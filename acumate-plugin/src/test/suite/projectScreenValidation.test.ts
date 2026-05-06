@@ -6,6 +6,7 @@ import { validateHtmlFile } from '../../validation/htmlValidation/html-validatio
 import { AcuMateContext } from '../../plugin-context';
 
 const screenRootSetting = process.env.SCREEN_VALIDATION_ROOT;
+const failOnDiagnostics = isTruthy(process.env.SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS);
 
 if (!screenRootSetting) {
 	console.warn('[acumate] Skipping project screen validation test because SCREEN_VALIDATION_ROOT is not set.');
@@ -55,12 +56,21 @@ else {
 				for (const entry of failures) {
 					console.warn(formatDiagnosticSummary(entry.file, entry.diagnostics));
 				}
+				if (failOnDiagnostics) {
+					throw new Error(
+						`Screen validation reported ${totalDiagnostics} diagnostics across ${failures.length} file(s).`
+					);
+				}
 			}
 			else {
 				console.log('[acumate] Validation complete with no diagnostics.');
 			}
 		});
 	});
+}
+
+function isTruthy(value: string | undefined): boolean {
+	return /^(1|true|yes)$/i.test(value || '');
 }
 
 function collectHtmlFiles(root: string): string[] {
