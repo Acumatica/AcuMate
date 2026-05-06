@@ -6,6 +6,7 @@ import { collectGraphInfoDiagnostics } from '../../validation/tsValidation/graph
 import { AcuMateContext } from '../../plugin-context';
 
 const tsRootSetting = process.env.TS_SCREEN_VALIDATION_ROOT;
+const failOnDiagnostics = isTruthy(process.env.TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS);
 
 if (!tsRootSetting) {
 	console.warn('[acumate] Skipping project TypeScript validation test because TS_SCREEN_VALIDATION_ROOT is not set.');
@@ -57,12 +58,21 @@ else {
 				for (const entry of failures) {
 					console.warn(formatDiagnosticSummary(entry.file, entry.diagnostics));
 				}
+				if (failOnDiagnostics) {
+					throw new Error(
+						`TypeScript screen validation reported ${totalDiagnostics} diagnostics across ${failures.length} file(s).`
+					);
+				}
 			}
 			else {
 				console.log('[acumate] Validation complete with no diagnostics.');
 			}
 		});
 	});
+}
+
+function isTruthy(value: string | undefined): boolean {
+	return /^(1|true|yes)$/i.test(value || '');
 }
 
 function collectTypeScriptFiles(root: string): string[] {

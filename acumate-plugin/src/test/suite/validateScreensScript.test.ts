@@ -3,6 +3,7 @@ import * as path from 'path';
 import { describe, it } from 'mocha';
 
 const validateScreensScript = require('../../../scripts/validate-screens.js');
+const validateTsScreensScript = require('../../../scripts/validate-ts-screens.js');
 
 describe('validate:screens script', () => {
 	it('parses positional root and workspace arguments for npm run compatibility', () => {
@@ -62,5 +63,42 @@ describe('validate:screens script', () => {
 
 		assert.strictEqual(runOptions.version, '1.90.0');
 		assert.strictEqual(runOptions.vscodeExecutablePath, undefined);
+	});
+});
+
+describe('validate:screens:ts script', () => {
+	it('prefers TypeScript validation environment defaults', () => {
+		const options = validateTsScreensScript.parseArgs(
+			[],
+			{
+				TS_SCREEN_VALIDATION_ROOT: 'ts/screens',
+				TS_SCREEN_VALIDATION_WORKSPACE_ROOT: 'D:\\TsWorkspace',
+				TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS: 'true',
+				TS_SCREEN_VALIDATION_SKIP_COMPILE: 'yes',
+			},
+			'C:\\Repo'
+		);
+
+		assert.strictEqual(options.root, 'ts/screens');
+		assert.strictEqual(options.workspaceRoot, 'D:\\TsWorkspace');
+		assert.strictEqual(options.failOnDiagnostics, true);
+		assert.strictEqual(options.skipCompile, true);
+	});
+
+	it('builds Extension Host test options for only project TypeScript validation by default', () => {
+		const options = validateTsScreensScript.parseArgs(['screens', 'workspace'], {}, process.cwd());
+		const runOptions = validateTsScreensScript.buildRunTestsOptions(options, {});
+
+		assert.strictEqual(runOptions.extensionTestsEnv.TS_SCREEN_VALIDATION_ROOT, 'screens');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_TEST_GREP, 'Project TypeScript validation');
+		assert.ok(runOptions.launchArgs.includes(path.resolve('workspace')));
+		assert.ok(runOptions.launchArgs.includes('--disable-extensions'));
+	});
+
+	it('passes fail-on-diagnostics to the TypeScript validation suite', () => {
+		const options = validateTsScreensScript.parseArgs(['--fail-on-diagnostics'], {}, process.cwd());
+		const runOptions = validateTsScreensScript.buildRunTestsOptions(options, {});
+
+		assert.strictEqual(runOptions.extensionTestsEnv.TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS, 'true');
 	});
 });
