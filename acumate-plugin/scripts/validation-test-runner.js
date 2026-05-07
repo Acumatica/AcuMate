@@ -1,9 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
-const { runTests } = require('@vscode/test-electron');
+const { downloadAndUnzipVSCode, runTests } = require('@vscode/test-electron');
 
 const repoRoot = path.resolve(__dirname, '..');
+const DEFAULT_VSCODE_TEST_VERSION = '1.118.1';
 
 function createValidationRunner(config) {
 	function printUsage() {
@@ -13,8 +14,8 @@ function createValidationRunner(config) {
 Options:
   -r, --root <path>                  ${config.rootDescription}
   -w, --workspace-root <path>        Workspace opened by the Extension Host. Defaults to ${config.workspaceRootEnvNames.join(' or ')} or cwd.
-      --vscode-executable-path <p>   Use an installed VS Code instead of downloading one.
-      --vscode-version <version>     VS Code version for @vscode/test-electron download/cache.
+      --vscode-executable-path <p>   Use this VS Code executable instead of the @vscode/test-electron cache/download.
+      --vscode-version <version>     VS Code version for @vscode/test-electron download/cache. Defaults to VSCODE_TEST_VERSION or ${DEFAULT_VSCODE_TEST_VERSION}.
       --fail-on-diagnostics          Exit non-zero when diagnostics are reported.
       --skip-compile                 Do not run npm run compile before starting VS Code tests.
       --all-tests                    Run the whole extension test suite instead of only ${config.suiteName}.
@@ -26,7 +27,7 @@ Options:
 			root: firstEnvValue(env, config.rootEnvNames) || config.defaultRoot,
 			workspaceRoot: firstEnvValue(env, config.workspaceRootEnvNames) || cwd,
 			vscodeExecutablePath: env.VSCODE_EXECUTABLE_PATH || env.VSCODE_TEST_EXECUTABLE_PATH,
-			vscodeVersion: env.VSCODE_TEST_VERSION,
+			vscodeVersion: env.VSCODE_TEST_VERSION || config.defaultVscodeVersion || DEFAULT_VSCODE_TEST_VERSION,
 			failOnDiagnostics: isTruthy(firstEnvValue(env, config.failOnDiagnosticsEnvNames)),
 			skipCompile: isTruthy(firstEnvValue(env, config.skipCompileEnvNames)),
 			allTests: isTruthy(firstEnvValue(env, config.allTestsEnvNames)),
@@ -91,7 +92,6 @@ Options:
 
 	function buildRunTestsOptions(options, env = process.env) {
 		const workspaceRoot = path.resolve(options.workspaceRoot);
-		const vscodeExecutablePath = options.vscodeExecutablePath || (options.vscodeVersion ? undefined : findInstalledVSCode(env));
 		const extensionTestsEnv = {
 			...env,
 			[config.rootEnvNames[0]]: options.root,
@@ -119,8 +119,8 @@ Options:
 			],
 		};
 
-		if (vscodeExecutablePath) {
-			runOptions.vscodeExecutablePath = vscodeExecutablePath;
+		if (options.vscodeExecutablePath) {
+			runOptions.vscodeExecutablePath = options.vscodeExecutablePath;
 		}
 		else if (options.vscodeVersion) {
 			runOptions.version = options.vscodeVersion;
@@ -153,8 +153,11 @@ Options:
 		if (runOptions.vscodeExecutablePath) {
 			console.log(`[acumate] VS Code executable: ${runOptions.vscodeExecutablePath}`);
 		}
+		else if (runOptions.version) {
+			console.log(`[acumate] VS Code test version: ${runOptions.version}`);
+		}
 
-		const exitCode = await runTests(runOptions);
+		const exitCode = await runValidationTests(runOptions);
 		process.exitCode = exitCode;
 	}
 
@@ -164,6 +167,78 @@ Options:
 		buildRunTestsOptions,
 		main,
 	};
+}
+
+async function runValidationTests(runOptions) {
+	if (process.platform !== 'win32' || runOptions.vscodeExecutablePath) {
+		return runTests(runOptions);
+	}
+
+	const vscodeExecutablePath = await downloadAndUnzipVSCode({
+		extensionDevelopmentPath: runOptions.extensionDevelopmentPath,
+		version: runOptions.version,
+	});
+	disableWindowsVersionedUpdate(vscodeExecutablePath);
+
+	const resolvedRunOptions = {
+		...runOptions,
+		vscodeExecutablePath,
+	};
+	delete resolvedRunOptions.version;
+
+	return runTests(resolvedRunOptions);
+}
+
+function disableWindowsVersionedUpdate(vscodeExecutablePath) {
+	const productJsonPath = findProductJsonPath(vscodeExecutablePath);
+	if (!productJsonPath) {
+		return;
+	}
+
+	const productJson = JSON.parse(fs.readFileSync(productJsonPath, 'utf8'));
+	const changed = disableVersionedUpdateFlags(productJson);
+	if (changed) {
+		fs.writeFileSync(productJsonPath, `${JSON.stringify(productJson, null, '\t')}\n`);
+		console.log(`[acumate] Disabled VS Code test update mutex check: ${productJsonPath}`);
+	}
+}
+
+function findProductJsonPath(vscodeExecutablePath) {
+	const installRoot = path.dirname(vscodeExecutablePath);
+	const directProductJsonPath = path.join(installRoot, 'resources', 'app', 'product.json');
+	if (fs.existsSync(directProductJsonPath)) {
+		return directProductJsonPath;
+	}
+
+	const entries = fs.readdirSync(installRoot, { withFileTypes: true });
+	const versionedEntry = entries.find(entry =>
+		entry.isDirectory()
+		&& /^[0-9a-f]{10,40}$/i.test(entry.name)
+		&& fs.existsSync(path.join(installRoot, entry.name, 'resources', 'app', 'product.json'))
+	);
+
+	return versionedEntry
+		? path.join(installRoot, versionedEntry.name, 'resources', 'app', 'product.json')
+		: undefined;
+}
+
+function disableVersionedUpdateFlags(value) {
+	if (!value || typeof value !== 'object') {
+		return false;
+	}
+
+	let changed = false;
+	for (const key of Object.keys(value)) {
+		if (key === 'win32VersionedUpdate' && value[key] === true) {
+			value[key] = false;
+			changed = true;
+		}
+		else if (disableVersionedUpdateFlags(value[key])) {
+			changed = true;
+		}
+	}
+
+	return changed;
 }
 
 function readValue(args, index, optionName) {
@@ -194,37 +269,13 @@ function runCompile() {
 	});
 }
 
-function findInstalledVSCode(env = process.env) {
-	const explicit = env.VSCODE_EXECUTABLE_PATH || env.VSCODE_TEST_EXECUTABLE_PATH;
-	if (explicit) {
-		return explicit;
-	}
-
-	const candidates = [];
-	if (process.platform === 'win32') {
-		if (env.LOCALAPPDATA) {
-			candidates.push(path.join(env.LOCALAPPDATA, 'Programs', 'Microsoft VS Code', 'Code.exe'));
-		}
-		if (env.ProgramFiles) {
-			candidates.push(path.join(env.ProgramFiles, 'Microsoft VS Code', 'Code.exe'));
-		}
-		if (env['ProgramFiles(x86)']) {
-			candidates.push(path.join(env['ProgramFiles(x86)'], 'Microsoft VS Code', 'Code.exe'));
-		}
-	}
-	else if (process.platform === 'darwin') {
-		candidates.push('/Applications/Visual Studio Code.app/Contents/MacOS/Electron');
-	}
-	else {
-		candidates.push('/usr/share/code/code', '/usr/bin/code', '/snap/bin/code');
-	}
-
-	return candidates.find(candidate => fs.existsSync(candidate));
-}
-
 module.exports = {
+	DEFAULT_VSCODE_TEST_VERSION,
 	createValidationRunner,
-	findInstalledVSCode,
+	disableWindowsVersionedUpdate,
+	disableVersionedUpdateFlags,
+	findProductJsonPath,
 	isTruthy,
 	repoRoot,
+	runValidationTests,
 };

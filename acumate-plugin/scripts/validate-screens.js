@@ -1,4 +1,4 @@
-const { createValidationRunner, findInstalledVSCode, isTruthy } = require('./validation-test-runner');
+const { createValidationRunner, isTruthy } = require('./validation-test-runner');
 
 const runner = createValidationRunner({
 	scriptName: 'scripts/validate-screens.js',
@@ -23,6 +23,5 @@ if (require.main === module) {
 
 module.exports = {
 	...runner,
-	findInstalledVSCode,
 	isTruthy,
 };
