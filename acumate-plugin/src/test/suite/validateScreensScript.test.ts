@@ -98,6 +98,10 @@ describe('validate:screens:ts script', () => {
 				TS_SCREEN_VALIDATION_WORKSPACE_ROOT: 'D:\\TsWorkspace',
 				TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS: 'true',
 				TS_SCREEN_VALIDATION_SKIP_COMPILE: 'yes',
+				ACUMATE_BACKEND_URL: 'https://site.local',
+				ACUMATE_BACKEND_LOGIN: 'admin',
+				ACUMATE_BACKEND_PASSWORD: 'secret',
+				ACUMATE_BACKEND_TENANT: 'Tenant',
 			},
 			'C:\\Repo'
 		);
@@ -106,6 +110,10 @@ describe('validate:screens:ts script', () => {
 		assert.strictEqual(options.workspaceRoot, 'D:\\TsWorkspace');
 		assert.strictEqual(options.failOnDiagnostics, true);
 		assert.strictEqual(options.skipCompile, true);
+		assert.strictEqual(options.backendSettings.backendUrl, 'https://site.local');
+		assert.strictEqual(options.backendSettings.login, 'admin');
+		assert.strictEqual(options.backendSettings.password, 'secret');
+		assert.strictEqual(options.backendSettings.tenant, 'Tenant');
 	});
 
 	it('builds Extension Host test options for only project TypeScript validation by default', () => {
@@ -123,6 +131,26 @@ describe('validate:screens:ts script', () => {
 		const runOptions = validateTsScreensScript.buildRunTestsOptions(options, {});
 
 		assert.strictEqual(runOptions.extensionTestsEnv.TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS, 'true');
+	});
+
+	it('passes backend connection settings to the TypeScript validation suite', () => {
+		const options = validateTsScreensScript.parseArgs(
+			[
+				'--backend-url', 'https://site.local',
+				'--backend-login', 'admin',
+				'--backend-password', 'secret',
+				'--backend-tenant', 'Tenant',
+			],
+			{},
+			process.cwd()
+		);
+		const runOptions = validateTsScreensScript.buildRunTestsOptions(options, {});
+
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_BACKEND_URL, 'https://site.local/');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_BACKEND_LOGIN, 'admin');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_BACKEND_PASSWORD, 'secret');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_BACKEND_TENANT, 'Tenant');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_USE_BACKEND, 'true');
 	});
 });
 

@@ -11,6 +11,7 @@ const runner = createValidationRunner({
 	defaultRoot: 'src/screens',
 	suiteName: 'Project TypeScript validation',
 	logName: 'TypeScript screen validation tests',
+	supportsBackendSettings: true,
 });
 
 if (require.main === module) {

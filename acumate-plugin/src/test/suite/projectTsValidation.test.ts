@@ -4,6 +4,7 @@ import vscode from 'vscode';
 import { describe, it } from 'mocha';
 import { collectGraphInfoDiagnostics } from '../../validation/tsValidation/graph-info-validation';
 import { AcuMateContext } from '../../plugin-context';
+import { ConfigurationService } from '../../services/configuration-service';
 
 const tsRootSetting = process.env.TS_SCREEN_VALIDATION_ROOT;
 const failOnDiagnostics = isTruthy(process.env.TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS);
@@ -17,6 +18,9 @@ else {
 
 		it('reports graphInfo diagnostics under configured TypeScript root', async function () {
 			this.timeout(600000);
+
+			await applyBackendSettingsFromEnvironment();
+			AcuMateContext.ConfigurationService = new ConfigurationService();
 
 			if (!AcuMateContext.ConfigurationService?.useBackend) {
 				this.skip();
@@ -73,6 +77,58 @@ else {
 
 function isTruthy(value: string | undefined): boolean {
 	return /^(1|true|yes)$/i.test(value || '');
+}
+
+async function applyBackendSettingsFromEnvironment(): Promise<void> {
+	const settings = readBackendSettingsFromEnvironment();
+	if (!Object.keys(settings).length) {
+		return;
+	}
+
+	const configuration = vscode.workspace.getConfiguration('acuMate');
+	for (const [key, value] of Object.entries(settings)) {
+		await configuration.update(key, value, vscode.ConfigurationTarget.Global);
+	}
+	console.log('[acumate] Applied backend connection settings from validation environment.');
+}
+
+function readBackendSettingsFromEnvironment(): Record<string, string | boolean> {
+	const settings: Record<string, string | boolean> = {};
+	const backendUrl = firstEnvValue('ACUMATE_BACKEND_URL', 'ACUMATE_BACKED_URL');
+	const login = firstEnvValue('ACUMATE_BACKEND_LOGIN', 'ACUMATE_LOGIN');
+	const password = firstEnvValue('ACUMATE_BACKEND_PASSWORD', 'ACUMATE_PASSWORD');
+	const tenant = firstEnvValue('ACUMATE_BACKEND_TENANT', 'ACUMATE_TENANT');
+	const useBackend = firstEnvValue('ACUMATE_USE_BACKEND');
+
+	if (backendUrl !== undefined) {
+		settings.backedUrl = backendUrl;
+	}
+	if (login !== undefined) {
+		settings.login = login;
+	}
+	if (password !== undefined) {
+		settings.password = password;
+	}
+	if (tenant !== undefined) {
+		settings.tenant = tenant;
+	}
+	if (useBackend !== undefined) {
+		settings.useBackend = isTruthy(useBackend);
+	}
+	else if (Object.keys(settings).length) {
+		settings.useBackend = true;
+	}
+
+	return settings;
+}
+
+function firstEnvValue(...names: string[]): string | undefined {
+	for (const name of names) {
+		if (process.env[name] !== undefined) {
+			return process.env[name];
+		}
+	}
+	return undefined;
 }
 
 function collectTypeScriptFiles(root: string): string[] {

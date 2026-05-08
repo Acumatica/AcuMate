@@ -8,6 +8,11 @@ const DEFAULT_VSCODE_TEST_VERSION = '1.118.1';
 
 function createValidationRunner(config) {
 	function printUsage() {
+		const backendUsage = config.supportsBackendSettings ? `
+      --backend-url <url>            AcuMate backend URL for Extension Host validation.
+      --backend-login <login>        AcuMate backend login for Extension Host validation.
+      --backend-password <password>  AcuMate backend password for Extension Host validation.
+      --backend-tenant <tenant>      AcuMate backend tenant for Extension Host validation.` : '';
 		console.log(`Usage: node ${config.scriptName} [options]
        node ${config.scriptName} [root] [workspaceRoot] [vscodeExecutablePath]
 
@@ -19,6 +24,7 @@ Options:
       --fail-on-diagnostics          Exit non-zero when diagnostics are reported.
       --skip-compile                 Do not run npm run compile before starting VS Code tests.
       --all-tests                    Run the whole extension test suite instead of only ${config.suiteName}.
+${backendUsage}
   -h, --help                         Show this help.`);
 	}
 
@@ -31,6 +37,7 @@ Options:
 			failOnDiagnostics: isTruthy(firstEnvValue(env, config.failOnDiagnosticsEnvNames)),
 			skipCompile: isTruthy(firstEnvValue(env, config.skipCompileEnvNames)),
 			allTests: isTruthy(firstEnvValue(env, config.allTestsEnvNames)),
+			backendSettings: config.supportsBackendSettings ? readBackendSettingsFromEnv(env) : undefined,
 			help: false,
 		};
 		const positionals = [];
@@ -60,6 +67,22 @@ Options:
 					break;
 				case '--all-tests':
 					options.allTests = true;
+					break;
+				case '--backend-url':
+					ensureBackendSettingsSupported(config, arg);
+					options.backendSettings.backendUrl = readValue(args, ++index, arg);
+					break;
+				case '--backend-login':
+					ensureBackendSettingsSupported(config, arg);
+					options.backendSettings.login = readValue(args, ++index, arg);
+					break;
+				case '--backend-password':
+					ensureBackendSettingsSupported(config, arg);
+					options.backendSettings.password = readValue(args, ++index, arg);
+					break;
+				case '--backend-tenant':
+					ensureBackendSettingsSupported(config, arg);
+					options.backendSettings.tenant = readValue(args, ++index, arg);
 					break;
 				case '-h':
 				case '--help':
@@ -107,6 +130,9 @@ Options:
 		}
 		if (!options.allTests) {
 			extensionTestsEnv.ACUMATE_TEST_GREP = config.suiteName;
+		}
+		if (config.supportsBackendSettings) {
+			applyBackendSettingsEnv(extensionTestsEnv, options.backendSettings);
 		}
 
 		const runOptions = {
@@ -248,6 +274,55 @@ function readValue(args, index, optionName) {
 	return args[index];
 }
 
+function ensureBackendSettingsSupported(config, optionName) {
+	if (!config.supportsBackendSettings) {
+		throw new Error(`${optionName} is only supported by backend-powered validation runners.`);
+	}
+}
+
+function readBackendSettingsFromEnv(env) {
+	return {
+		backendUrl: firstEnvValue(env, ['ACUMATE_BACKEND_URL', 'ACUMATE_BACKED_URL']),
+		login: firstEnvValue(env, ['ACUMATE_BACKEND_LOGIN', 'ACUMATE_LOGIN']),
+		password: firstEnvValue(env, ['ACUMATE_BACKEND_PASSWORD', 'ACUMATE_PASSWORD']),
+		tenant: firstEnvValue(env, ['ACUMATE_BACKEND_TENANT', 'ACUMATE_TENANT']),
+		useBackend: firstEnvValue(env, ['ACUMATE_USE_BACKEND']),
+	};
+}
+
+function applyBackendSettingsEnv(extensionTestsEnv, backendSettings) {
+	if (!backendSettings) {
+		return;
+	}
+
+	const pairs = [
+		['ACUMATE_BACKEND_URL', normalizeBackendUrl(backendSettings.backendUrl)],
+		['ACUMATE_BACKEND_LOGIN', backendSettings.login],
+		['ACUMATE_BACKEND_PASSWORD', backendSettings.password],
+		['ACUMATE_BACKEND_TENANT', backendSettings.tenant],
+		['ACUMATE_USE_BACKEND', backendSettings.useBackend],
+	];
+	let hasBackendSetting = false;
+	for (const [name, value] of pairs) {
+		if (value !== undefined) {
+			extensionTestsEnv[name] = value;
+			if (name !== 'ACUMATE_USE_BACKEND') {
+				hasBackendSetting = true;
+			}
+		}
+	}
+	if (extensionTestsEnv.ACUMATE_USE_BACKEND === undefined && hasBackendSetting) {
+		extensionTestsEnv.ACUMATE_USE_BACKEND = 'true';
+	}
+}
+
+function normalizeBackendUrl(value) {
+	if (!value || value.endsWith('/')) {
+		return value;
+	}
+	return `${value}/`;
+}
+
 function firstEnvValue(env, names) {
 	for (const name of names) {
 		if (env[name] !== undefined) {
@@ -271,11 +346,14 @@ function runCompile() {
 
 module.exports = {
 	DEFAULT_VSCODE_TEST_VERSION,
+	applyBackendSettingsEnv,
 	createValidationRunner,
 	disableWindowsVersionedUpdate,
 	disableVersionedUpdateFlags,
 	findProductJsonPath,
 	isTruthy,
+	normalizeBackendUrl,
+	readBackendSettingsFromEnv,
 	repoRoot,
 	runValidationTests,
 };
