@@ -40,17 +40,22 @@ export function getBaseScreenDocument(htmlFilePath: string): BaseScreenDocument 
 		return undefined;
 	}
 
-	const mtime = tryGetMtime(baseHtmlPath);
-	const cached = cache.get(baseHtmlPath);
+	return loadHtmlDocument(baseHtmlPath);
+}
+
+export function loadHtmlDocument(htmlFilePath: string): BaseScreenDocument | undefined {
+	const normalizedPath = path.normalize(htmlFilePath);
+	const mtime = tryGetMtime(normalizedPath);
+	const cached = cache.get(normalizedPath);
 	if (cached && cached.mtime === mtime) {
 		return cached;
 	}
 
 	try {
-		const content = fs.readFileSync(baseHtmlPath, "utf-8");
+		const content = fs.readFileSync(normalizedPath, "utf-8");
 		const dom = parseHtml(content);
-		const entry: CachedDocument = { filePath: baseHtmlPath, content, dom, mtime };
-		cache.set(baseHtmlPath, entry);
+		const entry: CachedDocument = { filePath: normalizedPath, content, dom, mtime };
+		cache.set(normalizedPath, entry);
 		return entry;
 	}
 	catch {

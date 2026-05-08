@@ -15,7 +15,7 @@ import {
   filterClassesBySource,
 } from "../../utils";
 import { findParentViewName } from "../../providers/html-shared";
-import { getIncludeMetadata } from "../../services/include-service";
+import { getIncludeMetadata, resolveIncludeFilePath } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
 import { AcuMateContext } from "../../plugin-context";
@@ -25,6 +25,7 @@ import {
   queryBaseScreenElements,
   BaseScreenDocument,
   getCustomizationSelectorAttributes,
+  loadHtmlDocument,
 } from "../../services/screen-html-service";
 import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
 
@@ -32,6 +33,19 @@ import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/su
 // and then uses that metadata when validating the HTML DOM.
 const includeIntrinsicAttributes = new Set(["id", "class", "style", "slot"]);
 const idOptionalTags = new Set(["qp-field", "qp-label", "qp-include"]);
+
+interface IncludeTemplateFieldValidationContext {
+  classInfoMap: Map<string, CollectedClassInfo>;
+  screenClasses: CollectedClassInfo[];
+  templateDocument?: BaseScreenDocument;
+  viewResolutionCache: Map<string, ViewResolution | undefined>;
+}
+
+interface IncludeFieldValidationContext extends IncludeTemplateFieldValidationContext {
+  parameterValues: Map<string, string>;
+}
+
+type IncludeTemplateFieldValidationCache = Map<string, IncludeTemplateFieldValidationContext | undefined>;
 
 function pushHtmlDiagnostic(
   diagnostics: vscode.Diagnostic[],
@@ -104,7 +118,9 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           baseScreenDocument,
           suppression,
           undefined,
-          false
+          false,
+          undefined,
+          new Map()
         );
       }
     },
@@ -137,7 +153,9 @@ function validateDom(
   baseScreenDocument: BaseScreenDocument | undefined,
   suppression: SuppressionEngine,
   panelViewContext?: CollectedClassInfo,
-  isInsideDataFeed = false
+  isInsideDataFeed = false,
+  includeFieldContext: IncludeFieldValidationContext | undefined = undefined,
+  includeFieldContextCache: IncludeTemplateFieldValidationCache = new Map()
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = filterScreenLikeClasses(relevantClassInfos);
@@ -162,9 +180,72 @@ function validateDom(
     return resolution;
   }
 
+  function getIncludeFieldValidationContext(node: any): IncludeFieldValidationContext | undefined {
+    const includeUrl = node.attribs?.url;
+    if (typeof includeUrl !== "string" || !includeUrl.length) {
+      return undefined;
+    }
+
+    const includeHtmlPath = resolveIncludeFilePath(includeUrl, htmlFilePath, workspaceRoots);
+    if (!includeHtmlPath) {
+      return undefined;
+    }
+
+    const normalizedIncludePath = path.normalize(includeHtmlPath);
+    let templateContext = includeFieldContextCache.get(normalizedIncludePath);
+    if (!includeFieldContextCache.has(normalizedIncludePath)) {
+      templateContext = loadIncludeTemplateFieldValidationContext(normalizedIncludePath);
+      includeFieldContextCache.set(normalizedIncludePath, templateContext);
+    }
+
+    if (!templateContext) {
+      return undefined;
+    }
+
+    return {
+      ...templateContext,
+      parameterValues: getIncludeParameterValues(node),
+    };
+  }
+
+  function loadIncludeTemplateFieldValidationContext(
+    includeHtmlPath: string
+  ): IncludeTemplateFieldValidationContext | undefined {
+    const includeTsFilePaths = getRelatedTsFiles(includeHtmlPath);
+    const includeClassProperties = includeTsFilePaths.length
+      ? loadClassInfosFromFiles(includeTsFilePaths)
+      : [];
+    const includeRelevantClassInfos = filterClassesBySource(includeClassProperties, includeTsFilePaths);
+    const screenClasses = filterScreenLikeClasses(includeRelevantClassInfos);
+    const templateDocument = loadHtmlDocument(includeHtmlPath);
+
+    if (!screenClasses.length && !templateDocument) {
+      return undefined;
+    }
+
+    return {
+      classInfoMap: createClassInfoLookup(includeClassProperties),
+      screenClasses,
+      templateDocument,
+      viewResolutionCache: new Map(),
+    };
+  }
+
+  function getIncludeParameterValues(node: any): Map<string, string> {
+    const values = new Map<string, string>();
+    const attributes = node.attribs ?? {};
+    for (const [attributeName, attributeValue] of Object.entries(attributes)) {
+      if (typeof attributeValue === "string") {
+        values.set(attributeName, attributeValue);
+      }
+    }
+    return values;
+  }
+
   // Custom validation logic goes here
   dom.forEach((node) => {
     let nextPanelViewContext = panelViewContext;
+    let nextIncludeFieldContext = includeFieldContext;
     const normalizedTagName =
       node.type === "tag" && typeof node.name === "string" ? node.name.toLowerCase() : "";
     const elementId = node.type === "tag" ? getElementId(node) : "";
@@ -265,6 +346,7 @@ function validateDom(
 
     if (node.type === "tag" && node.name === "qp-include") {
       validateIncludeNode(node, diagnostics, content, htmlFilePath, workspaceRoots, suppression);
+      nextIncludeFieldContext = getIncludeFieldValidationContext(node);
     }
 
     if (
@@ -317,14 +399,36 @@ function validateDom(
 
       if (!isUnboundReplacement) {
         let viewName = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
+        let includeViewNameAllowsAnyViewFallback = false;
         if (!viewName) {
           viewName = getViewNameFromCustomizationSelectors(node);
         }
-        const fieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
+        if (!viewName && includeFieldContext) {
+          const includeViewName = getViewNameFromIncludeCustomizationSelectors(node, includeFieldContext);
+          includeViewNameAllowsAnyViewFallback = hasIncludeTemplateExpression(includeViewName);
+          viewName = includeViewName;
+        }
+
+        if (includeFieldContext) {
+          includeViewNameAllowsAnyViewFallback ||= hasIncludeTemplateExpression(viewName);
+          viewName = resolveIncludeTemplateValue(viewName, includeFieldContext);
+        }
+
+        const rawFieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
+        const fieldName = includeFieldContext
+          ? resolveIncludeTemplateValue(rawFieldName, includeFieldContext)
+          : rawFieldName;
         const viewResolution = resolveView(viewName);
         const viewClass = viewResolution?.viewClass;
         const fieldProperty = viewClass?.properties.get(fieldName);
-        const isValidField = fieldProperty?.kind === "field";
+        const isValidField =
+          fieldProperty?.kind === "field" ||
+          isFieldDefinedInIncludeContext(
+            fieldName,
+            viewName,
+            includeFieldContext,
+            includeViewNameAllowsAnyViewFallback
+          );
         if (!isValidField) {
           const range = getRange(content, node);
           pushHtmlDiagnostic(
@@ -353,7 +457,9 @@ function validateDom(
         baseScreenDocument,
         suppression,
         nextPanelViewContext,
-        currentDataFeedContext
+        currentDataFeedContext,
+        nextIncludeFieldContext,
+        includeFieldContextCache
       );
     }
   });
@@ -442,6 +548,116 @@ function validateDom(
     });
 
     return selectorViewName;
+  }
+
+  function getViewNameFromIncludeCustomizationSelectors(
+    node: any,
+    context: IncludeFieldValidationContext
+  ): string | undefined {
+    const includeDocument = context.templateDocument;
+    if (!includeDocument) {
+      return undefined;
+    }
+
+    let selectorViewName: string | undefined;
+    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
+      if (selectorViewName) {
+        return;
+      }
+
+      const { nodes, error } = queryBaseScreenElements(includeDocument, normalizedValue);
+      if (error || !nodes.length) {
+        return;
+      }
+
+      for (const target of nodes) {
+        const candidateViewName = findParentViewName(target);
+        if (candidateViewName) {
+          selectorViewName = candidateViewName;
+          return;
+        }
+      }
+    });
+
+    return selectorViewName;
+  }
+
+  function isFieldDefinedInIncludeContext(
+    fieldName: string | undefined,
+    viewName: string | undefined,
+    context: IncludeFieldValidationContext | undefined,
+    allowAnyViewFallback = false
+  ): boolean {
+    if (!context || !fieldName || hasIncludeTemplateExpression(fieldName)) {
+      return false;
+    }
+
+    const normalizedViewName = viewName?.trim();
+    if (normalizedViewName && !hasIncludeTemplateExpression(normalizedViewName)) {
+      const viewResolution = resolveIncludeView(normalizedViewName, context);
+      const fieldProperty = viewResolution?.viewClass?.properties.get(fieldName);
+      if (fieldProperty?.kind === "field") {
+        return true;
+      }
+
+      return allowAnyViewFallback ? isFieldDefinedInAnyIncludeView(fieldName, context) : false;
+    }
+
+    return isFieldDefinedInAnyIncludeView(fieldName, context);
+  }
+
+  function resolveIncludeView(
+    viewName: string,
+    context: IncludeFieldValidationContext
+  ): ViewResolution | undefined {
+    if (context.viewResolutionCache.has(viewName)) {
+      return context.viewResolutionCache.get(viewName);
+    }
+
+    const resolution = resolveViewBinding(viewName, context.screenClasses, context.classInfoMap);
+    context.viewResolutionCache.set(viewName, resolution);
+    return resolution;
+  }
+
+  function isFieldDefinedInAnyIncludeView(
+    fieldName: string,
+    context: IncludeFieldValidationContext
+  ): boolean {
+    for (const screenClass of context.screenClasses) {
+      for (const property of screenClass.properties.values()) {
+        if (property.kind !== "view" && property.kind !== "viewCollection") {
+          continue;
+        }
+
+        const viewClass = property.viewClassName
+          ? context.classInfoMap.get(property.viewClassName)
+          : undefined;
+        const fieldProperty = viewClass?.properties.get(fieldName);
+        if (fieldProperty?.kind === "field") {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function resolveIncludeTemplateValue(
+    value: string | undefined,
+    context: IncludeFieldValidationContext
+  ): string | undefined {
+    if (!value) {
+      return value;
+    }
+
+    return value.replace(/{{\s*([^}\s]+)\s*}}/g, (match, parameterName: string) => {
+      const parameterValue = context.parameterValues.get(parameterName)?.trim();
+      return parameterValue || match;
+    }).trim();
+  }
+
+  function hasIncludeTemplateExpression(value: string | undefined): boolean {
+    return typeof value === "string" && /{{\s*[^}]+\s*}}/.test(value);
   }
 
   function forEachCustomizationSelector(

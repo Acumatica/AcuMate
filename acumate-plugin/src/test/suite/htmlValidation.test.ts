@@ -247,6 +247,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('accepts field modifications that target a qp-include template TS model', async () => {
+		const document = await openFixtureDocument('TestIncludeFieldModificationHost.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('<field>') || d.message.includes('field "')).length,
+			0,
+			'Expected no field diagnostics when qp-include children use fields from include TS metadata'
+		);
+	});
+
+	it('reports qp-include field modifications missing from host and include TS models', async () => {
+		const document = await openFixtureDocument('TestIncludeFieldModificationHostInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('<field>') || d.message.includes('field "')),
+			'Expected field diagnostic when qp-include child field is unknown in include TS metadata'
+		);
+	});
+
 	it('accepts qp-template name values defined by ScreenTemplates', async () => {
 		const document = await openFixtureDocument('TestQpTemplate.html');
 		await validateHtmlFile(document);
