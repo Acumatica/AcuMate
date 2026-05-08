@@ -14,7 +14,7 @@ export interface SelectorQueryResult {
 	error?: string;
 }
 
-const customizationSelectorAttributes = ["before", "after", "append", "prepend", "prepand", "move"] as const;
+const customizationSelectorAttributes = ["before", "after", "append", "prepend", "prepand", "move", "remove"] as const;
 const customizationSelectorAttributeSet = new Set<string>(
 	customizationSelectorAttributes.map(attribute => attribute.toLowerCase())
 );

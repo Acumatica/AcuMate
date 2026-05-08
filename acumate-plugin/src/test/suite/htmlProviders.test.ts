@@ -585,6 +585,23 @@ describe('HTML definition provider integration', () => {
 		);
 	});
 
+	it('navigates from qp-include child remove selectors to include template HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			"remove=\"#includedView [name='Anchor']\"",
+			"remove=\"".length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-include remove selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('include-field-modification-template.html')),
+			'Expected navigation to include template HTML'
+		);
+	});
+
 	it('navigates from qp-include child field name to include template TS definition', async () => {
 		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
 		const provider = new HtmlDefinitionProvider();
