@@ -27,7 +27,18 @@ import {
 	queryBaseScreenElements,
 	BaseScreenDocument,
 	getCustomizationSelectorAttributes,
+	loadHtmlDocument,
 } from '../services/screen-html-service';
+
+interface DefinitionMetadataContext {
+	classInfoLookup: Map<string, CollectedClassInfo>;
+	screenClasses: CollectedClassInfo[];
+}
+
+interface IncludeDefinitionContext extends DefinitionMetadataContext {
+	templateDocument?: BaseScreenDocument;
+	parameterValues: Map<string, string>;
+}
 
 // Hooks VS Code so view/field bindings support "Go to Definition" directly from HTML.
 export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext) {
@@ -64,9 +75,10 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		const baseScreenDocument = getBaseScreenDocument(document.uri.fsPath);
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const includeContext = getIncludeDefinitionContext(elementNode, document.uri.fsPath, workspaceRoots);
 
 		if (attributeContext.attributeName === 'url' && attributeContext.tagName === 'qp-include') {
-			const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
 			const includePath = resolveIncludeFilePath(attributeContext.value, document.uri.fsPath, workspaceRoots);
 			if (!includePath) {
 				return;
@@ -75,36 +87,33 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		if (isCustomizationSelectorAttribute(attributeContext.attributeName)) {
-			if (!baseScreenDocument) {
-				return;
-			}
-
 			const selector = attributeContext.value?.trim();
 			if (!selector) {
 				return;
 			}
 
-			const { nodes, error } = queryBaseScreenElements(baseScreenDocument, selector);
-			if (error || !nodes.length) {
-				return;
+			const includeLocations = getSelectorLocations(includeContext?.templateDocument, selector);
+			if (includeLocations.length) {
+				return includeLocations;
 			}
 
-			const locations: vscode.Location[] = [];
-			const seen = new Set<number>();
-			for (const nodeCandidate of nodes) {
-				const startIndex = typeof nodeCandidate.startIndex === 'number' ? nodeCandidate.startIndex : undefined;
-				if (startIndex === undefined || seen.has(startIndex)) {
-					continue;
-				}
-				seen.add(startIndex);
-				const location = createLocationFromHtmlNode(baseScreenDocument, nodeCandidate);
-				if (location) {
-					locations.push(location);
-				}
+			const baseLocations = getSelectorLocations(baseScreenDocument, selector);
+			if (baseLocations.length) {
+				return baseLocations;
 			}
+		}
 
-			if (locations.length) {
-				return locations;
+		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field' && includeContext) {
+			const includeLocations = getFieldDefinitionLocations(
+				attributeContext.value,
+				elementNode,
+				includeContext,
+				includeContext.templateDocument,
+				includeContext.parameterValues,
+				true
+			);
+			if (includeLocations.length) {
+				return includeLocations;
 			}
 		}
 
@@ -125,6 +134,7 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 
 		const classInfoLookup = createClassInfoLookup(classInfos);
 		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
+		const documentMetadataContext: DefinitionMetadataContext = { classInfoLookup, screenClasses };
 		// Resolved metadata lets us jump from HTML bindings directly to the backing TypeScript symbol.
 
 		if (attributeContext.attributeName === 'view.bind' || (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using')) {
@@ -184,30 +194,218 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field names dereference through the closest parent view to locate the property in TS.
-			let viewName = findParentViewName(elementNode);
-			if (!viewName) {
-				viewName = getViewNameFromCustomizationSelectors(attributeContext.node, baseScreenDocument);
+			const locations = getFieldDefinitionLocations(
+				attributeContext.value,
+				elementNode,
+				documentMetadataContext,
+				baseScreenDocument
+			);
+			if (locations.length) {
+				return locations;
 			}
-			if (!viewName) {
-				return;
-			}
-
-			const resolution = resolveViewBinding(viewName, screenClasses, classInfoLookup);
-			const viewClass = resolution?.viewClass;
-			if (!viewClass) {
-				return;
-			}
-
-			const fieldProperty = viewClass.properties.get(attributeContext.value);
-			if (!fieldProperty || fieldProperty.kind !== 'field') {
-				return;
-			}
-
-			return createLocationFromProperty(fieldProperty);
 		}
 
 		return undefined;
 	}
+}
+
+function getIncludeDefinitionContext(
+	elementNode: any,
+	documentPath: string,
+	workspaceRoots: string[] | undefined
+): IncludeDefinitionContext | undefined {
+	const includeNode = findNearestIncludeNode(elementNode);
+	const includeUrl = includeNode?.attribs?.url;
+	if (typeof includeUrl !== 'string' || !includeUrl.length) {
+		return undefined;
+	}
+
+	const includePath = resolveIncludeFilePath(includeUrl, documentPath, workspaceRoots);
+	if (!includePath) {
+		return undefined;
+	}
+
+	const includeTsFilePaths = getRelatedTsFiles(includePath);
+	const classInfos = includeTsFilePaths.length ? loadClassInfosFromFiles(includeTsFilePaths) : [];
+	const relevantClassInfos = filterClassesBySource(classInfos, includeTsFilePaths);
+
+	return {
+		classInfoLookup: createClassInfoLookup(classInfos),
+		screenClasses: filterScreenLikeClasses(relevantClassInfos),
+		templateDocument: loadHtmlDocument(includePath),
+		parameterValues: getIncludeParameterValues(includeNode),
+	};
+}
+
+function findNearestIncludeNode(node: any): any | undefined {
+	let current = node;
+	while (current) {
+		if (current.type === 'tag' && current.name === 'qp-include') {
+			return current;
+		}
+
+		current = current.parent ?? current.parentNode;
+	}
+	return undefined;
+}
+
+function getIncludeParameterValues(includeNode: any): Map<string, string> {
+	const values = new Map<string, string>();
+	const attributes = includeNode?.attribs ?? {};
+	for (const [attributeName, attributeValue] of Object.entries(attributes)) {
+		if (typeof attributeValue === 'string') {
+			values.set(attributeName, attributeValue);
+		}
+	}
+	return values;
+}
+
+function getSelectorLocations(
+	document: BaseScreenDocument | undefined,
+	selector: string
+): vscode.Location[] {
+	if (!document) {
+		return [];
+	}
+
+	const { nodes, error } = queryBaseScreenElements(document, selector);
+	if (error || !nodes.length) {
+		return [];
+	}
+
+	const locations: vscode.Location[] = [];
+	const seen = new Set<number>();
+	for (const nodeCandidate of nodes) {
+		const startIndex = typeof nodeCandidate.startIndex === 'number' ? nodeCandidate.startIndex : undefined;
+		if (startIndex === undefined || seen.has(startIndex)) {
+			continue;
+		}
+		seen.add(startIndex);
+		const location = createLocationFromHtmlNode(document, nodeCandidate);
+		if (location) {
+			locations.push(location);
+		}
+	}
+
+	return locations;
+}
+
+function getFieldDefinitionLocations(
+	rawFieldName: string | undefined,
+	elementNode: any,
+	metadataContext: DefinitionMetadataContext,
+	selectorDocument?: BaseScreenDocument,
+	parameterValues?: Map<string, string>,
+	allowAnyViewFallback = false
+): vscode.Location[] {
+	if (!rawFieldName) {
+		return [];
+	}
+
+	const parsed = parseFieldName(rawFieldName);
+	let viewName = parsed.viewName;
+	let fieldName = parsed.fieldName;
+	let allowFallback = allowAnyViewFallback;
+
+	if (!parsed.viewName) {
+		viewName = findParentViewName(elementNode);
+	}
+	if (!viewName) {
+		const selectorViewName = getViewNameFromCustomizationSelectors(elementNode, selectorDocument);
+		allowFallback ||= hasTemplateExpression(selectorViewName);
+		viewName = selectorViewName;
+	}
+
+	if (parameterValues) {
+		allowFallback ||= hasTemplateExpression(viewName);
+		viewName = resolveTemplateValue(viewName, parameterValues);
+		fieldName = resolveTemplateValue(fieldName, parameterValues) ?? fieldName;
+	}
+
+	if (!fieldName) {
+		return [];
+	}
+
+	if (viewName && !hasTemplateExpression(viewName)) {
+		const resolution = resolveViewBinding(viewName, metadataContext.screenClasses, metadataContext.classInfoLookup);
+		const fieldProperty = resolution?.viewClass?.properties.get(fieldName);
+		if (fieldProperty?.kind === 'field') {
+			return [createLocationFromProperty(fieldProperty)];
+		}
+
+		if (!allowFallback) {
+			return [];
+		}
+	}
+
+	if (!allowFallback) {
+		return [];
+	}
+
+	return getFieldDefinitionsFromAnyView(fieldName, metadataContext);
+}
+
+function parseFieldName(rawFieldName: string): { viewName?: string; fieldName: string } {
+	const trimmed = rawFieldName.trim();
+	const dotIndex = trimmed.indexOf('.');
+	if (dotIndex === -1) {
+		return { fieldName: trimmed };
+	}
+
+	const viewName = trimmed.substring(0, dotIndex).trim();
+	const fieldName = trimmed.substring(dotIndex + 1).trim();
+	return { viewName, fieldName };
+}
+
+function getFieldDefinitionsFromAnyView(
+	fieldName: string,
+	metadataContext: DefinitionMetadataContext
+): vscode.Location[] {
+	const locations: vscode.Location[] = [];
+	const seen = new Set<string>();
+
+	for (const screenClass of metadataContext.screenClasses) {
+		for (const property of screenClass.properties.values()) {
+			if (property.kind !== 'view' && property.kind !== 'viewCollection') {
+				continue;
+			}
+
+			const viewClass = property.viewClassName
+				? metadataContext.classInfoLookup.get(property.viewClassName)
+				: undefined;
+			const fieldProperty = viewClass?.properties.get(fieldName);
+			if (fieldProperty?.kind !== 'field') {
+				continue;
+			}
+
+			const key = `${fieldProperty.sourceFile.fileName}:${fieldProperty.node.getStart()}`;
+			if (seen.has(key)) {
+				continue;
+			}
+			seen.add(key);
+			locations.push(createLocationFromProperty(fieldProperty));
+		}
+	}
+
+	return locations;
+}
+
+function resolveTemplateValue(
+	value: string | undefined,
+	parameterValues: Map<string, string>
+): string | undefined {
+	if (!value) {
+		return value;
+	}
+
+	return value.replace(/{{\s*([^}\s]+)\s*}}/g, (match, parameterName: string) => {
+		const parameterValue = parameterValues.get(parameterName)?.trim();
+		return parameterValue || match;
+	}).trim();
+}
+
+function hasTemplateExpression(value: string | undefined): boolean {
+	return typeof value === 'string' && /{{\s*[^}]+\s*}}/.test(value);
 }
 
 function findActionProperty(actionName: string | undefined, screenClasses: CollectedClassInfo[]): ClassPropertyInfo | undefined {

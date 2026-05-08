@@ -19,6 +19,7 @@ const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
 const qpTemplateRecordInsidePath = path.join(fixturesRoot, 'TestQpTemplateRecordInside.html');
 const qpTemplateRecordOutsidePath = path.join(fixturesRoot, 'TestQpTemplateRecordOutside.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
+const includeFieldModificationHostPath = path.join(fixturesRoot, 'TestIncludeFieldModificationHost.html');
 const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
 const controlTypeCompletionPath = path.join(fixturesRoot, 'TestControlTypeCompletion.html');
@@ -564,6 +565,36 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('SO301000.html')),
 			'Expected navigation to base screen HTML'
+		);
+	});
+
+	it('navigates from qp-include child selector attributes to include template HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			"before=\"#includedView [name='Anchor']\"",
+			"before=\"".length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-include customization selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('include-field-modification-template.html')),
+			'Expected navigation to include template HTML'
+		);
+	});
+
+	it('navigates from qp-include child field name to include template TS definition', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="IncludedAlpha"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-include child field name');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('include-field-modification-template.ts')),
+			'Expected navigation to include template TS file'
 		);
 	});
 
