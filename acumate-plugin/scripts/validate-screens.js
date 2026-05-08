@@ -11,6 +11,7 @@ const runner = createValidationRunner({
 	defaultRoot: 'src/screens',
 	suiteName: 'Project screen validation',
 	logName: 'screen validation tests',
+	commandId: 'acumate.validateScreensPipeline',
 });
 
 if (require.main === module) {

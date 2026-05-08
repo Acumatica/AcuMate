@@ -43,12 +43,15 @@ describe('validate:screens script', () => {
 		assert.strictEqual(options.skipCompile, true);
 	});
 
-	it('builds Extension Host test options for only project screen validation by default', () => {
+	it('builds Extension Host command runner options for screen validation by default', () => {
 		const options = validateScreensScript.parseArgs(['screens', 'workspace'], {}, process.cwd());
 		const runOptions = validateScreensScript.buildRunTestsOptions(options, {});
 
 		assert.strictEqual(runOptions.extensionTestsEnv.SCREEN_VALIDATION_ROOT, 'screens');
-		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_TEST_GREP, 'Project screen validation');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_COMMAND, 'acumate.validateScreensPipeline');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_ROOT, 'screens');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_WORKSPACE_ROOT, path.resolve('workspace'));
+		assert.ok(String(runOptions.extensionTestsPath).endsWith(path.join('out', 'test', 'suite', 'validationCommandRunner')));
 		assert.ok(runOptions.launchArgs.includes(path.resolve('workspace')));
 		assert.ok(runOptions.launchArgs.includes('--disable-extensions'));
 	});
@@ -57,7 +60,8 @@ describe('validate:screens script', () => {
 		const options = validateScreensScript.parseArgs(['--all-tests'], {}, process.cwd());
 		const runOptions = validateScreensScript.buildRunTestsOptions(options, {});
 
-		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_TEST_GREP, undefined);
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_COMMAND, undefined);
+		assert.ok(String(runOptions.extensionTestsPath).endsWith(path.join('out', 'test', 'suite', 'index')));
 	});
 
 	it('uses a pinned VS Code test version by default', () => {
@@ -116,12 +120,15 @@ describe('validate:screens:ts script', () => {
 		assert.strictEqual(options.backendSettings.tenant, 'Tenant');
 	});
 
-	it('builds Extension Host test options for only project TypeScript validation by default', () => {
+	it('builds Extension Host command runner options for TypeScript validation by default', () => {
 		const options = validateTsScreensScript.parseArgs(['screens', 'workspace'], {}, process.cwd());
 		const runOptions = validateTsScreensScript.buildRunTestsOptions(options, {});
 
 		assert.strictEqual(runOptions.extensionTestsEnv.TS_SCREEN_VALIDATION_ROOT, 'screens');
-		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_TEST_GREP, 'Project TypeScript validation');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_COMMAND, 'acumate.validateTypeScriptScreensPipeline');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_ROOT, 'screens');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_WORKSPACE_ROOT, path.resolve('workspace'));
+		assert.ok(String(runOptions.extensionTestsPath).endsWith(path.join('out', 'test', 'suite', 'validationCommandRunner')));
 		assert.ok(runOptions.launchArgs.includes(path.resolve('workspace')));
 		assert.ok(runOptions.launchArgs.includes('--disable-extensions'));
 	});
@@ -131,6 +138,7 @@ describe('validate:screens:ts script', () => {
 		const runOptions = validateTsScreensScript.buildRunTestsOptions(options, {});
 
 		assert.strictEqual(runOptions.extensionTestsEnv.TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS, 'true');
+		assert.strictEqual(runOptions.extensionTestsEnv.ACUMATE_VALIDATION_FAIL_ON_DIAGNOSTICS, 'true');
 	});
 
 	it('passes backend connection settings to the TypeScript validation suite', () => {

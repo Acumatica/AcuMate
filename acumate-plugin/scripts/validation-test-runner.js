@@ -23,7 +23,7 @@ Options:
       --vscode-version <version>     VS Code version for @vscode/test-electron download/cache. Defaults to VSCODE_TEST_VERSION or ${DEFAULT_VSCODE_TEST_VERSION}.
       --fail-on-diagnostics          Exit non-zero when diagnostics are reported.
       --skip-compile                 Do not run npm run compile before starting VS Code tests.
-      --all-tests                    Run the whole extension test suite instead of only ${config.suiteName}.
+      --all-tests                    Run the whole extension test suite instead of the validation command runner.
 ${backendUsage}
   -h, --help                         Show this help.`);
 	}
@@ -129,7 +129,12 @@ ${backendUsage}
 			}
 		}
 		if (!options.allTests) {
-			extensionTestsEnv.ACUMATE_TEST_GREP = config.suiteName;
+			extensionTestsEnv.ACUMATE_VALIDATION_COMMAND = config.commandId;
+			extensionTestsEnv.ACUMATE_VALIDATION_ROOT = options.root;
+			extensionTestsEnv.ACUMATE_VALIDATION_WORKSPACE_ROOT = workspaceRoot;
+			if (options.failOnDiagnostics) {
+				extensionTestsEnv.ACUMATE_VALIDATION_FAIL_ON_DIAGNOSTICS = 'true';
+			}
 		}
 		if (config.supportsBackendSettings) {
 			applyBackendSettingsEnv(extensionTestsEnv, options.backendSettings);
@@ -137,7 +142,13 @@ ${backendUsage}
 
 		const runOptions = {
 			extensionDevelopmentPath: repoRoot,
-			extensionTestsPath: path.resolve(repoRoot, 'out', 'test', 'suite', 'index'),
+			extensionTestsPath: path.resolve(
+				repoRoot,
+				'out',
+				'test',
+				'suite',
+				options.allTests ? 'index' : 'validationCommandRunner'
+			),
 			extensionTestsEnv,
 			launchArgs: [
 				workspaceRoot,

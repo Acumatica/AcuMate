@@ -12,6 +12,7 @@ const runner = createValidationRunner({
 	suiteName: 'Project TypeScript validation',
 	logName: 'TypeScript screen validation tests',
 	supportsBackendSettings: true,
+	commandId: 'acumate.validateTypeScriptScreensPipeline',
 });
 
 if (require.main === module) {

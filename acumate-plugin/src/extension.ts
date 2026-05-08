@@ -20,7 +20,13 @@ import { registerGraphInfoValidation } from './validation/tsValidation/graph-inf
 import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
 import { registerTsHoverProvider } from './providers/ts-hover-provider';
 import { getFrontendSourcesPath } from './utils';
-import { runWorkspaceScreenValidation, runWorkspaceTypeScriptValidation } from './validation/workspace-validation';
+import {
+	runWorkspaceScreenValidation,
+	runWorkspaceScreenValidationPipeline,
+	runWorkspaceTypeScriptValidation,
+	runWorkspaceTypeScriptValidationPipeline,
+	WorkspaceValidationOptions
+} from './validation/workspace-validation';
 import { logInfo, logWarn, registerLogger } from './logging/logger';
 
 const HTML_VALIDATION_DEBOUNCE_MS = 250;
@@ -354,9 +360,21 @@ function createCommands(context: vscode.ExtensionContext) {
 	});
 	context.subscriptions.push(disposable);
 
+	disposable = vscode.commands.registerCommand('acumate.validateScreensPipeline', async (options: WorkspaceValidationOptions) => {
+		logCommandInvocation('acumate.validateScreensPipeline', { ...options });
+		return runWorkspaceScreenValidationPipeline(options);
+	});
+	context.subscriptions.push(disposable);
+
 	disposable = vscode.commands.registerCommand('acumate.validateTypeScriptScreens', async () => {
 		logCommandInvocation('acumate.validateTypeScriptScreens');
 		await runWorkspaceTypeScriptValidation();
+	});
+	context.subscriptions.push(disposable);
+
+	disposable = vscode.commands.registerCommand('acumate.validateTypeScriptScreensPipeline', async (options: WorkspaceValidationOptions) => {
+		logCommandInvocation('acumate.validateTypeScriptScreensPipeline', { ...options });
+		return runWorkspaceTypeScriptValidationPipeline(options);
 	});
 	context.subscriptions.push(disposable);
 }
@@ -420,7 +438,8 @@ function init(context: vscode.ExtensionContext) {
 }
 
 function getRepositoryPath(): string | undefined {
-	return findConfig('config', { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? getFrontendSourcesPath(), dir: '.git' }).replace('.git\\config', '');
+	const gitConfigPath = findConfig('config', { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? getFrontendSourcesPath(), dir: '.git' });
+	return gitConfigPath?.replace('.git\\config', '');
 }
 
 

@@ -135,7 +135,7 @@ The **AcuMate** extension provides several commands to streamline development ta
    - Inside VS Code, run **AcuMate: Validate Screens (HTML)** to queue the validator against all HTML files beneath `src/screens` (or any folder you input). A cancellable progress notification tracks the run, and results are aggregated in the **AcuMate Validation** output channel so you can inspect warnings without breaking your workflow.
    - For TypeScript coverage, run **AcuMate: Validate Screens (TypeScript)** to traverse the same folder structure, execute `collectGraphInfoDiagnostics` for each screen `.ts`, and summarize backend metadata mismatches in the output channel (requires `acuMate.useBackend = true`). This command is also cancellable so you can stop long-running validations instantly.
 
-   The pipeline runners below execute the same validation logic inside a VS Code Extension Host via `@vscode/test-electron`, but narrow Mocha to the requested validation suite instead of running every extension test. The Extension Host uses an isolated test profile, so it does not read settings from the user's normal VS Code profile. On Windows, the cached `.vscode-test` copy has its versioned-update mutex check disabled before launch so an unrelated VS Code desktop update does not block validation. When using `npm run`, positional arguments go after the first `--`; runner flags go after a second `--`.
+   The pipeline runners below start a VS Code Extension Host via `@vscode/test-electron`, activate AcuMate, and call the non-interactive validation command registered by the extension. The Extension Host uses an isolated test profile, so it does not read settings from the user's normal VS Code profile. On Windows, the cached `.vscode-test` copy has its versioned-update mutex check disabled before launch so an unrelated VS Code desktop update does not block validation. When using `npm run`, positional arguments go after the first `--`; runner flags go after a second `--`.
 
    **HTML validation: `npm run validate:screens`**
 
@@ -163,7 +163,7 @@ The **AcuMate** extension provides several commands to streamline development ta
    | `--vscode-version <version>` | `VSCODE_TEST_VERSION` | Uses a specific `@vscode/test-electron` VS Code version. Defaults to `1.118.1` when no executable path is supplied. |
    | `--fail-on-diagnostics` | `SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS=true` | Fails the command when validation reports diagnostics. Without this, diagnostics are printed and the command can still pass. |
    | `--skip-compile` | `SCREEN_VALIDATION_SKIP_COMPILE=true` | Skips the default `npm run compile` step before launching VS Code. |
-   | `--all-tests` | `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of only `Project screen validation`. |
+   | `--all-tests` | `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of the direct validation command runner. |
    | `--help` | | Prints runner usage. |
 
    Examples:
@@ -209,7 +209,7 @@ The **AcuMate** extension provides several commands to streamline development ta
    | `--vscode-version <version>` | `VSCODE_TEST_VERSION` | Uses a specific `@vscode/test-electron` VS Code version. Defaults to `1.118.1` when no executable path is supplied. |
    | `--fail-on-diagnostics` | `TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS=true` | Fails the command when validation reports diagnostics. Without this, diagnostics are printed and the command can still pass. |
    | `--skip-compile` | `TS_SCREEN_VALIDATION_SKIP_COMPILE=true`, `SCREEN_VALIDATION_SKIP_COMPILE=true` | Skips the default `npm run compile` step before launching VS Code. |
-   | `--all-tests` | `TS_SCREEN_VALIDATION_ALL_TESTS=true`, `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of only `Project TypeScript validation`. |
+   | `--all-tests` | `TS_SCREEN_VALIDATION_ALL_TESTS=true`, `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of the direct validation command runner. |
    | `--help` | | Prints runner usage. |
 
    Backend connection settings for TypeScript validation:
