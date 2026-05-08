@@ -16,7 +16,14 @@ export interface WorkspaceValidationOptions {
 export interface WorkspaceValidationDiagnostic {
 	severity: 'Error' | 'Warning';
 	line: number;
+	start: WorkspaceValidationPosition;
+	end: WorkspaceValidationPosition;
 	message: string;
+}
+
+export interface WorkspaceValidationPosition {
+	line: number;
+	column: number;
 }
 
 export interface WorkspaceValidationDiagnosticEntry {
@@ -385,9 +392,8 @@ function appendDiagnosticsToOutput(
 		validationOutput.appendLine(path.relative(workspaceRoot, entry.file) || entry.file);
 		for (const diag of entry.diagnostics) {
 			const severity = diag.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
-			const line = (diag.range?.start?.line ?? 0) + 1;
 			const normalizedMessage = diag.message.replace(/\s+/g, ' ').trim();
-			validationOutput.appendLine(`  [${severity}] line ${line}: ${normalizedMessage}`);
+			validationOutput.appendLine(`  [${severity}] ${formatDiagnosticRange(diag)}: ${normalizedMessage}`);
 		}
 		validationOutput.appendLine('');
 	}
@@ -413,10 +419,27 @@ function createValidationResult(
 }
 
 function toWorkspaceValidationDiagnostic(diagnostic: vscode.Diagnostic): WorkspaceValidationDiagnostic {
+	const start = toWorkspaceValidationPosition(diagnostic.range.start);
+	const end = toWorkspaceValidationPosition(diagnostic.range.end);
 	return {
 		severity: diagnostic.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning',
-		line: (diagnostic.range?.start?.line ?? 0) + 1,
+		line: start.line,
+		start,
+		end,
 		message: diagnostic.message.replace(/\s+/g, ' ').trim(),
+	};
+}
+
+function formatDiagnosticRange(diagnostic: vscode.Diagnostic): string {
+	const start = toWorkspaceValidationPosition(diagnostic.range.start);
+	const end = toWorkspaceValidationPosition(diagnostic.range.end);
+	return `range ${start.line}:${start.column}-${end.line}:${end.column}`;
+}
+
+function toWorkspaceValidationPosition(position: vscode.Position): WorkspaceValidationPosition {
+	return {
+		line: position.line + 1,
+		column: position.character + 1,
 	};
 }
 

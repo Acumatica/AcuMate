@@ -9,7 +9,14 @@ interface ValidationCommandOptions {
 interface ValidationDiagnostic {
 	severity: 'Error' | 'Warning';
 	line: number;
+	start: ValidationPosition;
+	end: ValidationPosition;
 	message: string;
+}
+
+interface ValidationPosition {
+	line: number;
+	column: number;
 }
 
 interface ValidationDiagnosticEntry {
@@ -128,9 +135,13 @@ function printValidationResult(result: ValidationResult): void {
 function formatDiagnosticSummary(workspaceRoot: string, entry: ValidationDiagnosticEntry): string {
 	const relative = path.relative(workspaceRoot, entry.file) || entry.file;
 	const lines = entry.diagnostics.map(diagnostic =>
-		`  [${diagnostic.severity}] line ${diagnostic.line}: ${diagnostic.message}`
+		`  [${diagnostic.severity}] ${formatDiagnosticRange(diagnostic)}: ${diagnostic.message}`
 	);
 	return `${relative}\n${lines.join('\n')}`;
+}
+
+function formatDiagnosticRange(diagnostic: ValidationDiagnostic): string {
+	return `range ${diagnostic.start.line}:${diagnostic.start.column}-${diagnostic.end.line}:${diagnostic.end.column}`;
 }
 
 function normalizeBackendUrl(value: string): string {

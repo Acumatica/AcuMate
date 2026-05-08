@@ -166,6 +166,8 @@ The **AcuMate** extension provides several commands to streamline development ta
    | `--all-tests` | `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of the direct validation command runner. |
    | `--help` | | Prints runner usage. |
 
+   Reported diagnostics include both start and end coordinates in `line:column` form, for example `range 12:5-14:18`, so multi-line HTML attribute or element problems can be located precisely.
+
    Examples:
 
    ```powershell
@@ -211,6 +213,8 @@ The **AcuMate** extension provides several commands to streamline development ta
    | `--skip-compile` | `TS_SCREEN_VALIDATION_SKIP_COMPILE=true`, `SCREEN_VALIDATION_SKIP_COMPILE=true` | Skips the default `npm run compile` step before launching VS Code. |
    | `--all-tests` | `TS_SCREEN_VALIDATION_ALL_TESTS=true`, `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of the direct validation command runner. |
    | `--help` | | Prints runner usage. |
+
+   Reported diagnostics include both start and end coordinates in `line:column` form, for example `range 8:13-8:42`, so decorators, parameters, and multi-line TypeScript declarations can be located precisely.
 
    Backend connection settings for TypeScript validation:
 
