@@ -8,6 +8,39 @@ import { collectGraphInfoDiagnostics } from './tsValidation/graph-info-validatio
 const validationOutput = vscode.window.createOutputChannel('AcuMate Validation');
 export const workspacePath = 'WebSites\\Pure\\Site\\FrontendSources\\';
 
+export interface WorkspaceValidationOptions {
+	root: string;
+	workspaceRoot?: string;
+}
+
+export interface WorkspaceValidationDiagnostic {
+	severity: 'Error' | 'Warning';
+	line: number;
+	start: WorkspaceValidationPosition;
+	end: WorkspaceValidationPosition;
+	message: string;
+}
+
+export interface WorkspaceValidationPosition {
+	line: number;
+	column: number;
+}
+
+export interface WorkspaceValidationDiagnosticEntry {
+	file: string;
+	diagnostics: WorkspaceValidationDiagnostic[];
+}
+
+export interface WorkspaceValidationResult {
+	root: string;
+	workspaceRoot: string;
+	filesValidated: number;
+	diagnosticCount: number;
+	diagnostics: WorkspaceValidationDiagnosticEntry[];
+}
+
+type ValidationIssue = { file: string; diagnostics: vscode.Diagnostic[] };
+
 export async function runWorkspaceScreenValidation(): Promise<void> {
 	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
 	if (!workspaceFolderUri) {
@@ -101,6 +134,39 @@ export async function runWorkspaceScreenValidation(): Promise<void> {
 	if (choice === 'Open Output') {
 		validationOutput.show(true);
 	}
+}
+
+export async function runWorkspaceScreenValidationPipeline(
+	options: WorkspaceValidationOptions
+): Promise<WorkspaceValidationResult> {
+	const workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
+	const resolvedRoot = resolveValidationRoot(options.root, workspaceRoot);
+	const stats = safeStat(resolvedRoot);
+	if (!stats?.isDirectory()) {
+		throw new Error(`SCREEN_VALIDATION_ROOT path does not exist: ${resolvedRoot}`);
+	}
+
+	const htmlFiles = collectHtmlFiles(resolvedRoot);
+	if (!htmlFiles.length) {
+		throw new Error(`No HTML files found under ${resolvedRoot}.`);
+	}
+
+	if (!AcuMateContext.HtmlValidator) {
+		AcuMateContext.HtmlValidator = vscode.languages.createDiagnosticCollection('htmlValidatorPipeline');
+	}
+
+	const issues: ValidationIssue[] = [];
+	for (const file of htmlFiles) {
+		const document = await vscode.workspace.openTextDocument(file);
+		await validateHtmlFile(document);
+		const diagnostics = [...(AcuMateContext.HtmlValidator?.get(document.uri) ?? [])];
+		if (diagnostics.length) {
+			issues.push({ file, diagnostics });
+		}
+		AcuMateContext.HtmlValidator?.delete(document.uri);
+	}
+
+	return createValidationResult(workspaceRoot, resolvedRoot, htmlFiles.length, issues);
 }
 
 export async function runWorkspaceTypeScriptValidation(): Promise<void> {
@@ -211,6 +277,48 @@ export async function runWorkspaceTypeScriptValidation(): Promise<void> {
 	}
 }
 
+export async function runWorkspaceTypeScriptValidationPipeline(
+	options: WorkspaceValidationOptions
+): Promise<WorkspaceValidationResult> {
+	const workspaceRoot = resolveWorkspaceRoot(options.workspaceRoot);
+	const resolvedRoot = resolveValidationRoot(options.root, workspaceRoot);
+
+	AcuMateContext.ConfigurationService?.reload();
+	if (!AcuMateContext.ConfigurationService?.useBackend) {
+		throw new Error('TypeScript validation requires backend metadata. Enable acuMate.useBackend to continue.');
+	}
+	if (!AcuMateContext.ApiService) {
+		throw new Error('AcuMate backend client is not initialized yet. Try again once initialization completes.');
+	}
+
+	const stats = safeStat(resolvedRoot);
+	if (!stats?.isDirectory()) {
+		throw new Error(`TS_SCREEN_VALIDATION_ROOT path does not exist: ${resolvedRoot}`);
+	}
+
+	const tsFiles = collectTypeScriptFiles(resolvedRoot);
+	if (!tsFiles.length) {
+		throw new Error(`No TypeScript files found under ${resolvedRoot}.`);
+	}
+
+	const issues: ValidationIssue[] = [];
+	for (const file of tsFiles) {
+		try {
+			const document = await vscode.workspace.openTextDocument(file);
+			const diagnostics = await collectGraphInfoDiagnostics(document);
+			if (diagnostics.length) {
+				issues.push({ file, diagnostics });
+			}
+		}
+		catch (error) {
+			const message = error instanceof Error ? error.message : String(error);
+			validationOutput.appendLine(`[AcuMate] Failed to validate ${file}: ${message}`);
+		}
+	}
+
+	return createValidationResult(workspaceRoot, resolvedRoot, tsFiles.length, issues);
+}
+
 function collectHtmlFiles(root: string): string[] {
 	const stack: string[] = [root];
 	const files: string[] = [];
@@ -284,12 +392,63 @@ function appendDiagnosticsToOutput(
 		validationOutput.appendLine(path.relative(workspaceRoot, entry.file) || entry.file);
 		for (const diag of entry.diagnostics) {
 			const severity = diag.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
-			const line = (diag.range?.start?.line ?? 0) + 1;
 			const normalizedMessage = diag.message.replace(/\s+/g, ' ').trim();
-			validationOutput.appendLine(`  [${severity}] line ${line}: ${normalizedMessage}`);
+			validationOutput.appendLine(`  [${severity}] ${formatDiagnosticRange(diag)}: ${normalizedMessage}`);
 		}
 		validationOutput.appendLine('');
 	}
+}
+
+function createValidationResult(
+	workspaceRoot: string,
+	root: string,
+	filesValidated: number,
+	issues: ValidationIssue[]
+): WorkspaceValidationResult {
+	const diagnostics = issues.map(entry => ({
+		file: entry.file,
+		diagnostics: entry.diagnostics.map(toWorkspaceValidationDiagnostic),
+	}));
+	return {
+		root,
+		workspaceRoot,
+		filesValidated,
+		diagnosticCount: diagnostics.reduce((sum, entry) => sum + entry.diagnostics.length, 0),
+		diagnostics,
+	};
+}
+
+function toWorkspaceValidationDiagnostic(diagnostic: vscode.Diagnostic): WorkspaceValidationDiagnostic {
+	const start = toWorkspaceValidationPosition(diagnostic.range.start);
+	const end = toWorkspaceValidationPosition(diagnostic.range.end);
+	return {
+		severity: diagnostic.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning',
+		line: start.line,
+		start,
+		end,
+		message: diagnostic.message.replace(/\s+/g, ' ').trim(),
+	};
+}
+
+function formatDiagnosticRange(diagnostic: vscode.Diagnostic): string {
+	const start = toWorkspaceValidationPosition(diagnostic.range.start);
+	const end = toWorkspaceValidationPosition(diagnostic.range.end);
+	return `range ${start.line}:${start.column}-${end.line}:${end.column}`;
+}
+
+function toWorkspaceValidationPosition(position: vscode.Position): WorkspaceValidationPosition {
+	return {
+		line: position.line + 1,
+		column: position.character + 1,
+	};
+}
+
+function resolveWorkspaceRoot(workspaceRoot?: string): string {
+	return path.resolve(workspaceRoot || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || process.cwd());
+}
+
+function resolveValidationRoot(root: string, workspaceRoot: string): string {
+	return path.normalize(path.isAbsolute(root) ? root : path.join(workspaceRoot, root));
 }
 
 function safeStat(targetPath: string): fs.Stats | undefined {

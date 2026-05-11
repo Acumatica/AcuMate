@@ -6,6 +6,7 @@ import { validateHtmlFile } from '../../validation/htmlValidation/html-validatio
 import { AcuMateContext } from '../../plugin-context';
 
 const screenRootSetting = process.env.SCREEN_VALIDATION_ROOT;
+const failOnDiagnostics = isTruthy(process.env.SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS);
 
 if (!screenRootSetting) {
 	console.warn('[acumate] Skipping project screen validation test because SCREEN_VALIDATION_ROOT is not set.');
@@ -55,12 +56,21 @@ else {
 				for (const entry of failures) {
 					console.warn(formatDiagnosticSummary(entry.file, entry.diagnostics));
 				}
+				if (failOnDiagnostics) {
+					throw new Error(
+						`Screen validation reported ${totalDiagnostics} diagnostics across ${failures.length} file(s).`
+					);
+				}
 			}
 			else {
 				console.log('[acumate] Validation complete with no diagnostics.');
 			}
 		});
 	});
+}
+
+function isTruthy(value: string | undefined): boolean {
+	return /^(1|true|yes)$/i.test(value || '');
 }
 
 function collectHtmlFiles(root: string): string[] {
@@ -98,8 +108,9 @@ function formatDiagnosticSummary(filePath: string, diagnostics: vscode.Diagnosti
 	const relative = path.relative(process.cwd(), filePath) || filePath;
 	const lines = diagnostics.map(diag => {
 		const severity = diag.severity === vscode.DiagnosticSeverity.Error ? 'Error' : 'Warning';
-		const line = diag.range?.start?.line ?? 0;
-		return `  [${severity}] line ${line + 1}: ${diag.message}`;
+		const start = `${diag.range.start.line + 1}:${diag.range.start.character + 1}`;
+		const end = `${diag.range.end.line + 1}:${diag.range.end.character + 1}`;
+		return `  [${severity}] range ${start}-${end}: ${diag.message}`;
 	});
 	return `${relative}\n${lines.join('\n')}`;
 }
