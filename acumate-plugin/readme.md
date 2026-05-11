@@ -134,5 +134,110 @@ The **AcuMate** extension provides several commands to streamline development ta
 2. **Project Screen Validation**  
    - Inside VS Code, run **AcuMate: Validate Screens (HTML)** to queue the validator against all HTML files beneath `src/screens` (or any folder you input). A cancellable progress notification tracks the run, and results are aggregated in the **AcuMate Validation** output channel so you can inspect warnings without breaking your workflow.
    - For TypeScript coverage, run **AcuMate: Validate Screens (TypeScript)** to traverse the same folder structure, execute `collectGraphInfoDiagnostics` for each screen `.ts`, and summarize backend metadata mismatches in the output channel (requires `acuMate.useBackend = true`). This command is also cancellable so you can stop long-running validations instantly.
-   - From the CLI, run `npm run validate:screens` (HTML) or `npm run validate:screens:ts` (TypeScript) to execute the same scans headlessly via the VS Code test runner. Override the roots with `SCREEN_VALIDATION_ROOT` or `TS_SCREEN_VALIDATION_ROOT` environment variables when needed. Both scripts log summaries instead of failing on warnings, ensuring automated runs focus on catching crashes.
+
+   The pipeline runners below start a VS Code Extension Host via `@vscode/test-electron`, activate AcuMate, and call the non-interactive validation command registered by the extension. The Extension Host uses an isolated test profile, so it does not read settings from the user's normal VS Code profile. On Windows, the cached `.vscode-test` copy has its versioned-update mutex check disabled before launch so an unrelated VS Code desktop update does not block validation. When using `npm run`, positional arguments go after the first `--`; runner flags go after a second `--`.
+
+   **HTML validation: `npm run validate:screens`**
+
+   Syntax:
+
+   ```powershell
+   npm run validate:screens -- [screenRoot] [workspaceRoot] [vscodeExecutablePath] -- [options]
+   ```
+
+   Arguments:
+
+   | Argument | Description | Default |
+   | -------- | ----------- | ------- |
+   | `screenRoot` | Folder containing screen `.html` files to validate. Can be absolute or relative to `workspaceRoot`. | `SCREEN_VALIDATION_ROOT`, otherwise `src/screens` |
+   | `workspaceRoot` | Folder opened by the VS Code Extension Host. Use the FrontendSources root when validating a real site checkout. | `SCREEN_VALIDATION_WORKSPACE_ROOT`, otherwise current working directory |
+   | `vscodeExecutablePath` | Optional VS Code executable to run instead of the `@vscode/test-electron` cache/download. | `VSCODE_EXECUTABLE_PATH` or `VSCODE_TEST_EXECUTABLE_PATH` |
+
+   Options and environment variables:
+
+   | Option | Environment variable | Description |
+   | ------ | -------------------- | ----------- |
+   | `--root <path>` | `SCREEN_VALIDATION_ROOT` | Sets the HTML screen root without using the first positional argument. |
+   | `--workspace-root <path>` | `SCREEN_VALIDATION_WORKSPACE_ROOT` | Sets the Extension Host workspace without using the second positional argument. |
+   | `--vscode-executable-path <path>` | `VSCODE_EXECUTABLE_PATH`, `VSCODE_TEST_EXECUTABLE_PATH` | Uses an explicit VS Code executable. This bypasses the downloaded test copy. |
+   | `--vscode-version <version>` | `VSCODE_TEST_VERSION` | Uses a specific `@vscode/test-electron` VS Code version. Defaults to `1.118.1` when no executable path is supplied. |
+   | `--fail-on-diagnostics` | `SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS=true` | Fails the command when validation reports diagnostics. Without this, diagnostics are printed and the command can still pass. |
+   | `--skip-compile` | `SCREEN_VALIDATION_SKIP_COMPILE=true` | Skips the default `npm run compile` step before launching VS Code. |
+   | `--all-tests` | `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of the direct validation command runner. |
+   | `--help` | | Prints runner usage. |
+
+   Reported diagnostics include both start and end coordinates in `line:column` form, for example `range 12:5-14:18`, so multi-line HTML attribute or element problems can be located precisely.
+
+   Examples:
+
+   ```powershell
+   npm run validate:screens -- D:\Projects\Code\WebSites\Pure\Site\FrontendSources\screen\src\screens D:\Projects\Code\WebSites\Pure\Site\FrontendSources
+   ```
+
+   ```powershell
+   npm run validate:screens -- D:\Projects\Code\WebSites\Pure\Site\FrontendSources\screen\src\screens D:\Projects\Code\WebSites\Pure\Site\FrontendSources -- --fail-on-diagnostics
+   ```
+
+   ```powershell
+   $env:SCREEN_VALIDATION_ROOT='screen\src\screens'
+   $env:SCREEN_VALIDATION_WORKSPACE_ROOT='D:\Projects\Code\WebSites\Pure\Site\FrontendSources'
+   $env:SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS='true'
+   npm run validate:screens
+   ```
+
+   **TypeScript validation: `npm run validate:screens:ts`**
+
+   Syntax:
+
+   ```powershell
+   npm run validate:screens:ts -- [screenRoot] [workspaceRoot] [vscodeExecutablePath] -- [options]
+   ```
+
+   Arguments:
+
+   | Argument | Description | Default |
+   | -------- | ----------- | ------- |
+   | `screenRoot` | Folder containing screen `.ts` files to validate. Can be absolute or relative to `workspaceRoot`. | `TS_SCREEN_VALIDATION_ROOT`, otherwise `src/screens` |
+   | `workspaceRoot` | Folder opened by the VS Code Extension Host. Use the FrontendSources root when validating a real site checkout. | `TS_SCREEN_VALIDATION_WORKSPACE_ROOT`, then `SCREEN_VALIDATION_WORKSPACE_ROOT`, otherwise current working directory |
+   | `vscodeExecutablePath` | Optional VS Code executable to run instead of the `@vscode/test-electron` cache/download. | `VSCODE_EXECUTABLE_PATH` or `VSCODE_TEST_EXECUTABLE_PATH` |
+
+   Options and environment variables:
+
+   | Option | Environment variable | Description |
+   | ------ | -------------------- | ----------- |
+   | `--root <path>` | `TS_SCREEN_VALIDATION_ROOT` | Sets the TypeScript screen root without using the first positional argument. |
+   | `--workspace-root <path>` | `TS_SCREEN_VALIDATION_WORKSPACE_ROOT`, `SCREEN_VALIDATION_WORKSPACE_ROOT` | Sets the Extension Host workspace without using the second positional argument. |
+   | `--vscode-executable-path <path>` | `VSCODE_EXECUTABLE_PATH`, `VSCODE_TEST_EXECUTABLE_PATH` | Uses an explicit VS Code executable. This bypasses the downloaded test copy. |
+   | `--vscode-version <version>` | `VSCODE_TEST_VERSION` | Uses a specific `@vscode/test-electron` VS Code version. Defaults to `1.118.1` when no executable path is supplied. |
+   | `--fail-on-diagnostics` | `TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS=true` | Fails the command when validation reports diagnostics. Without this, diagnostics are printed and the command can still pass. |
+   | `--skip-compile` | `TS_SCREEN_VALIDATION_SKIP_COMPILE=true`, `SCREEN_VALIDATION_SKIP_COMPILE=true` | Skips the default `npm run compile` step before launching VS Code. |
+   | `--all-tests` | `TS_SCREEN_VALIDATION_ALL_TESTS=true`, `SCREEN_VALIDATION_ALL_TESTS=true` | Runs the whole extension test suite instead of the direct validation command runner. |
+   | `--help` | | Prints runner usage. |
+
+   Reported diagnostics include both start and end coordinates in `line:column` form, for example `range 8:13-8:42`, so decorators, parameters, and multi-line TypeScript declarations can be located precisely.
+
+   Backend connection settings for TypeScript validation:
+
+   | Option | Environment variable | Description |
+   | ------ | -------------------- | ----------- |
+   | `--backend-url <url>` | `ACUMATE_BACKEND_URL`, `ACUMATE_BACKED_URL` | Backend URL used by AcuMate API calls. A trailing `/` is added automatically when missing. |
+   | `--backend-login <login>` | `ACUMATE_BACKEND_LOGIN`, `ACUMATE_LOGIN` | Backend login. |
+   | `--backend-password <password>` | `ACUMATE_BACKEND_PASSWORD`, `ACUMATE_PASSWORD` | Backend password. Prefer the environment variable in CI to avoid putting secrets in command history. |
+   | `--backend-tenant <tenant>` | `ACUMATE_BACKEND_TENANT`, `ACUMATE_TENANT` | Backend tenant. Leave unset for single-tenant sites. |
+   | | `ACUMATE_USE_BACKEND` | Optional explicit backend toggle. If any backend connection setting is supplied and this is unset, the runner enables backend usage automatically. |
+
+   Examples:
+
+   ```powershell
+   npm run validate:screens:ts -- D:\Projects\Code\WebSites\Pure\Site\FrontendSources\screen\src\screens D:\Projects\Code\WebSites\Pure\Site\FrontendSources -- --backend-url http://localhost:81 --backend-login admin --backend-password 123 --backend-tenant Company
+   ```
+
+   ```powershell
+   $env:ACUMATE_BACKEND_URL='http://localhost:81'
+   $env:ACUMATE_BACKEND_LOGIN='admin'
+   $env:ACUMATE_BACKEND_PASSWORD='123'
+   $env:ACUMATE_BACKEND_TENANT='Company'
+   $env:TS_SCREEN_VALIDATION_FAIL_ON_DIAGNOSTICS='true'
+   npm run validate:screens:ts -- D:\Projects\Code\WebSites\Pure\Site\FrontendSources\screen\src\screens D:\Projects\Code\WebSites\Pure\Site\FrontendSources
+   ```
 
