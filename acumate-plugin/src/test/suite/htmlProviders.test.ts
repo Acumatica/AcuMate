@@ -52,6 +52,13 @@ const screenSelectorHtmlPath = path.join(
 	'extensions',
 	'SO301000_FieldSelectors.html'
 );
+const screenDependentExtensionHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_Discounts.html'
+);
 const fieldControlHtmlPath = path.join(fixturesRoot, 'FieldControlInfo.html');
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
 
@@ -565,6 +572,23 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('SO301000.html')),
 			'Expected navigation to base screen HTML'
+		);
+	});
+
+	it('navigates from customization selector attributes to dependent extension HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenDependentExtensionHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'after="#tab-Approval"',
+			'after="'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for dependent extension selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_Approvals.html')),
+			'Expected navigation to dependent extension HTML'
 		);
 	});
 

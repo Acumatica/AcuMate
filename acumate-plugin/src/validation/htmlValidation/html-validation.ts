@@ -26,6 +26,7 @@ import {
   BaseScreenDocument,
   getCustomizationSelectorAttributes,
   loadHtmlDocument,
+  getScreenDocumentDisplayName,
 } from "../../services/screen-html-service";
 import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
 
@@ -511,7 +512,7 @@ function validateDom(
       }
 
       if (!nodes.length) {
-        const baseName = path.basename(baseScreenDocument.filePath);
+        const baseName = getScreenDocumentDisplayName(baseScreenDocument);
         pushHtmlDiagnostic(
           diagnostics,
           suppression,

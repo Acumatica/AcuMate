@@ -28,6 +28,7 @@ import {
 	BaseScreenDocument,
 	getCustomizationSelectorAttributes,
 	loadHtmlDocument,
+	getDocumentForNode,
 } from '../services/screen-html-service';
 
 interface DefinitionMetadataContext {
@@ -268,20 +269,24 @@ function getSelectorLocations(
 		return [];
 	}
 
-	const { nodes, error } = queryBaseScreenElements(document, selector);
+	const { nodes, matches, error } = queryBaseScreenElements(document, selector);
 	if (error || !nodes.length) {
 		return [];
 	}
 
 	const locations: vscode.Location[] = [];
-	const seen = new Set<number>();
-	for (const nodeCandidate of nodes) {
+	const seen = new Set<string>();
+	const selectorMatches = matches.length
+		? matches
+		: nodes.map(node => ({ node, document: getDocumentForNode(document, node) }));
+	for (const { node: nodeCandidate, document: sourceDocument } of selectorMatches) {
 		const startIndex = typeof nodeCandidate.startIndex === 'number' ? nodeCandidate.startIndex : undefined;
-		if (startIndex === undefined || seen.has(startIndex)) {
+		const key = startIndex === undefined ? undefined : `${sourceDocument.filePath}:${startIndex}`;
+		if (key === undefined || seen.has(key)) {
 			continue;
 		}
-		seen.add(startIndex);
-		const location = createLocationFromHtmlNode(document, nodeCandidate);
+		seen.add(key);
+		const location = createLocationFromHtmlNode(sourceDocument, nodeCandidate);
 		if (location) {
 			locations.push(location);
 		}

@@ -22,6 +22,13 @@ const screenSelectorExtensionFixture = path.join(
 	'extensions',
 	'SO301000_FieldSelectors.html'
 );
+const screenDependentExtensionFixture = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_Discounts.html'
+);
 
 async function openFixtureDocument(fileName: string) {
 	const fullPath = path.join(fixturesRoot, fileName);
@@ -398,6 +405,16 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('after selector') && d.message.includes('tab-PutAway111')),
 			'Expected diagnostic when qp-tab after selector targets missing element'
+		);
+	});
+
+	it('resolves customization selectors against dependent extension HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenDependentExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			!diagnostics.some(d => d.message.includes('after selector') && d.message.includes('tab-Approval')),
+			'Expected selector targeting a dependent extension element to be valid'
 		);
 	});
 
