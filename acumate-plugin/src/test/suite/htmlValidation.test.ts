@@ -220,7 +220,7 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
-	it('accepts qp-field, qp-label, and qp-include without id attributes', async () => {
+	it('accepts id-optional qp controls without id attributes', async () => {
 		const document = await openFixtureDocument('TestControlIdOptional.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];

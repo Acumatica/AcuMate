@@ -33,7 +33,14 @@ import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/su
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
 const includeIntrinsicAttributes = new Set(["id", "class", "style", "slot"]);
-const idOptionalTags = new Set(["qp-field", "qp-label", "qp-include"]);
+const idOptionalTags = new Set([
+  "qp-field",
+  "qp-label",
+  "qp-include",
+  "qp-informer-rack",
+  "qp-nested-screen",
+  "qp-wait-cursor",
+]);
 
 interface IncludeTemplateFieldValidationContext {
   classInfoMap: Map<string, CollectedClassInfo>;
