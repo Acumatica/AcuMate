@@ -377,6 +377,8 @@ describe('HTML completion provider integration', () => {
 		const completions = await provider.provideCompletionItems(document, caret);
 		assert.ok(completions && completions.length > 0, 'No completions returned for config.bind');
 		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('id'), 'id config property not suggested');
+		assert.ok(labels.includes('tabIndex'), 'tabIndex config property not suggested');
 		assert.ok(labels.includes('enabled'), 'enabled config property not suggested');
 		assert.ok(labels.includes('dialogResult'), 'dialogResult config property not suggested');
 	});

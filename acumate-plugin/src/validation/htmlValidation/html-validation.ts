@@ -257,7 +257,7 @@ function validateDom(
       const requiresIdAttribute =
         normalizedTagName === "qp-panel" ||
         (normalizedTagName && controlMetadata.has(normalizedTagName) && !idOptionalTags.has(normalizedTagName));
-      if (requiresIdAttribute && !elementId.length) {
+      if (requiresIdAttribute && !elementId.length && !hasConfigId(node)) {
         const range = getRange(content, node);
         const message =
           normalizedTagName === "qp-panel"
@@ -810,6 +810,16 @@ function validateDom(
         `The control-state.bind attribute references unknown field "${fieldName}" on view "${viewName}".`
       );
     }
+  }
+
+  function hasConfigId(node: any): boolean {
+    const rawConfig = node.attribs?.["config.bind"];
+    if (typeof rawConfig !== "string" || !rawConfig.length) {
+      return false;
+    }
+
+    const configObject = parseConfigObject(rawConfig);
+    return Boolean(configObject && Object.prototype.hasOwnProperty.call(configObject, "id"));
   }
 }
 
