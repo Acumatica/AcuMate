@@ -414,11 +414,9 @@ function validateDom(
       const viewSpecified = node.attribs.name.includes(".");
       const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
 
-      const isUnboundReplacement =
-        Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
-        Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
+      const isUnboundField = Object.prototype.hasOwnProperty.call(node.attribs, "unbound");
 
-      if (!isUnboundReplacement) {
+      if (!isUnboundField) {
         let viewName = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
         let includeViewNameAllowsAnyViewFallback = false;
         if (!viewName) {

@@ -105,6 +105,14 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			}
 		}
 
+		if (
+			attributeContext.attributeName === 'name' &&
+			attributeContext.tagName === 'field' &&
+			hasUnboundAttribute(elementNode)
+		) {
+			return;
+		}
+
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field' && includeContext) {
 			const includeLocations = getFieldDefinitionLocations(
 				attributeContext.value,
@@ -238,6 +246,10 @@ function getIncludeDefinitionContext(
 		templateDocument: loadHtmlDocument(includePath),
 		parameterValues: getIncludeParameterValues(includeNode),
 	};
+}
+
+function hasUnboundAttribute(elementNode: any): boolean {
+	return Boolean(elementNode?.attribs && Object.prototype.hasOwnProperty.call(elementNode.attribs, 'unbound'));
 }
 
 function findNearestIncludeNode(node: any): any | undefined {

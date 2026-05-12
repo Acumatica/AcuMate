@@ -413,6 +413,16 @@ describe('HTML definition provider integration', () => {
 		);
 	});
 
+	it('does not navigate from unbound field names', async () => {
+		const htmlPath = path.join(fixturesRoot, 'TestScreenUnboundField.html');
+		const document = await vscode.workspace.openTextDocument(htmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="actions"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.strictEqual(locations.length, 0, 'Expected no definitions for unbound field name');
+	});
+
 	it('navigates from field inside using container with custom view', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlDefinitionProvider();

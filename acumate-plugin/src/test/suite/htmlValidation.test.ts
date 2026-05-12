@@ -127,11 +127,11 @@ describe('HTML validation diagnostics', () => {
 		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for PXView mixin html');
 	});
 
-	it('ignores fake fields marked unbound replace-content', async () => {
+	it('ignores unbound field names', async () => {
 		const document = await openFixtureDocument('TestScreenUnboundField.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
-		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for unbound replace-content fields');
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for unbound fields');
 	});
 
 	it('reports invalid PXAction references in state.bind attributes', async () => {
