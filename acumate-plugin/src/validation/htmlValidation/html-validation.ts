@@ -38,6 +38,7 @@ const idOptionalTags = new Set([
   "qp-label",
   "qp-include",
   "qp-informer-rack",
+  "qp-longrun-indicator",
   "qp-nested-screen",
   "qp-wait-cursor",
 ]);
