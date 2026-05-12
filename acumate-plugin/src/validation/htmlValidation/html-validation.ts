@@ -35,12 +35,17 @@ import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/su
 const includeIntrinsicAttributes = new Set(["id", "class", "style", "slot"]);
 const idOptionalTags = new Set([
   "qp-field",
+  "qp-data-component",
+  "qp-data-components",
   "qp-label",
   "qp-include",
   "qp-informer-rack",
   "qp-longrun-indicator",
   "qp-nested-screen",
+  "qp-screen-configuration-menu",
+  "qp-translation-validation",
   "qp-wait-cursor",
+  "qp-wiki-tooltip",
 ]);
 
 interface IncludeTemplateFieldValidationContext {
