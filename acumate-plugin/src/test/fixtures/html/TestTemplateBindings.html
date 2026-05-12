@@ -1,0 +1,17 @@
+<qp-root>
+	<qp-fieldset id="DynamicView" view.bind="{{dynamicView}}">
+		<field name="{{dynamicField}}"></field>
+	</qp-fieldset>
+	<qp-fieldset id="Form" view.bind="mainView">
+		<field name="customerName" control-type="{{controlType}}"></field>
+	</qp-fieldset>
+	<qp-panel id="Panel{{suffix}}"></qp-panel>
+	<using view="{{usingView}}">
+		<field name="{{usingField}}"></field>
+	</using>
+	<field name="InjectedAtRuntime" append="#{{dynamicTarget}}"></field>
+	<qp-field id="DynamicControlState" control-state.bind="{{dynamicControlState}}"></qp-field>
+	<qp-template id="DynamicTemplate" name="{{templateName}}"></qp-template>
+	<qp-button config.bind="{{buttonConfig}}"></qp-button>
+	<qp-button id="btn{{actionName}}" state.bind="{{actionName}}"></qp-button>
+</qp-root>

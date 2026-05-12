@@ -346,6 +346,13 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('ignores validations for mustache-templated HTML bindings', async () => {
+		const document = await openFixtureDocument('TestTemplateBindings.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for runtime-templated bindings');
+	});
+
 	it('accepts qp-button config.bind when config matches schema', async () => {
 		const document = await openFixtureDocument('TestConfigBindingValid.html');
 		await validateHtmlFile(document);

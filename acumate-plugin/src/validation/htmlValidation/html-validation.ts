@@ -191,7 +191,7 @@ function validateDom(
 
   function getIncludeFieldValidationContext(node: any): IncludeFieldValidationContext | undefined {
     const includeUrl = node.attribs?.url;
-    if (typeof includeUrl !== "string" || !includeUrl.length) {
+    if (typeof includeUrl !== "string" || !includeUrl.length || hasTemplateExpression(includeUrl)) {
       return undefined;
     }
 
@@ -281,7 +281,8 @@ function validateDom(
       hasScreenMetadata &&
       node.type === "tag" &&
       node.name === "qp-fieldset" &&
-      node.attribs[`view.bind`]
+      node.attribs[`view.bind`] &&
+      !hasTemplateExpression(node.attribs[`view.bind`])
     ) {
       const viewName = node.attribs[`view.bind`];
       const viewResolution = resolveView(viewName);
@@ -303,7 +304,7 @@ function validateDom(
     }
 
     if (hasScreenMetadata && node.type === "tag" && node.name === "qp-panel") {
-      if (elementId.length) {
+      if (elementId.length && !hasTemplateExpression(elementId)) {
         const viewResolution = resolveView(elementId);
         if (!viewResolution) {
           const range = getRange(content, node);
@@ -319,7 +320,13 @@ function validateDom(
       }
     }
 
-    if (hasScreenMetadata && node.type === "tag" && node.name === "using" && node.attribs.view) {
+    if (
+      hasScreenMetadata &&
+      node.type === "tag" &&
+      node.name === "using" &&
+      node.attribs.view &&
+      !hasTemplateExpression(node.attribs.view)
+    ) {
       const viewName = node.attribs.view;
       const viewResolution = resolveView(viewName);
       const hasValidView =
@@ -340,7 +347,12 @@ function validateDom(
     }
 
     const actionBinding = node.attribs?.["state.bind"];
-    if (canValidateActions && typeof actionBinding === "string" && actionBinding.length) {
+    if (
+      canValidateActions &&
+      typeof actionBinding === "string" &&
+      actionBinding.length &&
+      !hasTemplateExpression(actionBinding)
+    ) {
       const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
       if (!actionLookup.has(actionBinding) && !panelHasAction) {
         const range = getRange(content, node);
@@ -412,14 +424,17 @@ function validateDom(
         if (!viewName) {
           viewName = getViewNameFromCustomizationSelectors(node);
         }
+        if (!viewName && hasTemplateCustomizationSelector(node)) {
+          return;
+        }
         if (!viewName && includeFieldContext) {
           const includeViewName = getViewNameFromIncludeCustomizationSelectors(node, includeFieldContext);
-          includeViewNameAllowsAnyViewFallback = hasIncludeTemplateExpression(includeViewName);
+          includeViewNameAllowsAnyViewFallback = hasTemplateExpression(includeViewName);
           viewName = includeViewName;
         }
 
         if (includeFieldContext) {
-          includeViewNameAllowsAnyViewFallback ||= hasIncludeTemplateExpression(viewName);
+          includeViewNameAllowsAnyViewFallback ||= hasTemplateExpression(viewName);
           viewName = resolveIncludeTemplateValue(viewName, includeFieldContext);
         }
 
@@ -427,6 +442,9 @@ function validateDom(
         const fieldName = includeFieldContext
           ? resolveIncludeTemplateValue(rawFieldName, includeFieldContext)
           : rawFieldName;
+        if (hasTemplateExpression(viewName) || hasTemplateExpression(fieldName)) {
+          return;
+        }
         const viewResolution = resolveView(viewName);
         const viewClass = viewResolution?.viewClass;
         const fieldProperty = viewClass?.properties.get(fieldName);
@@ -474,6 +492,10 @@ function validateDom(
   });
   function validateTemplateName(templateName: string, node: any, insideDataFeed: boolean) {
     const normalizedTemplateName = templateName.trim();
+    if (hasTemplateExpression(normalizedTemplateName)) {
+      return;
+    }
+
     if (normalizedTemplateName.startsWith("record-") && !insideDataFeed) {
       const range = getRange(content, node);
       pushHtmlDiagnostic(
@@ -506,6 +528,10 @@ function validateDom(
     }
 
     forEachCustomizationSelector(node, (attributeName, rawValue, normalizedValue) => {
+      if (hasTemplateExpression(normalizedValue)) {
+        return;
+      }
+
       const range =
         getAttributeValueRange(content, node, attributeName, rawValue) ?? getRange(content, node);
       const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
@@ -542,6 +568,10 @@ function validateDom(
         return;
       }
 
+      if (hasTemplateExpression(normalizedValue)) {
+        return;
+      }
+
       const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
       if (error || !nodes.length) {
         return;
@@ -574,6 +604,10 @@ function validateDom(
         return;
       }
 
+      if (hasTemplateExpression(normalizedValue)) {
+        return;
+      }
+
       const { nodes, error } = queryBaseScreenElements(includeDocument, normalizedValue);
       if (error || !nodes.length) {
         return;
@@ -597,12 +631,12 @@ function validateDom(
     context: IncludeFieldValidationContext | undefined,
     allowAnyViewFallback = false
   ): boolean {
-    if (!context || !fieldName || hasIncludeTemplateExpression(fieldName)) {
+    if (!context || !fieldName || hasTemplateExpression(fieldName)) {
       return false;
     }
 
     const normalizedViewName = viewName?.trim();
-    if (normalizedViewName && !hasIncludeTemplateExpression(normalizedViewName)) {
+    if (normalizedViewName && !hasTemplateExpression(normalizedViewName)) {
       const viewResolution = resolveIncludeView(normalizedViewName, context);
       const fieldProperty = viewResolution?.viewClass?.properties.get(fieldName);
       if (fieldProperty?.kind === "field") {
@@ -665,10 +699,6 @@ function validateDom(
     }).trim();
   }
 
-  function hasIncludeTemplateExpression(value: string | undefined): boolean {
-    return typeof value === "string" && /{{\s*[^}]+\s*}}/.test(value);
-  }
-
   function forEachCustomizationSelector(
     node: any,
     callback: (attributeName: string, rawValue: string, normalizedValue: string) => void
@@ -691,6 +721,16 @@ function validateDom(
     }
   }
 
+  function hasTemplateCustomizationSelector(node: any): boolean {
+    let hasTemplateSelector = false;
+    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
+      if (hasTemplateExpression(normalizedValue)) {
+        hasTemplateSelector = true;
+      }
+    });
+    return hasTemplateSelector;
+  }
+
   function validateConfigBinding(bindingValue: string, node: any) {
     const trimmed = bindingValue.trim();
     if (!trimmed.startsWith("{")) {
@@ -707,6 +747,10 @@ function validateDom(
     const configObject = parseConfigObject(bindingValue);
     const range = getRange(content, node);
     if (!configObject) {
+      if (hasTemplateExpression(bindingValue)) {
+        return;
+      }
+
       pushHtmlDiagnostic(
         diagnostics,
         suppression,
@@ -752,7 +796,7 @@ function validateDom(
     }
 
     const normalizedValue = rawValue.trim();
-    if (!normalizedValue.length) {
+    if (!normalizedValue.length || hasTemplateExpression(normalizedValue)) {
       return;
     }
 
@@ -773,6 +817,10 @@ function validateDom(
 
 
   function validateControlStateBinding(bindingValue: string, node: any) {
+    if (hasTemplateExpression(bindingValue)) {
+      return;
+    }
+
     const parts = bindingValue.split(".");
     const range = getRange(content, node);
     if (parts.length !== 2) {
@@ -827,7 +875,11 @@ function validateDom(
     }
 
     const configObject = parseConfigObject(rawConfig);
-    return Boolean(configObject && Object.prototype.hasOwnProperty.call(configObject, "id"));
+    if (configObject) {
+      return Object.prototype.hasOwnProperty.call(configObject, "id");
+    }
+
+    return hasTemplateExpression(rawConfig);
   }
 }
 
@@ -840,7 +892,7 @@ function validateIncludeNode(
   suppression: SuppressionEngine
 ) {
   const includeUrl = node.attribs?.url;
-  if (typeof includeUrl !== "string" || !includeUrl.length) {
+  if (typeof includeUrl !== "string" || !includeUrl.length || hasTemplateExpression(includeUrl)) {
     return;
   }
 
@@ -902,6 +954,10 @@ function shouldIgnoreIncludeAttribute(attributeName: string): boolean {
   }
 
   return false;
+}
+
+function hasTemplateExpression(value: string | undefined): boolean {
+  return typeof value === "string" && /{{\s*[^}]+\s*}}/.test(value);
 }
 
 function getAttributeValueRange(
