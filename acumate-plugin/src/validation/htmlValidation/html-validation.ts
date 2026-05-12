@@ -14,7 +14,7 @@ import {
   parseConfigObject,
   filterClassesBySource,
 } from "../../utils";
-import { findParentViewName } from "../../providers/html-shared";
+import { findParentViewName, findViewNameAtOrAbove } from "../../providers/html-shared";
 import { getIncludeMetadata, resolveIncludeFilePath } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
@@ -540,7 +540,7 @@ function validateDom(
       }
 
       for (const target of nodes) {
-        const candidateViewName = findParentViewName(target);
+        const candidateViewName = findViewNameAtOrAbove(target);
         if (candidateViewName) {
           selectorViewName = candidateViewName;
           return;
@@ -572,7 +572,7 @@ function validateDom(
       }
 
       for (const target of nodes) {
-        const candidateViewName = findParentViewName(target);
+        const candidateViewName = findViewNameAtOrAbove(target);
         if (candidateViewName) {
           selectorViewName = candidateViewName;
           return;

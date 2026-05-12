@@ -639,6 +639,19 @@ describe('HTML definition provider integration', () => {
 		);
 	});
 
+	it('navigates from qp-include child field name to host TS definition via include selector target', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="HostField"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for host field inside qp-include');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestIncludeFieldModificationHost.ts')),
+			'Expected navigation to host screen TS file'
+		);
+	});
+
 	it('navigates from selector-injected field name to TS definition', async () => {
 		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
 		const provider = new HtmlDefinitionProvider();

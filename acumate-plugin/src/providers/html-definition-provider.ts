@@ -19,6 +19,7 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	findParentViewName,
+	findViewNameAtOrAbove,
 } from './html-shared';
 import { resolveIncludeFilePath } from '../services/include-service';
 import {
@@ -199,7 +200,8 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 				attributeContext.value,
 				elementNode,
 				documentMetadataContext,
-				baseScreenDocument
+				includeContext?.templateDocument ?? baseScreenDocument,
+				includeContext?.parameterValues
 			);
 			if (locations.length) {
 				return locations;
@@ -482,7 +484,7 @@ function getViewNameFromCustomizationSelectors(
 		}
 
 		for (const candidate of nodes) {
-			const viewName = findParentViewName(candidate);
+			const viewName = findViewNameAtOrAbove(candidate);
 			if (viewName) {
 				return viewName;
 			}
