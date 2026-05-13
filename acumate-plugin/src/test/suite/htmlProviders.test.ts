@@ -289,6 +289,16 @@ describe('HTML completion provider integration', () => {
 		assert.ok(labels.includes('AddBlanketLineOK'), 'AddBlanketLineOK action not suggested');
 	});
 
+	it('suggests PXAction names from using view context', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'state.bind="ConfigureEntry"', 'state.bind="'.length + 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for using view state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ConfigureEntry'), 'ConfigureEntry not suggested from using view');
+	});
+
 	it('suggests field names for using containers inheriting parent views', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlCompletionProvider();
@@ -550,6 +560,19 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
 			'Expected action definition inside TestScreen.ts'
+		);
+	});
+
+	it('navigates from using view state.bind attribute to PXAction definition', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'state.bind="ConfigureEntry"', 'state.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected using view action definition inside TestScreenUsing.ts'
 		);
 	});
 

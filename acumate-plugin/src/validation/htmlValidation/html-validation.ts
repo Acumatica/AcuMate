@@ -359,7 +359,9 @@ function validateDom(
       !hasTemplateExpression(actionBinding)
     ) {
       const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
-      if (!actionLookup.has(actionBinding) && !panelHasAction) {
+      const scopedViewName = findParentViewName(node);
+      const viewHasAction = resolveView(scopedViewName)?.viewClass?.properties.get(actionBinding)?.kind === "action";
+      if (!actionLookup.has(actionBinding) && !panelHasAction && !viewHasAction) {
         const range = getRange(content, node);
         pushHtmlDiagnostic(
           diagnostics,

@@ -90,6 +90,17 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(diagnostics.some(d => d.message.includes('<using>')), 'Expected invalid using view diagnostic');
 	});
 
+	it('accepts actions declared on the current using view', async () => {
+		const document = await openFixtureDocument('TestScreenUsing.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute must reference a valid PXAction')).length,
+			0,
+			'Expected no invalid PXAction diagnostics when binding to using view actions'
+		);
+	});
+
 	it('accepts valid screen extension html by combining screen metadata', async () => {
 		const document = await vscode.workspace.openTextDocument(screenExtensionFixture);
 		await validateHtmlFile(document);

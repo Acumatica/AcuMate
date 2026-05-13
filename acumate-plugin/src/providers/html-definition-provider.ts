@@ -182,7 +182,9 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		if (attributeContext.attributeName === 'state.bind') {
-			const actionProperty = findActionProperty(attributeContext.value, screenClasses);
+			const actionProperty =
+				findActionProperty(attributeContext.value, screenClasses) ??
+				findViewActionProperty(attributeContext.value, elementNode, documentMetadataContext);
 			if (!actionProperty) {
 				return;
 			}
@@ -433,6 +435,23 @@ function findActionProperty(actionName: string | undefined, screenClasses: Colle
 	}
 	const actions = collectActionProperties(screenClasses);
 	return actions.get(actionName);
+}
+
+function findViewActionProperty(
+	actionName: string | undefined,
+	elementNode: any,
+	metadataContext: DefinitionMetadataContext
+): ClassPropertyInfo | undefined {
+	if (!actionName) {
+		return undefined;
+	}
+
+	const viewName = findParentViewName(elementNode);
+	const viewClass = viewName
+		? resolveViewBinding(viewName, metadataContext.screenClasses, metadataContext.classInfoLookup)?.viewClass
+		: undefined;
+	const actionProperty = viewClass?.properties.get(actionName);
+	return actionProperty?.kind === 'action' ? actionProperty : undefined;
 }
 
 function parseControlStateBinding(value: string | undefined): { viewName: string; fieldName: string } | undefined {

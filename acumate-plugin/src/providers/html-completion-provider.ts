@@ -121,7 +121,7 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		if (attributeContext.attributeName === 'state.bind') {
-			return this.createActionCompletions(screenClasses);
+			return this.createActionCompletions(screenClasses, classInfoLookup, elementNode);
 		}
 
 		if (attributeContext.attributeName === 'control-state.bind' && attributeContext.tagName === 'qp-field') {
@@ -590,14 +590,38 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		return items;
 	}
 
-	private createActionCompletions(screenClasses: CollectedClassInfo[]): vscode.CompletionItem[] {
+	private createActionCompletions(
+		screenClasses: CollectedClassInfo[],
+		classInfoLookup: Map<string, CollectedClassInfo>,
+		elementNode: any
+	): vscode.CompletionItem[] {
 		const actionMap = collectActionProperties(screenClasses);
 		const items: vscode.CompletionItem[] = [];
-		actionMap.forEach((property, name) => {
+		const seen = new Set<string>();
+		const addAction = (name: string, property: ClassPropertyInfo) => {
+			if (seen.has(name)) {
+				return;
+			}
+			seen.add(name);
 			const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Function);
 			item.detail = property.typeName ?? 'PXActionState';
 			items.push(item);
+		};
+
+		actionMap.forEach((property, name) => {
+			addAction(name, property);
 		});
+
+		const viewName = findParentViewName(elementNode);
+		const viewClass = viewName
+			? resolveViewBinding(viewName, screenClasses, classInfoLookup)?.viewClass
+			: undefined;
+		viewClass?.properties.forEach((property, name) => {
+			if (property.kind === 'action') {
+				addAction(name, property);
+			}
+		});
+
 		return items;
 	}
 
