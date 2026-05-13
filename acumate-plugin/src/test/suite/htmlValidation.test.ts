@@ -184,6 +184,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('accepts qualified view action references in qp-button state.bind attributes', async () => {
+		const document = await openFixtureDocument('TestQualifiedActionBinding.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute must reference a valid PXAction')).length,
+			0,
+			'Expected no PXAction diagnostics for qualified view action binding'
+		);
+	});
+
+	it('reports missing qualified view action references in qp-button state.bind attributes', async () => {
+		const document = await openFixtureDocument('TestQualifiedActionBindingInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('state.bind attribute must reference a valid PXAction')),
+			'Expected PXAction diagnostic for invalid qualified view action binding'
+		);
+	});
+
 	it('accepts non-button state.bind values that reference fields', async () => {
 		const document = await openFixtureDocument('TestStateFieldBinding.html');
 		await validateHtmlFile(document);

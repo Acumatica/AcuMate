@@ -307,10 +307,7 @@ function validateDom(
       !hasTemplateExpression(actionBinding) &&
       isActionStateBindTag(normalizedTagName)
     ) {
-      const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
-      const scopedViewName = findParentViewName(node);
-      const viewHasAction = resolveView(scopedViewName)?.viewClass?.properties.get(actionBinding)?.kind === "action";
-      if (!actionLookup.has(actionBinding) && !panelHasAction && !viewHasAction) {
+      if (!resolveActionBinding(actionBinding, node)) {
         const range = getRange(content, node);
         pushHtmlDiagnostic(
           diagnostics,
@@ -529,6 +526,18 @@ function validateDom(
         );
       }
     });
+  }
+
+  function resolveActionBinding(actionBinding: string, node: any): boolean {
+    const qualifiedAction = parseQualifiedActionBinding(actionBinding);
+    if (qualifiedAction) {
+      return resolveView(qualifiedAction.viewName)?.viewClass?.properties.get(qualifiedAction.actionName)?.kind === "action";
+    }
+
+    const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
+    const scopedViewName = findParentViewName(node);
+    const viewHasAction = resolveView(scopedViewName)?.viewClass?.properties.get(actionBinding)?.kind === "action";
+    return actionLookup.has(actionBinding) || panelHasAction || viewHasAction;
   }
 
   function getSelectorValidationDocuments(): BaseScreenDocument[] {
@@ -809,6 +818,25 @@ function shouldIgnoreIncludeAttribute(attributeName: string): boolean {
   }
 
   return false;
+}
+
+function parseQualifiedActionBinding(value: string | undefined): { viewName: string; actionName: string } | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parts = value.split(".");
+  if (parts.length !== 2) {
+    return undefined;
+  }
+
+  const viewName = parts[0]?.trim();
+  const actionName = parts[1]?.trim();
+  if (!viewName || !actionName) {
+    return undefined;
+  }
+
+  return { viewName, actionName };
 }
 
 function getAttributeValueRange(

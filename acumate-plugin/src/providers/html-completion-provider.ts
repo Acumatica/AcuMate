@@ -125,7 +125,7 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 		if (attributeContext.attributeName === 'state.bind') {
 			return isActionStateBindTag(attributeContext.tagName)
-				? this.createActionCompletions(screenClasses, classInfoLookup, elementNode)
+				? this.createActionCompletions(screenClasses, classInfoLookup, elementNode, attributeContext.value)
 				: this.createControlStateCompletions(attributeContext.value, screenClasses, classInfoLookup);
 		}
 
@@ -642,13 +642,18 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 	private createActionCompletions(
 		screenClasses: CollectedClassInfo[],
 		classInfoLookup: Map<string, CollectedClassInfo>,
-		elementNode: any
+		elementNode: any,
+		currentValue?: string
 	): vscode.CompletionItem[] {
+		const normalizedPrefix = (currentValue ?? '').trim().toLowerCase();
 		const actionMap = collectActionProperties(screenClasses);
 		const items: vscode.CompletionItem[] = [];
 		const seen = new Set<string>();
 		const addAction = (name: string, property: ClassPropertyInfo) => {
 			if (seen.has(name)) {
+				return;
+			}
+			if (normalizedPrefix && !name.toLowerCase().startsWith(normalizedPrefix)) {
 				return;
 			}
 			seen.add(name);
@@ -670,6 +675,21 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 				addAction(name, property);
 			}
 		});
+
+		for (const screenClass of screenClasses) {
+			for (const [propertyName, property] of screenClass.properties) {
+				if (property.kind !== 'view' && property.kind !== 'viewCollection') {
+					continue;
+				}
+
+				const viewClass = resolveViewBinding(propertyName, screenClasses, classInfoLookup)?.viewClass;
+				viewClass?.properties.forEach((viewProperty, actionName) => {
+					if (viewProperty.kind === 'action') {
+						addAction(`${propertyName}.${actionName}`, viewProperty);
+					}
+				});
+			}
+		}
 
 		return items;
 	}

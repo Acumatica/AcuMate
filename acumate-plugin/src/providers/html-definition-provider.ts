@@ -181,6 +181,7 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		if (attributeContext.attributeName === 'state.bind') {
 			if (isActionStateBindTag(attributeContext.tagName)) {
 				const actionProperty =
+					findQualifiedViewActionProperty(attributeContext.value, documentMetadataContext) ??
 					findActionProperty(attributeContext.value, screenClasses) ??
 					findViewActionProperty(attributeContext.value, elementNode, documentMetadataContext);
 				if (!actionProperty) {
@@ -334,6 +335,43 @@ function findViewActionProperty(
 		: undefined;
 	const actionProperty = viewClass?.properties.get(actionName);
 	return actionProperty?.kind === 'action' ? actionProperty : undefined;
+}
+
+function findQualifiedViewActionProperty(
+	actionBinding: string | undefined,
+	metadataContext: DefinitionMetadataContext
+): ClassPropertyInfo | undefined {
+	const parsed = parseQualifiedActionBinding(actionBinding);
+	if (!parsed) {
+		return undefined;
+	}
+
+	const viewClass = resolveViewBinding(
+		parsed.viewName,
+		metadataContext.screenClasses,
+		metadataContext.classInfoLookup
+	)?.viewClass;
+	const actionProperty = viewClass?.properties.get(parsed.actionName);
+	return actionProperty?.kind === 'action' ? actionProperty : undefined;
+}
+
+function parseQualifiedActionBinding(value: string | undefined): { viewName: string; actionName: string } | undefined {
+	if (!value) {
+		return undefined;
+	}
+
+	const parts = value.split('.');
+	if (parts.length !== 2) {
+		return undefined;
+	}
+
+	const viewName = parts[0]?.trim();
+	const actionName = parts[1]?.trim();
+	if (!viewName || !actionName) {
+		return undefined;
+	}
+
+	return { viewName, actionName };
 }
 
 function parseControlStateBinding(value: string | undefined): { viewName: string; fieldName: string } | undefined {

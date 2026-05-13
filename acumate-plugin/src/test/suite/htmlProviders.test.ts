@@ -25,6 +25,7 @@ const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletio
 const controlTypeCompletionPath = path.join(fixturesRoot, 'TestControlTypeCompletion.html');
 const duplicateViewNamesFixturePath = path.join(fixturesRoot, 'TestDuplicateViewNames.html');
 const stateFieldBindingPath = path.join(fixturesRoot, 'TestStateFieldBinding.html');
+const qualifiedActionBindingPath = path.join(fixturesRoot, 'TestQualifiedActionBinding.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -399,6 +400,20 @@ describe('HTML completion provider integration', () => {
 		assert.ok(labels.includes('ConfigureEntry'), 'ConfigureEntry not suggested from using view');
 	});
 
+	it('suggests qualified view action names for qp-button state.bind attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(qualifiedActionBindingPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(
+			document,
+			'state.bind="Document.AdjustDocAmt"',
+			'state.bind="Document.'.length
+		);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for qualified action state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('Document.AdjustDocAmt'), 'Document.AdjustDocAmt not suggested');
+	});
+
 	it('suggests view + field pairs for non-button state.bind attributes', async () => {
 		const document = await vscode.workspace.openTextDocument(stateFieldBindingPath);
 		const provider = new HtmlCompletionProvider();
@@ -717,6 +732,23 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
 			'Expected using view action definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from qualified qp-button state.bind attribute to view PXAction definition', async () => {
+		const document = await vscode.workspace.openTextDocument(qualifiedActionBindingPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'state.bind="Document.AdjustDocAmt"',
+			'state.bind="Document.'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qualified view action');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestQualifiedActionBinding.ts')),
+			'Expected qualified view action definition inside TestQualifiedActionBinding.ts'
 		);
 	});
 
