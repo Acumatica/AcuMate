@@ -15,6 +15,7 @@ import {
 	ClassPropertyInfo,
 	createClassInfoLookup,
 	isScreenLikeClass,
+	resolveClassInfoForProperty,
 	tryGetGraphTypeFromExtension
 } from '../../utils';
 import { buildBackendActionSet, buildBackendViewMap, normalizeMetaName } from '../../backend-metadata-utils';
@@ -269,7 +270,7 @@ function compareViewClassesWithGraph(
 			}
 
 			const backendView = backendViewMap.get(normalizedViewName);
-			const viewClassInfo = classInfoLookup.get(property.viewClassName);
+			const viewClassInfo = resolveClassInfoForProperty(property, classInfoLookup);
 			if (!viewClassInfo) {
 				continue;
 			}

@@ -101,6 +101,17 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('resolves view classes by import source when class names collide', async () => {
+		const document = await openFixtureDocument('TestDuplicateViewNames.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('WcID')).length,
+			0,
+			'Expected WcID to resolve against the imported SelectionFilter view class'
+		);
+	});
+
 	it('accepts valid screen extension html by combining screen metadata', async () => {
 		const document = await vscode.workspace.openTextDocument(screenExtensionFixture);
 		await validateHtmlFile(document);

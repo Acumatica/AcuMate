@@ -550,7 +550,47 @@ export function getClassPropertiesFromTs(
 }
 
 export function createClassInfoLookup(classInfos: CollectedClassInfo[]): Map<string, CollectedClassInfo> {
-	return new Map(classInfos.map(info => [info.className, info]));
+	const lookup = new Map<string, CollectedClassInfo>();
+	for (const info of classInfos) {
+		if (!lookup.has(info.className)) {
+			lookup.set(info.className, info);
+		}
+		lookup.set(getClassInfoLookupKey(info.sourceFile.fileName, info.className), info);
+	}
+	return lookup;
+}
+
+function getClassInfoLookupKey(fileName: string | undefined, className: string): string {
+	return `${path.normalize(fileName ?? '')}::${className}`;
+}
+
+export function resolveClassInfoForProperty(
+	property: ClassPropertyInfo,
+	classInfoLookup: Map<string, CollectedClassInfo>
+): CollectedClassInfo | undefined {
+	const className = property.viewClassName;
+	if (!className) {
+		return undefined;
+	}
+
+	const sourceFileName = property.sourceFile.fileName;
+	const localClass = classInfoLookup.get(getClassInfoLookupKey(sourceFileName, className));
+	if (localClass) {
+		return localClass;
+	}
+
+	const moduleSpecifier = getImportModuleSpecifier(property.sourceFile, className);
+	if (moduleSpecifier) {
+		const resolvedPath = resolveModulePath(sourceFileName, moduleSpecifier);
+		const importedClass = resolvedPath
+			? classInfoLookup.get(getClassInfoLookupKey(resolvedPath, className))
+			: undefined;
+		if (importedClass) {
+			return importedClass;
+		}
+	}
+
+	return classInfoLookup.get(className);
 }
 
 export interface ViewResolution {
@@ -578,7 +618,7 @@ export function resolveViewBinding(
 			continue;
 		}
 
-		const viewClass = property.viewClassName ? classInfoLookup.get(property.viewClassName) : undefined;
+		const viewClass = resolveClassInfoForProperty(property, classInfoLookup);
 		return { screenClass, property, viewClass };
 	}
 

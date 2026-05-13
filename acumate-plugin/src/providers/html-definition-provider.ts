@@ -12,6 +12,7 @@ import {
 	collectActionProperties,
 	filterClassesBySource,
 	getLineAndColumnFromIndex,
+	resolveClassInfoForProperty,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -391,9 +392,7 @@ function getFieldDefinitionsFromAnyView(
 				continue;
 			}
 
-			const viewClass = property.viewClassName
-				? metadataContext.classInfoLookup.get(property.viewClassName)
-				: undefined;
+			const viewClass = resolveClassInfoForProperty(property, metadataContext.classInfoLookup);
 			const fieldProperty = viewClass?.properties.get(fieldName);
 			if (fieldProperty?.kind !== 'field') {
 				continue;

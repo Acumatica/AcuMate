@@ -23,6 +23,7 @@ const includeFieldModificationHostPath = path.join(fixturesRoot, 'TestIncludeFie
 const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
 const controlTypeCompletionPath = path.join(fixturesRoot, 'TestControlTypeCompletion.html');
+const duplicateViewNamesFixturePath = path.join(fixturesRoot, 'TestDuplicateViewNames.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -420,6 +421,19 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
 			'Expected field definition inside TestScreen.ts'
+		);
+	});
+
+	it('navigates to the imported view class when class names collide', async () => {
+		const document = await vscode.workspace.openTextDocument(duplicateViewNamesFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="WcID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestDuplicateViewNames.models.ts')),
+			'Expected definition inside the directly imported SelectionFilter model'
 		);
 	});
 
