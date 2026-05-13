@@ -1,47 +1,21 @@
 import vscode from 'vscode';
-import path from 'path';
 import {
 	parseDocumentDom,
 	findNodeAtOffset,
 	elevateToElementNode,
 	getAttributeContext,
-	findParentViewName,
-	findViewNameAtOrAbove,
 	HtmlAttributeContext,
 } from './html-shared';
-import {
-	getRelatedTsFiles,
-	loadClassInfosFromFiles,
-	filterClassesBySource,
-	createClassInfoLookup,
-	filterScreenLikeClasses,
-	resolveViewBinding,
-	CollectedClassInfo,
-} from '../utils';
+import { getRelatedTsFiles } from '../utils';
 import { loadBackendFieldsForView } from './html-backend-utils';
 import { BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
-import { resolveIncludeFilePath } from '../services/include-service';
+import { getBaseScreenDocument } from '../services/screen-html-service';
 import {
-	BaseScreenDocument,
-	getBaseScreenDocument,
-	getCustomizationSelectorAttributes,
-	loadHtmlDocument,
-	queryBaseScreenElements,
-} from '../services/screen-html-service';
-
-interface FieldHoverResolution {
-	fieldName: string;
-	viewName: string;
-	backendScreenClasses: CollectedClassInfo[];
-}
-
-interface IncludeFieldHoverContext {
-	classInfoLookup: Map<string, CollectedClassInfo>;
-	screenClasses: CollectedClassInfo[];
-	backendScreenClasses: CollectedClassInfo[];
-	templateDocument?: BaseScreenDocument;
-	parameterValues: Map<string, string>;
-}
+	getIncludeFieldContext,
+	loadHtmlFieldMetadataContext,
+	parseFieldReference,
+	resolveHtmlField,
+} from '../services/html-field-context-service';
 
 export function registerHtmlHoverProvider(context: vscode.ExtensionContext) {
 	const provider = vscode.languages.registerHoverProvider(
@@ -105,37 +79,61 @@ async function buildFieldHover(
 	}
 
 	const tsFilePaths = getRelatedTsFiles(htmlFilePath);
-	if (!tsFilePaths.length) {
+	const hostContext = loadHtmlFieldMetadataContext(tsFilePaths);
+	if (!hostContext) {
 		return undefined;
 	}
 
-	const classInfos = loadClassInfosFromFiles(tsFilePaths);
-	if (!classInfos.length) {
-		return undefined;
-	}
-
-	const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
-	if (!relevantClassInfos.length) {
-		return undefined;
-	}
-
-	const screenClasses = filterScreenLikeClasses(relevantClassInfos);
-	if (!screenClasses.length) {
-		return undefined;
-	}
-
-	const classInfoLookup = createClassInfoLookup(classInfos);
-	const fieldReference = parseFieldName(fieldName);
+	const fieldReference = parseFieldReference(fieldName);
+	const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+	const includeContext = getIncludeFieldContext({
+		documentPath: htmlFilePath,
+		elementNode,
+		hostTsFilePaths: tsFilePaths,
+		hostScreenClasses: hostContext.screenClasses,
+		workspaceRoots,
+	});
+	const includeResolution = includeContext
+		? resolveHtmlField({
+			fieldReference,
+			elementNode,
+			metadataContext: includeContext,
+			selectorDocument: includeContext.templateDocument,
+			parameterValues: includeContext.parameterValues,
+			allowAnyViewWhenUnscoped: true,
+			useParentView: false,
+		})
+		: undefined;
+	const hostIncludeSelectorResolution = includeContext
+		? resolveHtmlField({
+			fieldReference,
+			elementNode,
+			metadataContext: hostContext,
+			selectorDocument: includeContext.templateDocument,
+		})
+		: undefined;
+	const hostBaseResolution = resolveHtmlField({
+		fieldReference,
+		elementNode,
+		metadataContext: hostContext,
+		selectorDocument: getBaseScreenDocument(htmlFilePath),
+	});
+	const hostResolution = hostIncludeSelectorResolution?.viewResolution
+		? hostIncludeSelectorResolution
+		: hostBaseResolution;
 	const hoverResolution =
-		resolveIncludeFieldHover(htmlFilePath, elementNode, tsFilePaths, screenClasses, fieldReference) ??
-		resolveHostFieldHover(htmlFilePath, elementNode, screenClasses, classInfoLookup, fieldReference);
-	if (!hoverResolution) {
+		includeResolution?.viewName && includeResolution.viewResolution && !includeResolution.hasTemplatedBinding
+			? includeResolution
+			: hostResolution;
+	if (!hoverResolution?.viewName || hoverResolution.hasTemplatedBinding) {
 		return undefined;
 	}
 
 	const backendFields = await loadBackendFieldsForView(
 		hoverResolution.viewName,
-		hoverResolution.backendScreenClasses
+		hoverResolution === includeResolution
+			? includeContext?.hostScreenClasses ?? hostContext.screenClasses
+			: hostContext.screenClasses
 	);
 	if (!backendFields?.size) {
 		return undefined;
@@ -157,235 +155,6 @@ async function buildFieldHover(
 	}
 
 	return new vscode.Hover(markdown, attributeContext.valueRange);
-}
-
-function resolveHostFieldHover(
-	htmlFilePath: string,
-	elementNode: any,
-	screenClasses: CollectedClassInfo[],
-	classInfoLookup: Map<string, CollectedClassInfo>,
-	fieldReference: FieldReference
-): FieldHoverResolution | undefined {
-	const viewName =
-		fieldReference.viewName ??
-		findParentViewName(elementNode) ??
-		getViewNameFromCustomizationSelectors(elementNode, getBaseScreenDocument(htmlFilePath));
-	if (!viewName || hasTemplateExpression(viewName) || hasTemplateExpression(fieldReference.fieldName)) {
-		return undefined;
-	}
-
-	const resolution = resolveViewBinding(viewName, screenClasses, classInfoLookup);
-	if (!resolution) {
-		return undefined;
-	}
-
-	return {
-		fieldName: fieldReference.fieldName,
-		viewName,
-		backendScreenClasses: screenClasses,
-	};
-}
-
-function resolveIncludeFieldHover(
-	htmlFilePath: string,
-	elementNode: any,
-	hostTsFilePaths: string[],
-	hostScreenClasses: CollectedClassInfo[],
-	fieldReference: FieldReference
-): FieldHoverResolution | undefined {
-	const context = getIncludeFieldHoverContext(
-		htmlFilePath,
-		elementNode,
-		hostTsFilePaths,
-		hostScreenClasses
-	);
-	if (!context) {
-		return undefined;
-	}
-
-	const viewName =
-		fieldReference.viewName ??
-		resolveTemplateValue(
-			getViewNameFromCustomizationSelectors(elementNode, context.templateDocument),
-			context.parameterValues
-		) ??
-		findViewNameContainingField(fieldReference.fieldName, context);
-	if (!viewName || hasTemplateExpression(viewName) || hasTemplateExpression(fieldReference.fieldName)) {
-		return undefined;
-	}
-
-	const resolution = resolveViewBinding(viewName, context.screenClasses, context.classInfoLookup);
-	if (!resolution) {
-		return undefined;
-	}
-
-	return {
-		fieldName: fieldReference.fieldName,
-		viewName,
-		backendScreenClasses: context.backendScreenClasses,
-	};
-}
-
-function getIncludeFieldHoverContext(
-	htmlFilePath: string,
-	elementNode: any,
-	hostTsFilePaths: string[],
-	hostScreenClasses: CollectedClassInfo[]
-): IncludeFieldHoverContext | undefined {
-	const includeNode = findNearestIncludeNode(elementNode);
-	const includeUrl = includeNode?.attribs?.url;
-	if (typeof includeUrl !== 'string' || !includeUrl.length) {
-		return undefined;
-	}
-
-	const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
-	const includePath = resolveIncludeFilePath(includeUrl, htmlFilePath, workspaceRoots);
-	if (!includePath) {
-		return undefined;
-	}
-
-	const includeTsFilePaths = getRelatedTsFiles(includePath);
-	const combinedTsFilePaths = dedupeFilePaths([...hostTsFilePaths, ...includeTsFilePaths]);
-	const classInfos = combinedTsFilePaths.length ? loadClassInfosFromFiles(combinedTsFilePaths) : [];
-	const relevantClassInfos = filterClassesBySource(classInfos, includeTsFilePaths);
-	const screenClasses = filterScreenLikeClasses(relevantClassInfos);
-	if (!screenClasses.length) {
-		return undefined;
-	}
-
-	return {
-		classInfoLookup: createClassInfoLookup(classInfos),
-		screenClasses,
-		backendScreenClasses: hostScreenClasses,
-		templateDocument: loadHtmlDocument(includePath),
-		parameterValues: getIncludeParameterValues(includeNode),
-	};
-}
-
-interface FieldReference {
-	viewName?: string;
-	fieldName: string;
-}
-
-function parseFieldName(rawFieldName: string): FieldReference {
-	const trimmed = rawFieldName.trim();
-	const dotIndex = trimmed.indexOf('.');
-	if (dotIndex === -1) {
-		return { fieldName: trimmed };
-	}
-
-	const viewName = trimmed.substring(0, dotIndex).trim();
-	const fieldName = trimmed.substring(dotIndex + 1).trim();
-	return { viewName, fieldName };
-}
-
-function getViewNameFromCustomizationSelectors(
-	node: any,
-	document: BaseScreenDocument | undefined
-): string | undefined {
-	if (!document?.dom?.length) {
-		return undefined;
-	}
-
-	const attributes = node?.attribs;
-	if (!attributes) {
-		return undefined;
-	}
-
-	for (const attributeName of getCustomizationSelectorAttributes()) {
-		const rawValue = attributes[attributeName];
-		if (typeof rawValue !== 'string') {
-			continue;
-		}
-
-		const normalizedValue = rawValue.trim();
-		if (!normalizedValue.length || hasTemplateExpression(normalizedValue)) {
-			continue;
-		}
-
-		const { nodes, error } = queryBaseScreenElements(document, normalizedValue);
-		if (error || !nodes.length) {
-			continue;
-		}
-
-		for (const target of nodes) {
-			const viewName = findViewNameAtOrAbove(target);
-			if (viewName) {
-				return viewName;
-			}
-		}
-	}
-
-	return undefined;
-}
-
-function findViewNameContainingField(
-	fieldName: string,
-	context: IncludeFieldHoverContext
-): string | undefined {
-	for (const screenClass of context.screenClasses) {
-		for (const propertyName of screenClass.properties.keys()) {
-			const resolution = resolveViewBinding(propertyName, [screenClass], context.classInfoLookup);
-			const fieldProperty = resolution?.viewClass?.properties.get(fieldName);
-			if (fieldProperty?.kind === 'field') {
-				return propertyName;
-			}
-		}
-	}
-
-	return undefined;
-}
-
-function findNearestIncludeNode(node: any): any | undefined {
-	let current = node;
-	while (current) {
-		if (current.type === 'tag' && current.name === 'qp-include') {
-			return current;
-		}
-
-		current = current.parent ?? current.parentNode;
-	}
-	return undefined;
-}
-
-function getIncludeParameterValues(includeNode: any): Map<string, string> {
-	const values = new Map<string, string>();
-	const attributes = includeNode?.attribs ?? {};
-	for (const [attributeName, attributeValue] of Object.entries(attributes)) {
-		if (typeof attributeValue === 'string') {
-			values.set(attributeName, attributeValue);
-		}
-	}
-	return values;
-}
-
-function resolveTemplateValue(value: string | undefined, parameterValues: Map<string, string>): string | undefined {
-	if (!value) {
-		return value;
-	}
-
-	return value.replace(/{{\s*([^}\s]+)\s*}}/g, (match, parameterName: string) => {
-		const parameterValue = parameterValues.get(parameterName)?.trim();
-		return parameterValue || match;
-	}).trim();
-}
-
-function hasTemplateExpression(value: string | undefined): boolean {
-	return typeof value === 'string' && /{{\s*[^}]+\s*}}/.test(value);
-}
-
-function dedupeFilePaths(filePaths: string[]): string[] {
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const filePath of filePaths) {
-		const normalized = path.normalize(filePath);
-		if (seen.has(normalized)) {
-			continue;
-		}
-		seen.add(normalized);
-		result.push(filePath);
-	}
-	return result;
 }
 
 function buildFieldMarkdown(

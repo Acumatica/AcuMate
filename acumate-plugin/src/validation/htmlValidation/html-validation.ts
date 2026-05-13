@@ -1,4 +1,3 @@
-import path from "path";
 import vscode from "vscode";
 import { Parser, DomHandler } from "htmlparser2";
 import {
@@ -13,23 +12,28 @@ import {
   collectActionProperties,
   parseConfigObject,
   filterClassesBySource,
-  resolveClassInfoForProperty,
 } from "../../utils";
-import { findParentViewName, findViewNameAtOrAbove } from "../../providers/html-shared";
-import { getIncludeMetadata, resolveIncludeFilePath } from "../../services/include-service";
+import { findParentViewName } from "../../providers/html-shared";
+import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
 import { AcuMateContext } from "../../plugin-context";
 import {
   getBaseScreenDocument,
-  isCustomizationSelectorAttribute,
   queryBaseScreenElements,
   BaseScreenDocument,
-  getCustomizationSelectorAttributes,
-  loadHtmlDocument,
   getScreenDocumentDisplayName,
 } from "../../services/screen-html-service";
 import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
+import {
+  HtmlIncludeFieldContext,
+  HtmlIncludeTemplateFieldContextCache,
+  forEachCustomizationSelector,
+  getIncludeFieldContext,
+  hasTemplateCustomizationSelector,
+  hasTemplateExpression,
+  resolveHtmlField,
+} from "../../services/html-field-context-service";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
@@ -49,18 +53,8 @@ const idOptionalTags = new Set([
   "qp-wiki-tooltip",
 ]);
 
-interface IncludeTemplateFieldValidationContext {
-  classInfoMap: Map<string, CollectedClassInfo>;
-  screenClasses: CollectedClassInfo[];
-  templateDocument?: BaseScreenDocument;
-  viewResolutionCache: Map<string, ViewResolution | undefined>;
-}
-
-interface IncludeFieldValidationContext extends IncludeTemplateFieldValidationContext {
-  parameterValues: Map<string, string>;
-}
-
-type IncludeTemplateFieldValidationCache = Map<string, IncludeTemplateFieldValidationContext | undefined>;
+type IncludeFieldValidationContext = HtmlIncludeFieldContext;
+type IncludeTemplateFieldValidationCache = HtmlIncludeTemplateFieldContextCache;
 
 function pushHtmlDiagnostic(
   diagnostics: vscode.Diagnostic[],
@@ -178,6 +172,11 @@ function validateDom(
   const hasScreenMetadata = screenClasses.length > 0;
   const canValidateActions = classProperties.length > 0;
   const viewResolutionCache = new Map<string, ViewResolution | undefined>();
+  const hostFieldMetadataContext = {
+    classInfoLookup: classInfoMap,
+    screenClasses,
+    viewResolutionCache,
+  };
 
   // Screen classes contain PXView and PXViewCollection properties. We cache resolutions so
   // repeated use of the same view name does not require scanning every screen class again.
@@ -196,72 +195,13 @@ function validateDom(
   }
 
   function getIncludeFieldValidationContext(node: any): IncludeFieldValidationContext | undefined {
-    const includeUrl = node.attribs?.url;
-    if (typeof includeUrl !== "string" || !includeUrl.length || hasTemplateExpression(includeUrl)) {
-      return undefined;
-    }
-
-    const includeHtmlPath = resolveIncludeFilePath(includeUrl, htmlFilePath, workspaceRoots);
-    if (!includeHtmlPath) {
-      return undefined;
-    }
-
-    const normalizedIncludePath = path.normalize(includeHtmlPath);
-    const hostTsFilePaths = getRelatedTsFiles(htmlFilePath);
-    const cacheKey = [
-      normalizedIncludePath,
-      ...hostTsFilePaths.map((filePath) => path.normalize(filePath)),
-    ].join("|");
-    let templateContext = includeFieldContextCache.get(cacheKey);
-    if (!includeFieldContextCache.has(cacheKey)) {
-      templateContext = loadIncludeTemplateFieldValidationContext(normalizedIncludePath, hostTsFilePaths);
-      includeFieldContextCache.set(cacheKey, templateContext);
-    }
-
-    if (!templateContext) {
-      return undefined;
-    }
-
-    return {
-      ...templateContext,
-      parameterValues: getIncludeParameterValues(node),
-    };
-  }
-
-  function loadIncludeTemplateFieldValidationContext(
-    includeHtmlPath: string,
-    hostTsFilePaths: string[]
-  ): IncludeTemplateFieldValidationContext | undefined {
-    const includeTsFilePaths = getRelatedTsFiles(includeHtmlPath);
-    const combinedTsFilePaths = dedupeFilePaths([...hostTsFilePaths, ...includeTsFilePaths]);
-    const includeClassProperties = combinedTsFilePaths.length
-      ? loadClassInfosFromFiles(combinedTsFilePaths)
-      : [];
-    const includeRelevantClassInfos = filterClassesBySource(includeClassProperties, includeTsFilePaths);
-    const screenClasses = filterScreenLikeClasses(includeRelevantClassInfos);
-    const templateDocument = loadHtmlDocument(includeHtmlPath);
-
-    if (!screenClasses.length && !templateDocument) {
-      return undefined;
-    }
-
-    return {
-      classInfoMap: createClassInfoLookup(includeClassProperties),
-      screenClasses,
-      templateDocument,
-      viewResolutionCache: new Map(),
-    };
-  }
-
-  function getIncludeParameterValues(node: any): Map<string, string> {
-    const values = new Map<string, string>();
-    const attributes = node.attribs ?? {};
-    for (const [attributeName, attributeValue] of Object.entries(attributes)) {
-      if (typeof attributeValue === "string") {
-        values.set(attributeName, attributeValue);
-      }
-    }
-    return values;
+    return getIncludeFieldContext({
+      documentPath: htmlFilePath,
+      includeNode: node,
+      hostTsFilePaths: getRelatedTsFiles(htmlFilePath),
+      workspaceRoots,
+      cache: includeFieldContextCache,
+    });
   }
 
   // Custom validation logic goes here
@@ -426,51 +366,52 @@ function validateDom(
       node.name === "field" &&
       node.attribs.name
     ) {
-      const viewSpecified = node.attribs.name.includes(".");
-      const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
-
       const isUnboundField = Object.prototype.hasOwnProperty.call(node.attribs, "unbound");
 
       if (!isUnboundField) {
-        let viewName = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
-        let includeViewNameAllowsAnyViewFallback = false;
-        if (!viewName) {
-          viewName = getViewNameFromCustomizationSelectors(node);
-        }
-        if (!viewName && hasTemplateCustomizationSelector(node)) {
+        const hostIncludeSelectorResolution = includeFieldContext
+          ? resolveHtmlField({
+            rawFieldName: node.attribs.name,
+            elementNode: node,
+            metadataContext: hostFieldMetadataContext,
+            selectorDocument: includeFieldContext.templateDocument,
+          })
+          : undefined;
+        const hostBaseResolution = resolveHtmlField({
+          rawFieldName: node.attribs.name,
+          elementNode: node,
+          metadataContext: hostFieldMetadataContext,
+          selectorDocument: baseScreenDocument,
+        });
+        const hostResolution = hostIncludeSelectorResolution?.fieldProperty
+          ? hostIncludeSelectorResolution
+          : hostBaseResolution;
+        if (hostResolution?.hasTemplatedBinding || (!hostResolution?.viewName && hasTemplateCustomizationSelector(node))) {
           return;
         }
-        if (!viewName && includeFieldContext) {
-          const includeViewName = getViewNameFromIncludeCustomizationSelectors(node, includeFieldContext);
-          includeViewNameAllowsAnyViewFallback = hasTemplateExpression(includeViewName);
-          viewName = includeViewName;
-        }
 
-        if (includeFieldContext) {
-          includeViewNameAllowsAnyViewFallback ||= hasTemplateExpression(viewName);
-          viewName = resolveIncludeTemplateValue(viewName, includeFieldContext);
-        }
-
-        const rawFieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
-        const fieldName = includeFieldContext
-          ? resolveIncludeTemplateValue(rawFieldName, includeFieldContext)
-          : rawFieldName;
-        if (hasTemplateExpression(viewName) || hasTemplateExpression(fieldName)) {
+        const includeResolution = !hostResolution?.fieldProperty && includeFieldContext
+          ? resolveHtmlField({
+            rawFieldName: node.attribs.name,
+            elementNode: node,
+            metadataContext: includeFieldContext,
+            selectorDocument: includeFieldContext.templateDocument,
+            parameterValues: includeFieldContext.parameterValues,
+            allowAnyViewWhenUnscoped: true,
+            useParentView: false,
+          })
+          : undefined;
+        if (includeResolution?.hasTemplatedBinding) {
           return;
         }
-        const viewResolution = resolveView(viewName);
-        const viewClass = viewResolution?.viewClass;
-        const fieldProperty = viewClass?.properties.get(fieldName);
+
+        const fieldResolution = hostResolution?.fieldProperty ? hostResolution : includeResolution ?? hostResolution;
         const isValidField =
-          fieldProperty?.kind === "field" ||
-          isFieldDefinedInIncludeContext(
-            fieldName,
-            viewName,
-            includeFieldContext,
-            includeViewNameAllowsAnyViewFallback
-          );
+          fieldResolution?.fieldProperty?.kind === "field";
         if (!isValidField) {
           const range = getRange(content, node);
+          const viewName = fieldResolution?.viewName;
+          const fieldName = fieldResolution?.fieldName ?? node.attribs.name;
           pushHtmlDiagnostic(
             diagnostics,
             suppression,
@@ -590,178 +531,6 @@ function validateDom(
       documents.push(baseScreenDocument);
     }
     return documents;
-  }
-
-  function getViewNameFromCustomizationSelectors(node: any): string | undefined {
-    if (!baseScreenDocument) {
-      return undefined;
-    }
-
-    let selectorViewName: string | undefined;
-    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
-      if (selectorViewName) {
-        return;
-      }
-
-      if (hasTemplateExpression(normalizedValue)) {
-        return;
-      }
-
-      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
-      if (error || !nodes.length) {
-        return;
-      }
-
-      for (const target of nodes) {
-        const candidateViewName = findViewNameAtOrAbove(target);
-        if (candidateViewName) {
-          selectorViewName = candidateViewName;
-          return;
-        }
-      }
-    });
-
-    return selectorViewName;
-  }
-
-  function getViewNameFromIncludeCustomizationSelectors(
-    node: any,
-    context: IncludeFieldValidationContext
-  ): string | undefined {
-    const includeDocument = context.templateDocument;
-    if (!includeDocument) {
-      return undefined;
-    }
-
-    let selectorViewName: string | undefined;
-    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
-      if (selectorViewName) {
-        return;
-      }
-
-      if (hasTemplateExpression(normalizedValue)) {
-        return;
-      }
-
-      const { nodes, error } = queryBaseScreenElements(includeDocument, normalizedValue);
-      if (error || !nodes.length) {
-        return;
-      }
-
-      for (const target of nodes) {
-        const candidateViewName = findViewNameAtOrAbove(target);
-        if (candidateViewName) {
-          selectorViewName = candidateViewName;
-          return;
-        }
-      }
-    });
-
-    return selectorViewName;
-  }
-
-  function isFieldDefinedInIncludeContext(
-    fieldName: string | undefined,
-    viewName: string | undefined,
-    context: IncludeFieldValidationContext | undefined,
-    allowAnyViewFallback = false
-  ): boolean {
-    if (!context || !fieldName || hasTemplateExpression(fieldName)) {
-      return false;
-    }
-
-    const normalizedViewName = viewName?.trim();
-    if (normalizedViewName && !hasTemplateExpression(normalizedViewName)) {
-      const viewResolution = resolveIncludeView(normalizedViewName, context);
-      const fieldProperty = viewResolution?.viewClass?.properties.get(fieldName);
-      if (fieldProperty?.kind === "field") {
-        return true;
-      }
-
-      return allowAnyViewFallback ? isFieldDefinedInAnyIncludeView(fieldName, context) : false;
-    }
-
-    return isFieldDefinedInAnyIncludeView(fieldName, context);
-  }
-
-  function resolveIncludeView(
-    viewName: string,
-    context: IncludeFieldValidationContext
-  ): ViewResolution | undefined {
-    if (context.viewResolutionCache.has(viewName)) {
-      return context.viewResolutionCache.get(viewName);
-    }
-
-    const resolution = resolveViewBinding(viewName, context.screenClasses, context.classInfoMap);
-    context.viewResolutionCache.set(viewName, resolution);
-    return resolution;
-  }
-
-  function isFieldDefinedInAnyIncludeView(
-    fieldName: string,
-    context: IncludeFieldValidationContext
-  ): boolean {
-    for (const screenClass of context.screenClasses) {
-      for (const property of screenClass.properties.values()) {
-        if (property.kind !== "view" && property.kind !== "viewCollection") {
-          continue;
-        }
-
-        const viewClass = resolveClassInfoForProperty(property, context.classInfoMap);
-        const fieldProperty = viewClass?.properties.get(fieldName);
-        if (fieldProperty?.kind === "field") {
-          return true;
-        }
-      }
-    }
-
-    return false;
-  }
-
-  function resolveIncludeTemplateValue(
-    value: string | undefined,
-    context: IncludeFieldValidationContext
-  ): string | undefined {
-    if (!value) {
-      return value;
-    }
-
-    return value.replace(/{{\s*([^}\s]+)\s*}}/g, (match, parameterName: string) => {
-      const parameterValue = context.parameterValues.get(parameterName)?.trim();
-      return parameterValue || match;
-    }).trim();
-  }
-
-  function forEachCustomizationSelector(
-    node: any,
-    callback: (attributeName: string, rawValue: string, normalizedValue: string) => void
-  ) {
-    if (!node?.attribs) {
-      return;
-    }
-
-    for (const [attributeName, attributeValue] of Object.entries(node.attribs)) {
-      if (!isCustomizationSelectorAttribute(attributeName) || typeof attributeValue !== "string") {
-        continue;
-      }
-
-      const normalizedValue = attributeValue.trim();
-      if (!normalizedValue.length) {
-        continue;
-      }
-
-      callback(attributeName, attributeValue, normalizedValue);
-    }
-  }
-
-  function hasTemplateCustomizationSelector(node: any): boolean {
-    let hasTemplateSelector = false;
-    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
-      if (hasTemplateExpression(normalizedValue)) {
-        hasTemplateSelector = true;
-      }
-    });
-    return hasTemplateSelector;
   }
 
   function validateConfigBinding(bindingValue: string, node: any) {
@@ -987,24 +756,6 @@ function shouldIgnoreIncludeAttribute(attributeName: string): boolean {
   }
 
   return false;
-}
-
-function hasTemplateExpression(value: string | undefined): boolean {
-  return typeof value === "string" && /{{\s*[^}]+\s*}}/.test(value);
-}
-
-function dedupeFilePaths(filePaths: string[]): string[] {
-  const seen = new Set<string>();
-  const result: string[] = [];
-  for (const filePath of filePaths) {
-    const normalized = path.normalize(filePath);
-    if (seen.has(normalized)) {
-      continue;
-    }
-    seen.add(normalized);
-    result.push(filePath);
-  }
-  return result;
 }
 
 function getAttributeValueRange(

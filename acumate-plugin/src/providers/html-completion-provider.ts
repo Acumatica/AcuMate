@@ -1,17 +1,13 @@
 import vscode from 'vscode';
-import path from 'path';
 
 import {
 	getRelatedTsFiles,
 	loadClassInfosFromFiles,
 	CollectedClassInfo,
-	createClassInfoLookup,
 	resolveViewBinding,
 	ClassPropertyInfo,
-	filterScreenLikeClasses,
 	collectActionProperties,
 	extractConfigPropertyNames,
-	filterClassesBySource,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -19,30 +15,25 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	findParentViewName,
-	findViewNameAtOrAbove,
 } from './html-shared';
 import {
 	ClientControlMetadata,
 	getClientControlsMetadata,
 } from '../services/client-controls-service';
 import { getScreenTemplates } from '../services/screen-template-service';
-import { getIncludeMetadata, IncludeMetadata, resolveIncludeFilePath } from '../services/include-service';
+import { getIncludeMetadata, IncludeMetadata } from '../services/include-service';
 import { BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
 import { loadBackendFieldsForView } from './html-backend-utils';
+import { getBaseScreenDocument } from '../services/screen-html-service';
 import {
-	BaseScreenDocument,
-	getBaseScreenDocument,
-	getCustomizationSelectorAttributes,
-	loadHtmlDocument,
-	queryBaseScreenElements,
-} from '../services/screen-html-service';
-
-interface IncludeFieldCompletionContext {
-	classInfoLookup: Map<string, CollectedClassInfo>;
-	screenClasses: CollectedClassInfo[];
-	templateDocument?: BaseScreenDocument;
-	parameterValues: Map<string, string>;
-}
+	HtmlIncludeFieldContext,
+	createHtmlFieldMetadataContext,
+	getFieldPropertiesFromViews,
+	getIncludeFieldContext,
+	getParentOrSelectorViewName,
+	getViewNameFromCustomizationSelectors,
+	resolveTemplateValue,
+} from '../services/html-field-context-service';
 
 // Registers completions so HTML view bindings stay in sync with PX metadata.
 export function registerHtmlCompletionProvider(context: vscode.ExtensionContext) {
@@ -119,13 +110,8 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return undefined;
 		}
 
-		const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
-		if (!relevantClassInfos.length) {
-			return undefined;
-		}
-
-		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
+		const metadataContext = createHtmlFieldMetadataContext(classInfos, tsFilePaths);
+		const { classInfoLookup, screenClasses } = metadataContext;
 		// Completions are sourced from the same metadata as validation/definitions to keep behavior consistent.
 
 		if (attributeContext.attributeName === 'view.bind') {
@@ -146,21 +132,35 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field completions are scoped to the PXView resolved from the surrounding markup.
-			const includeContext = this.getIncludeFieldCompletionContext(
-				document.uri.fsPath,
+			const includeContext = getIncludeFieldContext({
+				documentPath: document.uri.fsPath,
 				elementNode,
-				tsFilePaths
-			);
+				hostTsFilePaths: tsFilePaths,
+				workspaceRoots: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath),
+			});
 			if (includeContext) {
+				const hostSelectorViewName = resolveTemplateValue(
+					getViewNameFromCustomizationSelectors(elementNode, includeContext.templateDocument),
+					includeContext.parameterValues
+				);
+				const hostSelectorResolution = hostSelectorViewName
+					? resolveViewBinding(hostSelectorViewName, screenClasses, classInfoLookup)
+					: undefined;
+				if (hostSelectorResolution?.viewClass) {
+					const backendFields = await loadBackendFieldsForView(hostSelectorViewName!, screenClasses);
+					return this.createFieldCompletions(hostSelectorResolution.viewClass.properties, backendFields);
+				}
+
 				const items = this.createIncludeFieldNameCompletions(elementNode, includeContext);
 				if (items?.length) {
 					return items;
 				}
 			}
 
-			const viewName =
-				findParentViewName(elementNode) ??
-				this.getViewNameFromCustomizationSelectors(elementNode, getBaseScreenDocument(document.uri.fsPath));
+			const viewName = getParentOrSelectorViewName(
+				elementNode,
+				getBaseScreenDocument(document.uri.fsPath)
+			);
 			if (!viewName) {
 				return undefined;
 			}
@@ -396,169 +396,20 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		return items.length ? items : undefined;
 	}
 
-	private getIncludeFieldCompletionContext(
-		documentPath: string,
-		elementNode: any,
-		hostTsFilePaths: string[]
-	): IncludeFieldCompletionContext | undefined {
-		const includeNode = this.findNearestIncludeNode(elementNode);
-		if (!includeNode) {
-			return undefined;
-		}
-
-		const includeUrl = includeNode.attribs?.url;
-		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
-		const includePath = resolveIncludeFilePath(includeUrl, documentPath, workspaceRoots);
-		if (!includePath) {
-			return undefined;
-		}
-
-		const includeTsFilePaths = getRelatedTsFiles(includePath);
-		const combinedTsFilePaths = this.dedupeFilePaths([...hostTsFilePaths, ...includeTsFilePaths]);
-		const classInfos = combinedTsFilePaths.length ? loadClassInfosFromFiles(combinedTsFilePaths) : [];
-		const relevantClassInfos = filterClassesBySource(classInfos, includeTsFilePaths);
-		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
-		if (!screenClasses.length) {
-			return undefined;
-		}
-
-		return {
-			classInfoLookup: createClassInfoLookup(classInfos),
-			screenClasses,
-			templateDocument: loadHtmlDocument(includePath),
-			parameterValues: this.getIncludeParameterValues(includeNode),
-		};
-	}
-
 	private createIncludeFieldNameCompletions(
 		elementNode: any,
-		context: IncludeFieldCompletionContext
+		context: HtmlIncludeFieldContext
 	): vscode.CompletionItem[] | undefined {
-		const selectorViewName = this.getViewNameFromCustomizationSelectors(elementNode, context.templateDocument);
-		const viewName = this.resolveTemplateValue(selectorViewName, context.parameterValues);
+		const selectorViewName = getViewNameFromCustomizationSelectors(elementNode, context.templateDocument);
+		const viewName = resolveTemplateValue(selectorViewName, context.parameterValues);
 		if (viewName) {
 			const resolution = resolveViewBinding(viewName, context.screenClasses, context.classInfoLookup);
 			const viewClass = resolution?.viewClass;
 			return viewClass ? this.createFieldCompletions(viewClass.properties) : undefined;
 		}
 
-		return this.createFieldCompletionsFromViews(context.screenClasses, context.classInfoLookup);
-	}
-
-	private createFieldCompletionsFromViews(
-		screenClasses: CollectedClassInfo[],
-		classInfoLookup: Map<string, CollectedClassInfo>
-	): vscode.CompletionItem[] | undefined {
-		const fields = new Map<string, ClassPropertyInfo>();
-		for (const screenClass of screenClasses) {
-			for (const propertyName of screenClass.properties.keys()) {
-				const resolution = resolveViewBinding(propertyName, [screenClass], classInfoLookup);
-				const viewClass = resolution?.viewClass;
-				if (!viewClass) {
-					continue;
-				}
-
-				for (const [fieldName, fieldProperty] of viewClass.properties) {
-					if (fieldProperty.kind === 'field' && !fields.has(fieldName)) {
-						fields.set(fieldName, fieldProperty);
-					}
-				}
-			}
-		}
-
+		const fields = getFieldPropertiesFromViews(context);
 		return fields.size ? this.createFieldCompletions(fields) : undefined;
-	}
-
-	private getViewNameFromCustomizationSelectors(
-		node: any,
-		document: BaseScreenDocument | undefined
-	): string | undefined {
-		if (!document?.dom?.length) {
-			return undefined;
-		}
-
-		const attributes = node?.attribs;
-		if (!attributes) {
-			return undefined;
-		}
-
-		for (const attributeName of getCustomizationSelectorAttributes()) {
-			const rawValue = attributes[attributeName];
-			if (typeof rawValue !== 'string') {
-				continue;
-			}
-
-			const normalizedValue = rawValue.trim();
-			if (!normalizedValue.length || this.hasTemplateExpression(normalizedValue)) {
-				continue;
-			}
-
-			const { nodes, error } = queryBaseScreenElements(document, normalizedValue);
-			if (error || !nodes.length) {
-				continue;
-			}
-
-			for (const target of nodes) {
-				const viewName = findViewNameAtOrAbove(target);
-				if (viewName) {
-					return viewName;
-				}
-			}
-		}
-
-		return undefined;
-	}
-
-	private findNearestIncludeNode(node: any): any | undefined {
-		let current = node;
-		while (current) {
-			if (current.type === 'tag' && current.name === 'qp-include') {
-				return current;
-			}
-
-			current = current.parent ?? current.parentNode;
-		}
-		return undefined;
-	}
-
-	private getIncludeParameterValues(includeNode: any): Map<string, string> {
-		const values = new Map<string, string>();
-		const attributes = includeNode?.attribs ?? {};
-		for (const [attributeName, attributeValue] of Object.entries(attributes)) {
-			if (typeof attributeValue === 'string') {
-				values.set(attributeName, attributeValue);
-			}
-		}
-		return values;
-	}
-
-	private resolveTemplateValue(value: string | undefined, parameterValues: Map<string, string>): string | undefined {
-		if (!value) {
-			return value;
-		}
-
-		return value.replace(/{{\s*([^}\s]+)\s*}}/g, (match, parameterName: string) => {
-			const parameterValue = parameterValues.get(parameterName)?.trim();
-			return parameterValue || match;
-		}).trim();
-	}
-
-	private hasTemplateExpression(value: string | undefined): boolean {
-		return typeof value === 'string' && /{{\s*[^}]+\s*}}/.test(value);
-	}
-
-	private dedupeFilePaths(filePaths: string[]): string[] {
-		const seen = new Set<string>();
-		const result: string[] = [];
-		for (const filePath of filePaths) {
-			const normalized = path.normalize(filePath);
-			if (seen.has(normalized)) {
-				continue;
-			}
-			seen.add(normalized);
-			result.push(filePath);
-		}
-		return result;
 	}
 
 	private isInsideDataFeed(node: any): boolean {

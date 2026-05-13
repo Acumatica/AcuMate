@@ -1,19 +1,14 @@
 import vscode from 'vscode';
 import ts from 'typescript';
-import path from 'path';
 
 import {
 	getRelatedTsFiles,
 	loadClassInfosFromFiles,
 	CollectedClassInfo,
 	ClassPropertyInfo,
-	createClassInfoLookup,
 	resolveViewBinding,
-	filterScreenLikeClasses,
 	collectActionProperties,
-	filterClassesBySource,
 	getLineAndColumnFromIndex,
-	resolveClassInfoForProperty,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -21,7 +16,6 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	findParentViewName,
-	findViewNameAtOrAbove,
 } from './html-shared';
 import { resolveIncludeFilePath } from '../services/include-service';
 import {
@@ -29,20 +23,20 @@ import {
 	isCustomizationSelectorAttribute,
 	queryBaseScreenElements,
 	BaseScreenDocument,
-	getCustomizationSelectorAttributes,
-	loadHtmlDocument,
 	getDocumentForNode,
 } from '../services/screen-html-service';
+import {
+	HtmlFieldMetadataContext,
+	HtmlIncludeFieldContext,
+	createHtmlFieldMetadataContext,
+	findFieldsInAnyView,
+	getIncludeFieldContext,
+	parseFieldReference,
+	resolveHtmlField,
+} from '../services/html-field-context-service';
 
-interface DefinitionMetadataContext {
-	classInfoLookup: Map<string, CollectedClassInfo>;
-	screenClasses: CollectedClassInfo[];
-}
-
-interface IncludeDefinitionContext extends DefinitionMetadataContext {
-	templateDocument?: BaseScreenDocument;
-	parameterValues: Map<string, string>;
-}
+type DefinitionMetadataContext = HtmlFieldMetadataContext;
+type IncludeDefinitionContext = HtmlIncludeFieldContext;
 
 // Hooks VS Code so view/field bindings support "Go to Definition" directly from HTML.
 export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext) {
@@ -80,7 +74,13 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 
 		const baseScreenDocument = getBaseScreenDocument(document.uri.fsPath);
 		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
-		const includeContext = getIncludeDefinitionContext(elementNode, document.uri.fsPath, workspaceRoots);
+		const hostTsFilePaths = getRelatedTsFiles(document.uri.fsPath);
+		const includeContext = getIncludeFieldContext({
+			documentPath: document.uri.fsPath,
+			elementNode,
+			hostTsFilePaths,
+			workspaceRoots,
+		});
 
 		if (attributeContext.attributeName === 'url' && attributeContext.tagName === 'qp-include') {
 			const includePath = resolveIncludeFilePath(attributeContext.value, document.uri.fsPath, workspaceRoots);
@@ -129,7 +129,7 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			}
 		}
 
-		const tsFilePaths = getRelatedTsFiles(document.uri.fsPath);
+		const tsFilePaths = hostTsFilePaths;
 		if (!tsFilePaths.length) {
 			return;
 		}
@@ -139,14 +139,8 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return;
 		}
 
-		const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
-		if (!relevantClassInfos.length) {
-			return;
-		}
-
-		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
-		const documentMetadataContext: DefinitionMetadataContext = { classInfoLookup, screenClasses };
+		const documentMetadataContext = createHtmlFieldMetadataContext(classInfos, tsFilePaths);
+		const { classInfoLookup, screenClasses } = documentMetadataContext;
 		// Resolved metadata lets us jump from HTML bindings directly to the backing TypeScript symbol.
 
 		if (attributeContext.attributeName === 'view.bind' || (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using')) {
@@ -224,61 +218,8 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 	}
 }
 
-function getIncludeDefinitionContext(
-	elementNode: any,
-	documentPath: string,
-	workspaceRoots: string[] | undefined
-): IncludeDefinitionContext | undefined {
-	const includeNode = findNearestIncludeNode(elementNode);
-	const includeUrl = includeNode?.attribs?.url;
-	if (typeof includeUrl !== 'string' || !includeUrl.length) {
-		return undefined;
-	}
-
-	const includePath = resolveIncludeFilePath(includeUrl, documentPath, workspaceRoots);
-	if (!includePath) {
-		return undefined;
-	}
-
-	const includeTsFilePaths = getRelatedTsFiles(includePath);
-	const hostTsFilePaths = getRelatedTsFiles(documentPath);
-	const combinedTsFilePaths = dedupeFilePaths([...hostTsFilePaths, ...includeTsFilePaths]);
-	const classInfos = combinedTsFilePaths.length ? loadClassInfosFromFiles(combinedTsFilePaths) : [];
-	const relevantClassInfos = filterClassesBySource(classInfos, includeTsFilePaths);
-
-	return {
-		classInfoLookup: createClassInfoLookup(classInfos),
-		screenClasses: filterScreenLikeClasses(relevantClassInfos),
-		templateDocument: loadHtmlDocument(includePath),
-		parameterValues: getIncludeParameterValues(includeNode),
-	};
-}
-
 function hasUnboundAttribute(elementNode: any): boolean {
 	return Boolean(elementNode?.attribs && Object.prototype.hasOwnProperty.call(elementNode.attribs, 'unbound'));
-}
-
-function findNearestIncludeNode(node: any): any | undefined {
-	let current = node;
-	while (current) {
-		if (current.type === 'tag' && current.name === 'qp-include') {
-			return current;
-		}
-
-		current = current.parent ?? current.parentNode;
-	}
-	return undefined;
-}
-
-function getIncludeParameterValues(includeNode: any): Map<string, string> {
-	const values = new Map<string, string>();
-	const attributes = includeNode?.attribs ?? {};
-	for (const [attributeName, attributeValue] of Object.entries(attributes)) {
-		if (typeof attributeValue === 'string') {
-			values.set(attributeName, attributeValue);
-		}
-	}
-	return values;
 }
 
 function getSelectorLocations(
@@ -327,122 +268,29 @@ function getFieldDefinitionLocations(
 		return [];
 	}
 
-	const parsed = parseFieldName(rawFieldName);
-	let viewName = parsed.viewName;
-	let fieldName = parsed.fieldName;
-	let allowFallback = allowAnyViewFallback;
-
-	if (!parsed.viewName) {
-		viewName = findParentViewName(elementNode);
-	}
-	if (!viewName) {
-		const selectorViewName = getViewNameFromCustomizationSelectors(elementNode, selectorDocument);
-		allowFallback ||= hasTemplateExpression(selectorViewName);
-		viewName = selectorViewName;
-	}
-
-	if (parameterValues) {
-		allowFallback ||= hasTemplateExpression(viewName);
-		viewName = resolveTemplateValue(viewName, parameterValues);
-		fieldName = resolveTemplateValue(fieldName, parameterValues) ?? fieldName;
-	}
-
-	if (!fieldName) {
+	const parsed = parseFieldReference(rawFieldName);
+	const resolution = resolveHtmlField({
+		fieldReference: parsed,
+		elementNode,
+		metadataContext,
+		selectorDocument,
+		parameterValues,
+		allowAnyViewFallback,
+	});
+	if (!resolution || resolution.hasTemplatedBinding) {
 		return [];
 	}
 
-	if (viewName && !hasTemplateExpression(viewName)) {
-		const resolution = resolveViewBinding(viewName, metadataContext.screenClasses, metadataContext.classInfoLookup);
-		const fieldProperty = resolution?.viewClass?.properties.get(fieldName);
-		if (fieldProperty?.kind === 'field') {
-			return [createLocationFromProperty(fieldProperty)];
-		}
-
-		if (!allowFallback) {
-			return [];
-		}
+	if (resolution.fieldProperty?.kind === 'field' && !resolution.usedAnyViewFallback) {
+		return [createLocationFromProperty(resolution.fieldProperty)];
 	}
 
-	if (!allowFallback) {
+	if (!allowAnyViewFallback) {
 		return [];
 	}
 
-	return getFieldDefinitionsFromAnyView(fieldName, metadataContext);
-}
-
-function parseFieldName(rawFieldName: string): { viewName?: string; fieldName: string } {
-	const trimmed = rawFieldName.trim();
-	const dotIndex = trimmed.indexOf('.');
-	if (dotIndex === -1) {
-		return { fieldName: trimmed };
-	}
-
-	const viewName = trimmed.substring(0, dotIndex).trim();
-	const fieldName = trimmed.substring(dotIndex + 1).trim();
-	return { viewName, fieldName };
-}
-
-function getFieldDefinitionsFromAnyView(
-	fieldName: string,
-	metadataContext: DefinitionMetadataContext
-): vscode.Location[] {
-	const locations: vscode.Location[] = [];
-	const seen = new Set<string>();
-
-	for (const screenClass of metadataContext.screenClasses) {
-		for (const property of screenClass.properties.values()) {
-			if (property.kind !== 'view' && property.kind !== 'viewCollection') {
-				continue;
-			}
-
-			const viewClass = resolveClassInfoForProperty(property, metadataContext.classInfoLookup);
-			const fieldProperty = viewClass?.properties.get(fieldName);
-			if (fieldProperty?.kind !== 'field') {
-				continue;
-			}
-
-			const key = `${fieldProperty.sourceFile.fileName}:${fieldProperty.node.getStart()}`;
-			if (seen.has(key)) {
-				continue;
-			}
-			seen.add(key);
-			locations.push(createLocationFromProperty(fieldProperty));
-		}
-	}
-
-	return locations;
-}
-
-function resolveTemplateValue(
-	value: string | undefined,
-	parameterValues: Map<string, string>
-): string | undefined {
-	if (!value) {
-		return value;
-	}
-
-	return value.replace(/{{\s*([^}\s]+)\s*}}/g, (match, parameterName: string) => {
-		const parameterValue = parameterValues.get(parameterName)?.trim();
-		return parameterValue || match;
-	}).trim();
-}
-
-function hasTemplateExpression(value: string | undefined): boolean {
-	return typeof value === 'string' && /{{\s*[^}]+\s*}}/.test(value);
-}
-
-function dedupeFilePaths(filePaths: string[]): string[] {
-	const seen = new Set<string>();
-	const result: string[] = [];
-	for (const filePath of filePaths) {
-		const normalized = path.normalize(filePath);
-		if (seen.has(normalized)) {
-			continue;
-		}
-		seen.add(normalized);
-		result.push(filePath);
-	}
-	return result;
+	return findFieldsInAnyView(resolution.fieldName, metadataContext)
+		.map(match => createLocationFromProperty(match.fieldProperty));
 }
 
 function findActionProperty(actionName: string | undefined, screenClasses: CollectedClassInfo[]): ClassPropertyInfo | undefined {
@@ -500,45 +348,6 @@ function createLocationFromHtmlNode(document: BaseScreenDocument, node: any): vs
 			new vscode.Position(end.line, end.column)
 		)
 	);
-}
-
-function getViewNameFromCustomizationSelectors(
-	node: any,
-	baseDocument: BaseScreenDocument | undefined
-): string | undefined {
-	if (!baseDocument?.dom?.length) {
-		return undefined;
-	}
-
-	const attributes = node?.attribs;
-	if (!attributes) {
-		return undefined;
-	}
-
-	for (const attributeName of getCustomizationSelectorAttributes()) {
-		const rawValue = attributes[attributeName];
-		if (typeof rawValue !== 'string') {
-			continue;
-		}
-		const normalizedValue = rawValue.trim();
-		if (!normalizedValue.length) {
-			continue;
-		}
-
-		const { nodes, error } = queryBaseScreenElements(baseDocument, normalizedValue);
-		if (error || !nodes.length) {
-			continue;
-		}
-
-		for (const candidate of nodes) {
-			const viewName = findViewNameAtOrAbove(candidate);
-			if (viewName) {
-				return viewName;
-			}
-		}
-	}
-
-	return undefined;
 }
 
 // Converts a collected property back into a VS Code location for navigation.
