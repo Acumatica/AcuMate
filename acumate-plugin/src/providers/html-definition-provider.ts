@@ -1,5 +1,6 @@
 import vscode from 'vscode';
 import ts from 'typescript';
+import path from 'path';
 
 import {
 	getRelatedTsFiles,
@@ -240,7 +241,9 @@ function getIncludeDefinitionContext(
 	}
 
 	const includeTsFilePaths = getRelatedTsFiles(includePath);
-	const classInfos = includeTsFilePaths.length ? loadClassInfosFromFiles(includeTsFilePaths) : [];
+	const hostTsFilePaths = getRelatedTsFiles(documentPath);
+	const combinedTsFilePaths = dedupeFilePaths([...hostTsFilePaths, ...includeTsFilePaths]);
+	const classInfos = combinedTsFilePaths.length ? loadClassInfosFromFiles(combinedTsFilePaths) : [];
 	const relevantClassInfos = filterClassesBySource(classInfos, includeTsFilePaths);
 
 	return {
@@ -426,6 +429,20 @@ function resolveTemplateValue(
 
 function hasTemplateExpression(value: string | undefined): boolean {
 	return typeof value === 'string' && /{{\s*[^}]+\s*}}/.test(value);
+}
+
+function dedupeFilePaths(filePaths: string[]): string[] {
+	const seen = new Set<string>();
+	const result: string[] = [];
+	for (const filePath of filePaths) {
+		const normalized = path.normalize(filePath);
+		if (seen.has(normalized)) {
+			continue;
+		}
+		seen.add(normalized);
+		result.push(filePath);
+	}
+	return result;
 }
 
 function findActionProperty(actionName: string | undefined, screenClasses: CollectedClassInfo[]): ClassPropertyInfo | undefined {

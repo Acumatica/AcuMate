@@ -13,6 +13,7 @@ import {
   collectActionProperties,
   parseConfigObject,
   filterClassesBySource,
+  resolveClassInfoForProperty,
 } from "../../utils";
 import { findParentViewName, findViewNameAtOrAbove } from "../../providers/html-shared";
 import { getIncludeMetadata, resolveIncludeFilePath } from "../../services/include-service";
@@ -206,10 +207,15 @@ function validateDom(
     }
 
     const normalizedIncludePath = path.normalize(includeHtmlPath);
-    let templateContext = includeFieldContextCache.get(normalizedIncludePath);
-    if (!includeFieldContextCache.has(normalizedIncludePath)) {
-      templateContext = loadIncludeTemplateFieldValidationContext(normalizedIncludePath);
-      includeFieldContextCache.set(normalizedIncludePath, templateContext);
+    const hostTsFilePaths = getRelatedTsFiles(htmlFilePath);
+    const cacheKey = [
+      normalizedIncludePath,
+      ...hostTsFilePaths.map((filePath) => path.normalize(filePath)),
+    ].join("|");
+    let templateContext = includeFieldContextCache.get(cacheKey);
+    if (!includeFieldContextCache.has(cacheKey)) {
+      templateContext = loadIncludeTemplateFieldValidationContext(normalizedIncludePath, hostTsFilePaths);
+      includeFieldContextCache.set(cacheKey, templateContext);
     }
 
     if (!templateContext) {
@@ -223,11 +229,13 @@ function validateDom(
   }
 
   function loadIncludeTemplateFieldValidationContext(
-    includeHtmlPath: string
+    includeHtmlPath: string,
+    hostTsFilePaths: string[]
   ): IncludeTemplateFieldValidationContext | undefined {
     const includeTsFilePaths = getRelatedTsFiles(includeHtmlPath);
-    const includeClassProperties = includeTsFilePaths.length
-      ? loadClassInfosFromFiles(includeTsFilePaths)
+    const combinedTsFilePaths = dedupeFilePaths([...hostTsFilePaths, ...includeTsFilePaths]);
+    const includeClassProperties = combinedTsFilePaths.length
+      ? loadClassInfosFromFiles(combinedTsFilePaths)
       : [];
     const includeRelevantClassInfos = filterClassesBySource(includeClassProperties, includeTsFilePaths);
     const screenClasses = filterScreenLikeClasses(includeRelevantClassInfos);
@@ -528,7 +536,8 @@ function validateDom(
   }
 
   function validateCustomizationSelectors(node: any) {
-    if (!baseScreenDocument) {
+    const selectorDocuments = getSelectorValidationDocuments();
+    if (!selectorDocuments.length) {
       return;
     }
 
@@ -539,27 +548,48 @@ function validateDom(
 
       const range =
         getAttributeValueRange(content, node, attributeName, rawValue) ?? getRange(content, node);
-      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
-      if (error) {
-        pushHtmlDiagnostic(
-          diagnostics,
-          suppression,
-          range,
-          `The ${attributeName} selector "${rawValue}" is not a valid CSS selector (${error}).`
-        );
-        return;
+
+      let selectorMatched = false;
+      for (const document of selectorDocuments) {
+        const { nodes, error } = queryBaseScreenElements(document, normalizedValue);
+        if (error) {
+          pushHtmlDiagnostic(
+            diagnostics,
+            suppression,
+            range,
+            `The ${attributeName} selector "${rawValue}" is not a valid CSS selector (${error}).`
+          );
+          return;
+        }
+
+        if (nodes.length) {
+          selectorMatched = true;
+          break;
+        }
       }
 
-      if (!nodes.length) {
-        const baseName = getScreenDocumentDisplayName(baseScreenDocument);
+      if (!selectorMatched) {
+        const documentNames = selectorDocuments.map(getScreenDocumentDisplayName).join(" or ");
         pushHtmlDiagnostic(
           diagnostics,
           suppression,
           range,
-          `The ${attributeName} selector "${rawValue}" does not match any elements in ${baseName}.`
+          `The ${attributeName} selector "${rawValue}" does not match any elements in ${documentNames}.`
         );
       }
     });
+  }
+
+  function getSelectorValidationDocuments(): BaseScreenDocument[] {
+    const documents: BaseScreenDocument[] = [];
+    const includeDocument = includeFieldContext?.templateDocument;
+    if (includeDocument) {
+      documents.push(includeDocument);
+    }
+    if (baseScreenDocument) {
+      documents.push(baseScreenDocument);
+    }
+    return documents;
   }
 
   function getViewNameFromCustomizationSelectors(node: any): string | undefined {
@@ -677,9 +707,7 @@ function validateDom(
           continue;
         }
 
-        const viewClass = property.viewClassName
-          ? context.classInfoMap.get(property.viewClassName)
-          : undefined;
+        const viewClass = resolveClassInfoForProperty(property, context.classInfoMap);
         const fieldProperty = viewClass?.properties.get(fieldName);
         if (fieldProperty?.kind === "field") {
           return true;
@@ -963,6 +991,20 @@ function shouldIgnoreIncludeAttribute(attributeName: string): boolean {
 
 function hasTemplateExpression(value: string | undefined): boolean {
   return typeof value === "string" && /{{\s*[^}]+\s*}}/.test(value);
+}
+
+function dedupeFilePaths(filePaths: string[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const filePath of filePaths) {
+    const normalized = path.normalize(filePath);
+    if (seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    result.push(filePath);
+  }
+  return result;
 }
 
 function getAttributeValueRange(

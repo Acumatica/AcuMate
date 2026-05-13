@@ -60,6 +60,13 @@ const screenDependentExtensionHtmlPath = path.join(
 	'extensions',
 	'SO301000_Discounts.html'
 );
+const screenIncludeExtensionMixinHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_IncludeExtensionMixin.html'
+);
 const fieldControlHtmlPath = path.join(fixturesRoot, 'FieldControlInfo.html');
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
 
@@ -698,6 +705,19 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestIncludeFieldModificationHost.ts')),
 			'Expected navigation to host screen TS file'
+		);
+	});
+
+	it('navigates from qp-include child field name to host extension mixin definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="VendorID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for include extension mixin field');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_IncludeExtensionMixin.ts')),
+			'Expected navigation to host extension mixin TS file'
 		);
 	});
 

@@ -29,6 +29,13 @@ const screenDependentExtensionFixture = path.join(
 	'extensions',
 	'SO301000_Discounts.html'
 );
+const screenIncludeExtensionMixinFixture = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_IncludeExtensionMixin.html'
+);
 
 async function openFixtureDocument(fileName: string) {
 	const fullPath = path.join(fixturesRoot, fileName);
@@ -444,6 +451,20 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			!diagnostics.some(d => d.message.includes('after selector') && d.message.includes('tab-Approval')),
 			'Expected selector targeting a dependent extension element to be valid'
+		);
+	});
+
+	it('resolves qp-include child selectors and fields against include template metadata with host mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d =>
+				d.message.includes('fsColumnB-IncludeMixin') ||
+				d.message.includes('"VendorID"')
+			).length,
+			0,
+			'Expected include child selector and extension-mixin field to validate'
 		);
 	});
 
