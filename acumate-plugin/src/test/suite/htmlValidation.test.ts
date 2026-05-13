@@ -184,6 +184,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('accepts non-button state.bind values that reference fields', async () => {
+		const document = await openFixtureDocument('TestStateFieldBinding.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute')).length,
+			0,
+			'Expected no state.bind diagnostics for non-button field binding'
+		);
+	});
+
+	it('reports non-button state.bind values that reference missing fields', async () => {
+		const document = await openFixtureDocument('TestStateFieldBindingInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('state.bind attribute references unknown field "MissingImage"')),
+			'Expected diagnostic for invalid non-button state.bind field binding'
+		);
+	});
+
 	it('accepts qp-panel ids that map to known views', async () => {
 		const document = await openFixtureDocument('TestPanelValid.html');
 		await validateHtmlFile(document);

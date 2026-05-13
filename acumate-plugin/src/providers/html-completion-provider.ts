@@ -15,6 +15,7 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	findParentViewName,
+	isActionStateBindTag,
 } from './html-shared';
 import {
 	ClientControlMetadata,
@@ -123,7 +124,9 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		if (attributeContext.attributeName === 'state.bind') {
-			return this.createActionCompletions(screenClasses, classInfoLookup, elementNode);
+			return isActionStateBindTag(attributeContext.tagName)
+				? this.createActionCompletions(screenClasses, classInfoLookup, elementNode)
+				: this.createControlStateCompletions(attributeContext.value, screenClasses, classInfoLookup);
 		}
 
 		if (attributeContext.attributeName === 'control-state.bind' && attributeContext.tagName === 'qp-field') {

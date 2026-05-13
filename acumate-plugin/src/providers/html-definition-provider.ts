@@ -16,6 +16,7 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	findParentViewName,
+	isActionStateBindTag,
 } from './html-shared';
 import { resolveIncludeFilePath } from '../services/include-service';
 import {
@@ -178,13 +179,28 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		if (attributeContext.attributeName === 'state.bind') {
-			const actionProperty =
-				findActionProperty(attributeContext.value, screenClasses) ??
-				findViewActionProperty(attributeContext.value, elementNode, documentMetadataContext);
-			if (!actionProperty) {
-				return;
+			if (isActionStateBindTag(attributeContext.tagName)) {
+				const actionProperty =
+					findActionProperty(attributeContext.value, screenClasses) ??
+					findViewActionProperty(attributeContext.value, elementNode, documentMetadataContext);
+				if (!actionProperty) {
+					return;
+				}
+				return createLocationFromProperty(actionProperty);
 			}
-			return createLocationFromProperty(actionProperty);
+
+			const locations = getFieldDefinitionLocations(
+				attributeContext.value,
+				elementNode,
+				documentMetadataContext,
+				includeContext?.templateDocument ?? baseScreenDocument,
+				includeContext?.parameterValues,
+				false,
+				false
+			);
+			if (locations.length) {
+				return locations;
+			}
 		}
 
 		if (attributeContext.attributeName === 'control-state.bind' && attributeContext.tagName === 'qp-field') {
@@ -262,7 +278,8 @@ function getFieldDefinitionLocations(
 	metadataContext: DefinitionMetadataContext,
 	selectorDocument?: BaseScreenDocument,
 	parameterValues?: Map<string, string>,
-	allowAnyViewFallback = false
+	allowAnyViewFallback = false,
+	useParentView = true
 ): vscode.Location[] {
 	if (!rawFieldName) {
 		return [];
@@ -276,6 +293,7 @@ function getFieldDefinitionLocations(
 		selectorDocument,
 		parameterValues,
 		allowAnyViewFallback,
+		useParentView,
 	});
 	if (!resolution || resolution.hasTemplatedBinding) {
 		return [];

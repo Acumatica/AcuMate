@@ -274,3 +274,7 @@ export function findViewNameAtOrAbove(node: any): string | undefined {
 export function findParentViewName(node: any): string | undefined {
 	return findViewNameAtOrAbove(node?.parent ?? node?.parentNode);
 }
+
+export function isActionStateBindTag(tagName: string | undefined): boolean {
+	return typeof tagName === 'string' && tagName.toLowerCase() === 'qp-button';
+}

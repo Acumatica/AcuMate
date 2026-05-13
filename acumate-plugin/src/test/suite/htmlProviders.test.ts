@@ -24,6 +24,7 @@ const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
 const controlTypeCompletionPath = path.join(fixturesRoot, 'TestControlTypeCompletion.html');
 const duplicateViewNamesFixturePath = path.join(fixturesRoot, 'TestDuplicateViewNames.html');
+const stateFieldBindingPath = path.join(fixturesRoot, 'TestStateFieldBinding.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -272,6 +273,39 @@ describe('HTML completion provider integration', () => {
 		assert.ok(/addItemParameters/.test(value), 'Hover should show include template view name');
 	});
 
+	it('shows backend metadata for non-button state.bind field bindings', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				EstimateRecordSelected: {
+					name: 'EstimateRecordSelected',
+					fields: {
+						ImageUrl: {
+							name: 'ImageUrl',
+							displayName: 'Estimate Image',
+							typeName: 'System.String'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(stateFieldBindingPath);
+		const caret = positionAt(
+			document,
+			'state.bind="EstimateRecordSelected.ImageUrl"',
+			'state.bind="EstimateRecordSelected.'.length + 1
+		);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for state.bind field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Estimate Image/.test(value), 'Hover should show state.bind backend display name');
+		assert.ok(/EstimateRecordSelected/.test(value), 'Hover should show state.bind view name');
+	});
+
 	it('suggests view names for using view attribute', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlCompletionProvider();
@@ -363,6 +397,17 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No completions returned for using view state.bind');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('ConfigureEntry'), 'ConfigureEntry not suggested from using view');
+	});
+
+	it('suggests view + field pairs for non-button state.bind attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(stateFieldBindingPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'state.bind=""', 'state.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for non-button state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('EstimateRecordSelected.ImageUrl'), 'EstimateRecordSelected.ImageUrl not suggested');
+		assert.ok(!labels.includes('SaveAction'), 'Non-button state.bind should not suggest PXAction names');
 	});
 
 	it('suggests field names from selector target view context', async () => {
@@ -672,6 +717,23 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
 			'Expected using view action definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from non-button state.bind attribute to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(stateFieldBindingPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'state.bind="EstimateRecordSelected.ImageUrl"',
+			'state.bind="EstimateRecordSelected.'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for non-button state.bind field');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestStateFieldBinding.ts')),
+			'Expected state.bind field definition inside TestStateFieldBinding.ts'
 		);
 	});
 

@@ -13,7 +13,7 @@ import {
   parseConfigObject,
   filterClassesBySource,
 } from "../../utils";
-import { findParentViewName } from "../../providers/html-shared";
+import { findParentViewName, isActionStateBindTag } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
@@ -304,7 +304,8 @@ function validateDom(
       canValidateActions &&
       typeof actionBinding === "string" &&
       actionBinding.length &&
-      !hasTemplateExpression(actionBinding)
+      !hasTemplateExpression(actionBinding) &&
+      isActionStateBindTag(normalizedTagName)
     ) {
       const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
       const scopedViewName = findParentViewName(node);
@@ -318,6 +319,15 @@ function validateDom(
           "The state.bind attribute must reference a valid PXAction."
         );
       }
+    }
+    else if (
+      hasScreenMetadata &&
+      typeof actionBinding === "string" &&
+      actionBinding.length &&
+      !hasTemplateExpression(actionBinding) &&
+      !isActionStateBindTag(normalizedTagName)
+    ) {
+      validateStateFieldBinding(actionBinding, node);
     }
 
     if (node.type === "tag" && node.name === "qp-include") {
@@ -666,6 +676,49 @@ function validateDom(
         suppression,
         range,
         `The control-state.bind attribute references unknown field "${fieldName}" on view "${viewName}".`
+      );
+    }
+  }
+
+  function validateStateFieldBinding(bindingValue: string, node: any) {
+    const fieldResolution = resolveHtmlField({
+      rawFieldName: bindingValue,
+      elementNode: node,
+      metadataContext: hostFieldMetadataContext,
+      selectorDocument: baseScreenDocument,
+      useParentView: false,
+    });
+    if (fieldResolution?.hasTemplatedBinding) {
+      return;
+    }
+
+    const range = getRange(content, node);
+    if (!fieldResolution?.viewName) {
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
+        range,
+        "The state.bind attribute must use the <view>.<field> format for non-button controls."
+      );
+      return;
+    }
+
+    if (!fieldResolution.viewResolution) {
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
+        range,
+        `The state.bind attribute references unknown view "${fieldResolution.viewName}".`
+      );
+      return;
+    }
+
+    if (fieldResolution.fieldProperty?.kind !== "field") {
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
+        range,
+        `The state.bind attribute references unknown field "${fieldResolution.fieldName}" on view "${fieldResolution.viewName}".`
       );
     }
   }

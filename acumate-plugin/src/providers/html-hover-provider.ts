@@ -5,6 +5,7 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	HtmlAttributeContext,
+	isActionStateBindTag,
 } from './html-shared';
 import { getRelatedTsFiles } from '../utils';
 import { loadBackendFieldsForView } from './html-backend-utils';
@@ -52,11 +53,13 @@ export async function provideHtmlFieldHover(
 	}
 
 	const attributeContext = getAttributeContext(document, offset, elementNode);
-	if (!attributeContext || !isFieldNameAttribute(attributeContext)) {
+	if (!attributeContext || !isFieldHoverAttribute(attributeContext)) {
 		return undefined;
 	}
 
-	return buildFieldHover(document.uri.fsPath, attributeContext, elementNode);
+	return buildFieldHover(document.uri.fsPath, attributeContext, elementNode, {
+		useParentView: isFieldNameAttribute(attributeContext),
+	});
 }
 
 function isFieldNameAttribute(attribute: HtmlAttributeContext): boolean {
@@ -68,10 +71,19 @@ function isFieldNameAttribute(attribute: HtmlAttributeContext): boolean {
 	return tagName === 'field' || tagName === 'qp-field';
 }
 
+function isFieldHoverAttribute(attribute: HtmlAttributeContext): boolean {
+	if (isFieldNameAttribute(attribute)) {
+		return true;
+	}
+
+	return attribute.attributeName === 'state.bind' && !isActionStateBindTag(attribute.tagName);
+}
+
 async function buildFieldHover(
 	htmlFilePath: string,
 	attributeContext: HtmlAttributeContext,
-	elementNode: any
+	elementNode: any,
+	options: { useParentView: boolean }
 ): Promise<vscode.Hover | undefined> {
 	const fieldName = attributeContext.value?.trim();
 	if (!fieldName) {
@@ -110,6 +122,7 @@ async function buildFieldHover(
 			elementNode,
 			metadataContext: hostContext,
 			selectorDocument: includeContext.templateDocument,
+			useParentView: options.useParentView,
 		})
 		: undefined;
 	const hostBaseResolution = resolveHtmlField({
@@ -117,6 +130,7 @@ async function buildFieldHover(
 		elementNode,
 		metadataContext: hostContext,
 		selectorDocument: getBaseScreenDocument(htmlFilePath),
+		useParentView: options.useParentView,
 	});
 	const hostResolution = hostIncludeSelectorResolution?.viewResolution
 		? hostIncludeSelectorResolution
