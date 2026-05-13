@@ -357,6 +357,27 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('validates qp-include child selectors after applying include parameters', async () => {
+		const document = await openFixtureDocument('TestParameterizedIncludeSelectors.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('selector')).length,
+			0,
+			'Expected no selector diagnostics for parameterized qp-include selectors'
+		);
+	});
+
+	it('reports invalid qp-include modify selectors after applying include parameters', async () => {
+		const document = await openFixtureDocument('TestParameterizedIncludeSelectorsInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('modify selector') && d.message.includes('MissingEmail')),
+			'Expected diagnostic for invalid parameterized qp-include modify selector'
+		);
+	});
+
 	it('accepts qp-template name values defined by ScreenTemplates', async () => {
 		const document = await openFixtureDocument('TestQpTemplate.html');
 		await validateHtmlFile(document);

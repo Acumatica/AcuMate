@@ -16,6 +16,7 @@ import { findParentViewName, findViewNameAtOrAbove } from '../providers/html-sha
 import { resolveIncludeFilePath } from './include-service';
 import {
 	BaseScreenDocument,
+	createParameterizedHtmlDocument,
 	getCustomizationSelectorAttributes,
 	isCustomizationSelectorAttribute,
 	loadHtmlDocument,
@@ -342,11 +343,17 @@ export function getIncludeFieldContext(options: {
 		return undefined;
 	}
 
+	const parameterValues = getIncludeParameterValues(includeNode);
+	const templateDocument = templateContext.templateDocument
+		? createParameterizedHtmlDocument(templateContext.templateDocument, parameterValues)
+		: undefined;
+
 	return {
 		...templateContext,
+		templateDocument,
 		includeNode,
 		includePath: normalizedIncludePath,
-		parameterValues: getIncludeParameterValues(includeNode),
+		parameterValues,
 		hostScreenClasses: options.hostScreenClasses,
 	};
 }

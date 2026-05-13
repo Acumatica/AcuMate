@@ -23,7 +23,7 @@ export interface SelectorQueryResult {
 	error?: string;
 }
 
-const customizationSelectorAttributes = ["before", "after", "append", "prepend", "prepand", "move", "remove"] as const;
+const customizationSelectorAttributes = ["modify", "before", "after", "append", "prepend", "prepand", "move", "remove"] as const;
 const customizationSelectorAttributeSet = new Set<string>(
 	customizationSelectorAttributes.map(attribute => attribute.toLowerCase())
 );
@@ -134,6 +134,20 @@ export function queryBaseScreenElements(document: BaseScreenDocument, selector: 
 	}
 }
 
+export function createParameterizedHtmlDocument(
+	document: BaseScreenDocument,
+	parameterValues: Map<string, string>
+): BaseScreenDocument {
+	const dom = parseHtml(document.content);
+	applyTemplateParametersToNodes(dom, parameterValues);
+
+	return {
+		filePath: document.filePath,
+		content: document.content,
+		dom,
+	};
+}
+
 export function getDocumentForNode(
 	document: BaseScreenDocument,
 	node: any
@@ -171,6 +185,33 @@ function parseHtml(content: string): any[] {
 	parser.write(content);
 	parser.end();
 	return domTree;
+}
+
+function applyTemplateParametersToNodes(
+	nodes: any[] | undefined,
+	parameterValues: Map<string, string>
+) {
+	if (!nodes) {
+		return;
+	}
+
+	for (const node of nodes) {
+		if (node?.attribs) {
+			for (const [attributeName, attributeValue] of Object.entries(node.attribs)) {
+				if (typeof attributeValue === "string") {
+					node.attribs[attributeName] = applyTemplateParameters(attributeValue, parameterValues);
+				}
+			}
+		}
+
+		applyTemplateParametersToNodes(node?.children, parameterValues);
+	}
+}
+
+function applyTemplateParameters(value: string, parameterValues: Map<string, string>): string {
+	return value.replace(/{{\s*([^#\/^}\s]+)\s*}}/g, (match, parameterName: string) => (
+		parameterValues.has(parameterName) ? parameterValues.get(parameterName) ?? "" : match
+	));
 }
 
 function tryGetMtime(targetPath: string): number | undefined {
