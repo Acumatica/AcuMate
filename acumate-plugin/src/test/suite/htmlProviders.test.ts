@@ -214,6 +214,64 @@ describe('HTML completion provider integration', () => {
 		assert.ok(/qp-drop-down/.test(value), 'Hover should show default control type');
 	});
 
+	it('shows backend metadata for fields scoped by selector target view', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				CurrentDocument: {
+					name: 'CurrentDocument',
+					fields: {
+						AMCuryEstimateTotal: {
+							name: 'AMCuryEstimateTotal',
+							displayName: 'Manufacturing Estimate Total',
+							typeName: 'PX.Objects.CS.PXDecimal'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const caret = positionAt(document, 'name="AMCuryEstimateTotal"', 'name="'.length + 1);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for selector-scoped HTML field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Manufacturing Estimate Total/.test(value), 'Hover should show selector-scoped backend display name');
+		assert.ok(/CurrentDocument/.test(value), 'Hover should show selector target view name');
+	});
+
+	it('shows backend metadata for qp-include child fields from host extension mixins', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				addItemParameters: {
+					name: 'addItemParameters',
+					fields: {
+						VendorID: {
+							name: 'VendorID',
+							displayName: 'Vendor',
+							typeName: 'PX.Objects.AP.Vendor'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinHtmlPath);
+		const caret = positionAt(document, 'name="VendorID"', 'name="'.length + 1);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for include child extension-mixin field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Vendor/.test(value), 'Hover should show include child backend display name');
+		assert.ok(/addItemParameters/.test(value), 'Hover should show include template view name');
+	});
+
 	it('suggests view names for using view attribute', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlCompletionProvider();
