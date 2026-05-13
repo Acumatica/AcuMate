@@ -307,6 +307,26 @@ describe('HTML completion provider integration', () => {
 		assert.ok(labels.includes('ConfigureEntry'), 'ConfigureEntry not suggested from using view');
 	});
 
+	it('suggests field names from selector target view context', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="AMCuryEstimateTotal"', 'name="'.length + 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for selector target view');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('AMCuryEstimateTotal'), 'AMCuryEstimateTotal not suggested from selector target view');
+	});
+
+	it('suggests qp-include child field names from host extension mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="VendorID"', 'name="'.length + 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for include child field');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('VendorID'), 'VendorID not suggested from include host extension mixin');
+	});
+
 	it('suggests field names for using containers inheriting parent views', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlCompletionProvider();
