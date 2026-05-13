@@ -194,6 +194,14 @@ function validateDom(
     return resolution;
   }
 
+  function isValidSingleViewBinding(viewResolution: ViewResolution | undefined): boolean {
+    if (!viewResolution || viewResolution.property.kind !== "view" || !viewResolution.property.viewClassName) {
+      return false;
+    }
+
+    return !viewResolution.viewClass || viewResolution.viewClass.type === "PXView" || viewResolution.viewClass.type === undefined;
+  }
+
   function getIncludeFieldValidationContext(node: any): IncludeFieldValidationContext | undefined {
     return getIncludeFieldContext({
       documentPath: htmlFilePath,
@@ -239,11 +247,7 @@ function validateDom(
     ) {
       const viewName = node.attribs[`view.bind`];
       const viewResolution = resolveView(viewName);
-      const hasValidView =
-        viewResolution &&
-        viewResolution.property.viewClassName &&
-        viewResolution.viewClass &&
-        viewResolution.viewClass.type === "PXView";
+      const hasValidView = isValidSingleViewBinding(viewResolution);
 
       if (!hasValidView) {
         const range = getRange(content, node);
@@ -282,11 +286,7 @@ function validateDom(
     ) {
       const viewName = node.attribs.view;
       const viewResolution = resolveView(viewName);
-      const hasValidView =
-        viewResolution &&
-        viewResolution.property.viewClassName &&
-        viewResolution.viewClass &&
-        viewResolution.viewClass.type === "PXView";
+      const hasValidView = isValidSingleViewBinding(viewResolution);
 
       if (!hasValidView) {
         const range = getRange(content, node);

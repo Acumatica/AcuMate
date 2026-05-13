@@ -97,6 +97,17 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(diagnostics.some(d => d.message.includes('<using>')), 'Expected invalid using view diagnostic');
 	});
 
+	it('accepts view bindings whose view class extends an unresolved imported base', async () => {
+		const document = await openFixtureDocument('TestViewBindingImportedBase.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('must be bound to a valid view') || d.message.includes('must reference a valid view')).length,
+			0,
+			'Expected no view diagnostics when createSingle points to a local class with an unresolved imported base'
+		);
+	});
+
 	it('accepts actions declared on the current using view', async () => {
 		const document = await openFixtureDocument('TestScreenUsing.html');
 		await validateHtmlFile(document);
