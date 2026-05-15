@@ -1,4 +1,12 @@
 <qp-root>
+	<qp-wait-cursor></qp-wait-cursor>
+	<qp-informer-rack class="qp-informer-rack--ou"></qp-informer-rack>
+	<qp-longrun-indicator config.bind="longRunConfig"></qp-longrun-indicator>
+	<qp-screen-configuration-menu config.bind="screenConfigurationMenuConfig"></qp-screen-configuration-menu>
+	<qp-translation-validation config.bind="translationValidationConfig"></qp-translation-validation>
+	<qp-data-component config.bind="dataComponentConfig"></qp-data-component>
+	<qp-data-components config.bind="dataComponentsConfig"></qp-data-components>
+	<qp-wiki-tooltip></qp-wiki-tooltip>
 	<qp-fieldset id="Form" view.bind="mainView">
 		<qp-field control-state.bind="mainView.customerName"></qp-field>
 		<qp-label text="Customer"></qp-label>
@@ -10,4 +18,5 @@
 		fs-wg-container="Shipping_Contact_formD"
 		fs-caption="Ship-To Contact"
 	></qp-include>
+	<qp-nested-screen if.bind="showingScreen" view-model.ref="nestedScreen" config.bind="screenConfig"></qp-nested-screen>
 </qp-root>

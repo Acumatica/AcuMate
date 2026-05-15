@@ -17,6 +17,10 @@ export interface ControlConfigDefinition {
 	properties: ControlConfigProperty[];
 }
 
+interface InterfaceDeclarationInfo extends ControlConfigDefinition {
+	baseTypes: string[];
+}
+
 export interface ClientControlConfigInfo {
 	typeName: string;
 	displayName: string;
@@ -150,7 +154,7 @@ function collectClientControls(packageRoot: string): ClientControlMetadata[] {
 	}
 
 	const sourceFiles: ts.SourceFile[] = [];
-	const interfaceMap = new Map<string, ControlConfigDefinition>();
+	const interfaceDeclarations = new Map<string, InterfaceDeclarationInfo>();
 
 	for (const filePath of declarationFiles) {
 		const sourceFile = parseSourceFile(filePath);
@@ -158,9 +162,10 @@ function collectClientControls(packageRoot: string): ClientControlMetadata[] {
 			continue;
 		}
 		sourceFiles.push(sourceFile);
-		collectInterfaceDeclarations(sourceFile, interfaceMap);
+		collectInterfaceDeclarations(sourceFile, interfaceDeclarations);
 	}
 
+	const interfaceMap = resolveInterfaceDefinitions(interfaceDeclarations);
 	const controls = new Map<string, ClientControlMetadata>();
 	for (const sourceFile of sourceFiles) {
 		collectControlDeclarations(sourceFile, packageRoot, interfaceMap, controls);
@@ -223,7 +228,7 @@ function parseSourceFile(filePath: string): ts.SourceFile | undefined {
 	}
 }
 
-function collectInterfaceDeclarations(sourceFile: ts.SourceFile, interfaceMap: Map<string, ControlConfigDefinition>) {
+function collectInterfaceDeclarations(sourceFile: ts.SourceFile, interfaceMap: Map<string, InterfaceDeclarationInfo>) {
 	const visit = (node: ts.Node) => {
 		if (ts.isInterfaceDeclaration(node)) {
 			const name = node.name.text;
@@ -243,10 +248,12 @@ function collectInterfaceDeclarations(sourceFile: ts.SourceFile, interfaceMap: M
 					description: extractJsDoc(node.getSourceFile(), member),
 				});
 			}
+			const existing = interfaceMap.get(name);
 			interfaceMap.set(name, {
 				typeName: name,
-				description: extractJsDoc(sourceFile, node),
-				properties,
+				description: existing?.description ?? extractJsDoc(sourceFile, node),
+				properties: [...(existing?.properties ?? []), ...properties],
+				baseTypes: [...(existing?.baseTypes ?? []), ...getInterfaceBaseTypes(node)],
 			});
 		}
 
@@ -254,6 +261,89 @@ function collectInterfaceDeclarations(sourceFile: ts.SourceFile, interfaceMap: M
 	};
 
 	visit(sourceFile);
+}
+
+function getInterfaceBaseTypes(node: ts.InterfaceDeclaration): string[] {
+	const baseTypes: string[] = [];
+	for (const clause of node.heritageClauses ?? []) {
+		if (clause.token !== ts.SyntaxKind.ExtendsKeyword) {
+			continue;
+		}
+
+		for (const heritageType of clause.types) {
+			const baseName = getHeritageTypeName(heritageType);
+			if (baseName) {
+				baseTypes.push(baseName);
+			}
+		}
+	}
+
+	return baseTypes;
+}
+
+function getHeritageTypeName(heritageType: ts.ExpressionWithTypeArguments): string | undefined {
+	const expression = heritageType.expression;
+	if (ts.isIdentifier(expression)) {
+		return expression.text;
+	}
+
+	if (ts.isPropertyAccessExpression(expression)) {
+		return expression.name.text;
+	}
+
+	return undefined;
+}
+
+function resolveInterfaceDefinitions(
+	interfaceDeclarations: Map<string, InterfaceDeclarationInfo>
+): Map<string, ControlConfigDefinition> {
+	const resolved = new Map<string, ControlConfigDefinition>();
+	for (const typeName of interfaceDeclarations.keys()) {
+		resolveInterfaceDefinition(typeName, interfaceDeclarations, resolved, new Set());
+	}
+
+	return resolved;
+}
+
+function resolveInterfaceDefinition(
+	typeName: string,
+	interfaceDeclarations: Map<string, InterfaceDeclarationInfo>,
+	resolved: Map<string, ControlConfigDefinition>,
+	active: Set<string>
+): ControlConfigDefinition | undefined {
+	const cached = resolved.get(typeName);
+	if (cached) {
+		return cached;
+	}
+
+	const declaration = interfaceDeclarations.get(typeName);
+	if (!declaration || active.has(typeName)) {
+		return undefined;
+	}
+
+	active.add(typeName);
+	const properties = new Map<string, ControlConfigProperty>();
+	for (const baseType of declaration.baseTypes) {
+		const baseDefinition = resolveInterfaceDefinition(baseType, interfaceDeclarations, resolved, active);
+		for (const property of baseDefinition?.properties ?? []) {
+			if (!properties.has(property.name)) {
+				properties.set(property.name, property);
+			}
+		}
+	}
+
+	for (const property of declaration.properties) {
+		properties.set(property.name, property);
+	}
+
+	active.delete(typeName);
+	const definition: ControlConfigDefinition = {
+		typeName: declaration.typeName,
+		description: declaration.description,
+		properties: [...properties.values()],
+	};
+	resolved.set(typeName, definition);
+	return definition;
 }
 
 function collectControlDeclarations(

@@ -4,13 +4,10 @@ import {
 	getRelatedTsFiles,
 	loadClassInfosFromFiles,
 	CollectedClassInfo,
-	createClassInfoLookup,
 	resolveViewBinding,
 	ClassPropertyInfo,
-	filterScreenLikeClasses,
 	collectActionProperties,
 	extractConfigPropertyNames,
-	filterClassesBySource,
 } from '../utils';
 import {
 	parseDocumentDom,
@@ -18,6 +15,7 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	findParentViewName,
+	isActionStateBindTag,
 } from './html-shared';
 import {
 	ClientControlMetadata,
@@ -27,6 +25,16 @@ import { getScreenTemplates } from '../services/screen-template-service';
 import { getIncludeMetadata, IncludeMetadata } from '../services/include-service';
 import { BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
 import { loadBackendFieldsForView } from './html-backend-utils';
+import { getBaseScreenDocument } from '../services/screen-html-service';
+import {
+	HtmlIncludeFieldContext,
+	createHtmlFieldMetadataContext,
+	getFieldPropertiesFromViews,
+	getIncludeFieldContext,
+	getParentOrSelectorViewName,
+	getViewNameFromCustomizationSelectors,
+	resolveTemplateValue,
+} from '../services/html-field-context-service';
 
 // Registers completions so HTML view bindings stay in sync with PX metadata.
 export function registerHtmlCompletionProvider(context: vscode.ExtensionContext) {
@@ -103,13 +111,8 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 			return undefined;
 		}
 
-		const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
-		if (!relevantClassInfos.length) {
-			return undefined;
-		}
-
-		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
+		const metadataContext = createHtmlFieldMetadataContext(classInfos, tsFilePaths);
+		const { classInfoLookup, screenClasses } = metadataContext;
 		// Completions are sourced from the same metadata as validation/definitions to keep behavior consistent.
 
 		if (attributeContext.attributeName === 'view.bind') {
@@ -121,7 +124,9 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		}
 
 		if (attributeContext.attributeName === 'state.bind') {
-			return this.createActionCompletions(screenClasses);
+			return isActionStateBindTag(attributeContext.tagName)
+				? this.createActionCompletions(screenClasses, classInfoLookup, elementNode, attributeContext.value)
+				: this.createControlStateCompletions(attributeContext.value, screenClasses, classInfoLookup);
 		}
 
 		if (attributeContext.attributeName === 'control-state.bind' && attributeContext.tagName === 'qp-field') {
@@ -130,7 +135,35 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field completions are scoped to the PXView resolved from the surrounding markup.
-			const viewName = findParentViewName(elementNode);
+			const includeContext = getIncludeFieldContext({
+				documentPath: document.uri.fsPath,
+				elementNode,
+				hostTsFilePaths: tsFilePaths,
+				workspaceRoots: vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath),
+			});
+			if (includeContext) {
+				const hostSelectorViewName = resolveTemplateValue(
+					getViewNameFromCustomizationSelectors(elementNode, includeContext.templateDocument),
+					includeContext.parameterValues
+				);
+				const hostSelectorResolution = hostSelectorViewName
+					? resolveViewBinding(hostSelectorViewName, screenClasses, classInfoLookup)
+					: undefined;
+				if (hostSelectorResolution?.viewClass) {
+					const backendFields = await loadBackendFieldsForView(hostSelectorViewName!, screenClasses);
+					return this.createFieldCompletions(hostSelectorResolution.viewClass.properties, backendFields);
+				}
+
+				const items = this.createIncludeFieldNameCompletions(elementNode, includeContext);
+				if (items?.length) {
+					return items;
+				}
+			}
+
+			const viewName = getParentOrSelectorViewName(
+				elementNode,
+				getBaseScreenDocument(document.uri.fsPath)
+			);
 			if (!viewName) {
 				return undefined;
 			}
@@ -366,6 +399,22 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		return items.length ? items : undefined;
 	}
 
+	private createIncludeFieldNameCompletions(
+		elementNode: any,
+		context: HtmlIncludeFieldContext
+	): vscode.CompletionItem[] | undefined {
+		const selectorViewName = getViewNameFromCustomizationSelectors(elementNode, context.templateDocument);
+		const viewName = resolveTemplateValue(selectorViewName, context.parameterValues);
+		if (viewName) {
+			const resolution = resolveViewBinding(viewName, context.screenClasses, context.classInfoLookup);
+			const viewClass = resolution?.viewClass;
+			return viewClass ? this.createFieldCompletions(viewClass.properties) : undefined;
+		}
+
+		const fields = getFieldPropertiesFromViews(context);
+		return fields.size ? this.createFieldCompletions(fields) : undefined;
+	}
+
 	private isInsideDataFeed(node: any): boolean {
 		let current = node?.parent ?? node?.parentNode;
 		while (current) {
@@ -590,14 +639,58 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 		return items;
 	}
 
-	private createActionCompletions(screenClasses: CollectedClassInfo[]): vscode.CompletionItem[] {
+	private createActionCompletions(
+		screenClasses: CollectedClassInfo[],
+		classInfoLookup: Map<string, CollectedClassInfo>,
+		elementNode: any,
+		currentValue?: string
+	): vscode.CompletionItem[] {
+		const normalizedPrefix = (currentValue ?? '').trim().toLowerCase();
 		const actionMap = collectActionProperties(screenClasses);
 		const items: vscode.CompletionItem[] = [];
-		actionMap.forEach((property, name) => {
+		const seen = new Set<string>();
+		const addAction = (name: string, property: ClassPropertyInfo) => {
+			if (seen.has(name)) {
+				return;
+			}
+			if (normalizedPrefix && !name.toLowerCase().startsWith(normalizedPrefix)) {
+				return;
+			}
+			seen.add(name);
 			const item = new vscode.CompletionItem(name, vscode.CompletionItemKind.Function);
 			item.detail = property.typeName ?? 'PXActionState';
 			items.push(item);
+		};
+
+		actionMap.forEach((property, name) => {
+			addAction(name, property);
 		});
+
+		const viewName = findParentViewName(elementNode);
+		const viewClass = viewName
+			? resolveViewBinding(viewName, screenClasses, classInfoLookup)?.viewClass
+			: undefined;
+		viewClass?.properties.forEach((property, name) => {
+			if (property.kind === 'action') {
+				addAction(name, property);
+			}
+		});
+
+		for (const screenClass of screenClasses) {
+			for (const [propertyName, property] of screenClass.properties) {
+				if (property.kind !== 'view' && property.kind !== 'viewCollection') {
+					continue;
+				}
+
+				const viewClass = resolveViewBinding(propertyName, screenClasses, classInfoLookup)?.viewClass;
+				viewClass?.properties.forEach((viewProperty, actionName) => {
+					if (viewProperty.kind === 'action') {
+						addAction(`${propertyName}.${actionName}`, viewProperty);
+					}
+				});
+			}
+		}
+
 		return items;
 	}
 

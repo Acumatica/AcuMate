@@ -22,6 +22,20 @@ const screenSelectorExtensionFixture = path.join(
 	'extensions',
 	'SO301000_FieldSelectors.html'
 );
+const screenDependentExtensionFixture = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_Discounts.html'
+);
+const screenIncludeExtensionMixinFixture = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_IncludeExtensionMixin.html'
+);
 
 async function openFixtureDocument(fileName: string) {
 	const fullPath = path.join(fixturesRoot, fileName);
@@ -83,6 +97,39 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(diagnostics.some(d => d.message.includes('<using>')), 'Expected invalid using view diagnostic');
 	});
 
+	it('accepts view bindings whose view class extends an unresolved imported base', async () => {
+		const document = await openFixtureDocument('TestViewBindingImportedBase.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('must be bound to a valid view') || d.message.includes('must reference a valid view')).length,
+			0,
+			'Expected no view diagnostics when createSingle points to a local class with an unresolved imported base'
+		);
+	});
+
+	it('accepts actions declared on the current using view', async () => {
+		const document = await openFixtureDocument('TestScreenUsing.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute must reference a valid PXAction')).length,
+			0,
+			'Expected no invalid PXAction diagnostics when binding to using view actions'
+		);
+	});
+
+	it('resolves view classes by import source when class names collide', async () => {
+		const document = await openFixtureDocument('TestDuplicateViewNames.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('WcID')).length,
+			0,
+			'Expected WcID to resolve against the imported SelectionFilter view class'
+		);
+	});
+
 	it('accepts valid screen extension html by combining screen metadata', async () => {
 		const document = await vscode.workspace.openTextDocument(screenExtensionFixture);
 		await validateHtmlFile(document);
@@ -120,11 +167,11 @@ describe('HTML validation diagnostics', () => {
 		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for PXView mixin html');
 	});
 
-	it('ignores fake fields marked unbound replace-content', async () => {
+	it('ignores unbound field names', async () => {
 		const document = await openFixtureDocument('TestScreenUnboundField.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
-		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for unbound replace-content fields');
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for unbound fields');
 	});
 
 	it('reports invalid PXAction references in state.bind attributes', async () => {
@@ -134,6 +181,48 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('PXAction')),
 			'Expected diagnostic for invalid PXAction reference'
+		);
+	});
+
+	it('accepts qualified view action references in qp-button state.bind attributes', async () => {
+		const document = await openFixtureDocument('TestQualifiedActionBinding.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute must reference a valid PXAction')).length,
+			0,
+			'Expected no PXAction diagnostics for qualified view action binding'
+		);
+	});
+
+	it('reports missing qualified view action references in qp-button state.bind attributes', async () => {
+		const document = await openFixtureDocument('TestQualifiedActionBindingInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('state.bind attribute must reference a valid PXAction')),
+			'Expected PXAction diagnostic for invalid qualified view action binding'
+		);
+	});
+
+	it('accepts non-button state.bind values that reference fields', async () => {
+		const document = await openFixtureDocument('TestStateFieldBinding.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('state.bind attribute')).length,
+			0,
+			'Expected no state.bind diagnostics for non-button field binding'
+		);
+	});
+
+	it('reports non-button state.bind values that reference missing fields', async () => {
+		const document = await openFixtureDocument('TestStateFieldBindingInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('state.bind attribute references unknown field "MissingImage"')),
+			'Expected diagnostic for invalid non-button state.bind field binding'
 		);
 	});
 
@@ -213,7 +302,7 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
-	it('accepts qp-field, qp-label, and qp-include without id attributes', async () => {
+	it('accepts id-optional qp controls without id attributes', async () => {
 		const document = await openFixtureDocument('TestControlIdOptional.html');
 		await validateHtmlFile(document);
 		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
@@ -244,6 +333,48 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('not defined by the include template')),
 			'Expected diagnostic for unknown qp-include parameter'
+		);
+	});
+
+	it('accepts field modifications that target a qp-include template TS model', async () => {
+		const document = await openFixtureDocument('TestIncludeFieldModificationHost.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('<field>') || d.message.includes('field "')).length,
+			0,
+			'Expected no field diagnostics when qp-include children use fields from include TS metadata'
+		);
+	});
+
+	it('reports qp-include field modifications missing from host and include TS models', async () => {
+		const document = await openFixtureDocument('TestIncludeFieldModificationHostInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('<field>') || d.message.includes('field "')),
+			'Expected field diagnostic when qp-include child field is unknown in include TS metadata'
+		);
+	});
+
+	it('validates qp-include child selectors after applying include parameters', async () => {
+		const document = await openFixtureDocument('TestParameterizedIncludeSelectors.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d => d.message.includes('selector')).length,
+			0,
+			'Expected no selector diagnostics for parameterized qp-include selectors'
+		);
+	});
+
+	it('reports invalid qp-include modify selectors after applying include parameters', async () => {
+		const document = await openFixtureDocument('TestParameterizedIncludeSelectorsInvalid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d => d.message.includes('modify selector') && d.message.includes('MissingEmail')),
+			'Expected diagnostic for invalid parameterized qp-include modify selector'
 		);
 	});
 
@@ -318,6 +449,13 @@ describe('HTML validation diagnostics', () => {
 		);
 	});
 
+	it('ignores validations for mustache-templated HTML bindings', async () => {
+		const document = await openFixtureDocument('TestTemplateBindings.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(diagnostics.length, 0, 'Expected no diagnostics for runtime-templated bindings');
+	});
+
 	it('accepts qp-button config.bind when config matches schema', async () => {
 		const document = await openFixtureDocument('TestConfigBindingValid.html');
 		await validateHtmlFile(document);
@@ -377,6 +515,30 @@ describe('HTML validation diagnostics', () => {
 		assert.ok(
 			diagnostics.some(d => d.message.includes('after selector') && d.message.includes('tab-PutAway111')),
 			'Expected diagnostic when qp-tab after selector targets missing element'
+		);
+	});
+
+	it('resolves customization selectors against dependent extension HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenDependentExtensionFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			!diagnostics.some(d => d.message.includes('after selector') && d.message.includes('tab-Approval')),
+			'Expected selector targeting a dependent extension element to be valid'
+		);
+	});
+
+	it('resolves qp-include child selectors and fields against include template metadata with host mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinFixture);
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.filter(d =>
+				d.message.includes('fsColumnB-IncludeMixin') ||
+				d.message.includes('"VendorID"')
+			).length,
+			0,
+			'Expected include child selector and extension-mixin field to validate'
 		);
 	});
 

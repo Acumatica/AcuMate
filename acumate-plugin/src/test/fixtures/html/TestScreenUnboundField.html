@@ -1,7 +1,7 @@
 <qp-root>
 	<qp-fieldset id="Form" view.bind="mainView">
-		<field name="fakeField" unbound replace-content>
-			<qp-button id="fake" state.bind="SomeAction"></qp-button>
+		<field name="actions" class="no-label" unbound>
+			<qp-button id="buttonOffline-TeamsContactCard" state.bind="SaveAction" config.bind="{ images: { normal: 'svg:teams@offline' } }"></qp-button>
 		</field>
 	</qp-fieldset>
 </qp-root>

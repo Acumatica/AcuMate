@@ -1,4 +1,3 @@
-import path from "path";
 import vscode from "vscode";
 import { Parser, DomHandler } from "htmlparser2";
 import {
@@ -14,24 +13,48 @@ import {
   parseConfigObject,
   filterClassesBySource,
 } from "../../utils";
-import { findParentViewName } from "../../providers/html-shared";
+import { findParentViewName, isActionStateBindTag } from "../../providers/html-shared";
 import { getIncludeMetadata } from "../../services/include-service";
 import { getScreenTemplates } from "../../services/screen-template-service";
 import { getClientControlsMetadata, ClientControlMetadata } from "../../services/client-controls-service";
 import { AcuMateContext } from "../../plugin-context";
 import {
   getBaseScreenDocument,
-  isCustomizationSelectorAttribute,
   queryBaseScreenElements,
   BaseScreenDocument,
-  getCustomizationSelectorAttributes,
+  getScreenDocumentDisplayName,
 } from "../../services/screen-html-service";
 import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
+import {
+  HtmlIncludeFieldContext,
+  HtmlIncludeTemplateFieldContextCache,
+  forEachCustomizationSelector,
+  getIncludeFieldContext,
+  hasTemplateCustomizationSelector,
+  hasTemplateExpression,
+  resolveHtmlField,
+} from "../../services/html-field-context-service";
 
 // The validator turns the TypeScript model into CollectedClassInfo entries for every PXScreen/PXView
 // and then uses that metadata when validating the HTML DOM.
 const includeIntrinsicAttributes = new Set(["id", "class", "style", "slot"]);
-const idOptionalTags = new Set(["qp-field", "qp-label", "qp-include"]);
+const idOptionalTags = new Set([
+  "qp-field",
+  "qp-data-component",
+  "qp-data-components",
+  "qp-label",
+  "qp-include",
+  "qp-informer-rack",
+  "qp-longrun-indicator",
+  "qp-nested-screen",
+  "qp-screen-configuration-menu",
+  "qp-translation-validation",
+  "qp-wait-cursor",
+  "qp-wiki-tooltip",
+]);
+
+type IncludeFieldValidationContext = HtmlIncludeFieldContext;
+type IncludeTemplateFieldValidationCache = HtmlIncludeTemplateFieldContextCache;
 
 function pushHtmlDiagnostic(
   diagnostics: vscode.Diagnostic[],
@@ -104,7 +127,9 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
           baseScreenDocument,
           suppression,
           undefined,
-          false
+          false,
+          undefined,
+          new Map()
         );
       }
     },
@@ -137,7 +162,9 @@ function validateDom(
   baseScreenDocument: BaseScreenDocument | undefined,
   suppression: SuppressionEngine,
   panelViewContext?: CollectedClassInfo,
-  isInsideDataFeed = false
+  isInsideDataFeed = false,
+  includeFieldContext: IncludeFieldValidationContext | undefined = undefined,
+  includeFieldContextCache: IncludeTemplateFieldValidationCache = new Map()
 ) {
   const classInfoMap = createClassInfoLookup(classProperties);
   const screenClasses = filterScreenLikeClasses(relevantClassInfos);
@@ -145,6 +172,11 @@ function validateDom(
   const hasScreenMetadata = screenClasses.length > 0;
   const canValidateActions = classProperties.length > 0;
   const viewResolutionCache = new Map<string, ViewResolution | undefined>();
+  const hostFieldMetadataContext = {
+    classInfoLookup: classInfoMap,
+    screenClasses,
+    viewResolutionCache,
+  };
 
   // Screen classes contain PXView and PXViewCollection properties. We cache resolutions so
   // repeated use of the same view name does not require scanning every screen class again.
@@ -162,9 +194,28 @@ function validateDom(
     return resolution;
   }
 
+  function isValidSingleViewBinding(viewResolution: ViewResolution | undefined): boolean {
+    if (!viewResolution || viewResolution.property.kind !== "view" || !viewResolution.property.viewClassName) {
+      return false;
+    }
+
+    return !viewResolution.viewClass || viewResolution.viewClass.type === "PXView" || viewResolution.viewClass.type === undefined;
+  }
+
+  function getIncludeFieldValidationContext(node: any): IncludeFieldValidationContext | undefined {
+    return getIncludeFieldContext({
+      documentPath: htmlFilePath,
+      includeNode: node,
+      hostTsFilePaths: getRelatedTsFiles(htmlFilePath),
+      workspaceRoots,
+      cache: includeFieldContextCache,
+    });
+  }
+
   // Custom validation logic goes here
   dom.forEach((node) => {
     let nextPanelViewContext = panelViewContext;
+    let nextIncludeFieldContext = includeFieldContext;
     const normalizedTagName =
       node.type === "tag" && typeof node.name === "string" ? node.name.toLowerCase() : "";
     const elementId = node.type === "tag" ? getElementId(node) : "";
@@ -175,7 +226,7 @@ function validateDom(
       const requiresIdAttribute =
         normalizedTagName === "qp-panel" ||
         (normalizedTagName && controlMetadata.has(normalizedTagName) && !idOptionalTags.has(normalizedTagName));
-      if (requiresIdAttribute && !elementId.length) {
+      if (requiresIdAttribute && !elementId.length && !hasConfigId(node)) {
         const range = getRange(content, node);
         const message =
           normalizedTagName === "qp-panel"
@@ -191,15 +242,12 @@ function validateDom(
       hasScreenMetadata &&
       node.type === "tag" &&
       node.name === "qp-fieldset" &&
-      node.attribs[`view.bind`]
+      node.attribs[`view.bind`] &&
+      !hasTemplateExpression(node.attribs[`view.bind`])
     ) {
       const viewName = node.attribs[`view.bind`];
       const viewResolution = resolveView(viewName);
-      const hasValidView =
-        viewResolution &&
-        viewResolution.property.viewClassName &&
-        viewResolution.viewClass &&
-        viewResolution.viewClass.type === "PXView";
+      const hasValidView = isValidSingleViewBinding(viewResolution);
 
       if (!hasValidView) {
         const range = getRange(content, node);
@@ -213,7 +261,7 @@ function validateDom(
     }
 
     if (hasScreenMetadata && node.type === "tag" && node.name === "qp-panel") {
-      if (elementId.length) {
+      if (elementId.length && !hasTemplateExpression(elementId)) {
         const viewResolution = resolveView(elementId);
         if (!viewResolution) {
           const range = getRange(content, node);
@@ -229,14 +277,16 @@ function validateDom(
       }
     }
 
-    if (hasScreenMetadata && node.type === "tag" && node.name === "using" && node.attribs.view) {
+    if (
+      hasScreenMetadata &&
+      node.type === "tag" &&
+      node.name === "using" &&
+      node.attribs.view &&
+      !hasTemplateExpression(node.attribs.view)
+    ) {
       const viewName = node.attribs.view;
       const viewResolution = resolveView(viewName);
-      const hasValidView =
-        viewResolution &&
-        viewResolution.property.viewClassName &&
-        viewResolution.viewClass &&
-        viewResolution.viewClass.type === "PXView";
+      const hasValidView = isValidSingleViewBinding(viewResolution);
 
       if (!hasValidView) {
         const range = getRange(content, node);
@@ -250,9 +300,14 @@ function validateDom(
     }
 
     const actionBinding = node.attribs?.["state.bind"];
-    if (canValidateActions && typeof actionBinding === "string" && actionBinding.length) {
-      const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
-      if (!actionLookup.has(actionBinding) && !panelHasAction) {
+    if (
+      canValidateActions &&
+      typeof actionBinding === "string" &&
+      actionBinding.length &&
+      !hasTemplateExpression(actionBinding) &&
+      isActionStateBindTag(normalizedTagName)
+    ) {
+      if (!resolveActionBinding(actionBinding, node)) {
         const range = getRange(content, node);
         pushHtmlDiagnostic(
           diagnostics,
@@ -262,9 +317,19 @@ function validateDom(
         );
       }
     }
+    else if (
+      hasScreenMetadata &&
+      typeof actionBinding === "string" &&
+      actionBinding.length &&
+      !hasTemplateExpression(actionBinding) &&
+      !isActionStateBindTag(normalizedTagName)
+    ) {
+      validateStateFieldBinding(actionBinding, node);
+    }
 
     if (node.type === "tag" && node.name === "qp-include") {
       validateIncludeNode(node, diagnostics, content, htmlFilePath, workspaceRoots, suppression);
+      nextIncludeFieldContext = getIncludeFieldValidationContext(node);
     }
 
     if (
@@ -308,25 +373,52 @@ function validateDom(
       node.name === "field" &&
       node.attribs.name
     ) {
-      const viewSpecified = node.attribs.name.includes(".");
-      const [viewFromNameAttribute, fieldFromNameAttribute] = viewSpecified ? node.attribs.name.split(".") : [];
+      const isUnboundField = Object.prototype.hasOwnProperty.call(node.attribs, "unbound");
 
-      const isUnboundReplacement =
-        Object.prototype.hasOwnProperty.call(node.attribs, "unbound") &&
-        Object.prototype.hasOwnProperty.call(node.attribs, "replace-content");
-
-      if (!isUnboundReplacement) {
-        let viewName = viewSpecified ? viewFromNameAttribute : findParentViewName(node);
-        if (!viewName) {
-          viewName = getViewNameFromCustomizationSelectors(node);
+      if (!isUnboundField) {
+        const hostIncludeSelectorResolution = includeFieldContext
+          ? resolveHtmlField({
+            rawFieldName: node.attribs.name,
+            elementNode: node,
+            metadataContext: hostFieldMetadataContext,
+            selectorDocument: includeFieldContext.templateDocument,
+          })
+          : undefined;
+        const hostBaseResolution = resolveHtmlField({
+          rawFieldName: node.attribs.name,
+          elementNode: node,
+          metadataContext: hostFieldMetadataContext,
+          selectorDocument: baseScreenDocument,
+        });
+        const hostResolution = hostIncludeSelectorResolution?.fieldProperty
+          ? hostIncludeSelectorResolution
+          : hostBaseResolution;
+        if (hostResolution?.hasTemplatedBinding || (!hostResolution?.viewName && hasTemplateCustomizationSelector(node))) {
+          return;
         }
-        const fieldName = viewSpecified ? fieldFromNameAttribute : node.attribs.name;
-        const viewResolution = resolveView(viewName);
-        const viewClass = viewResolution?.viewClass;
-        const fieldProperty = viewClass?.properties.get(fieldName);
-        const isValidField = fieldProperty?.kind === "field";
+
+        const includeResolution = !hostResolution?.fieldProperty && includeFieldContext
+          ? resolveHtmlField({
+            rawFieldName: node.attribs.name,
+            elementNode: node,
+            metadataContext: includeFieldContext,
+            selectorDocument: includeFieldContext.templateDocument,
+            parameterValues: includeFieldContext.parameterValues,
+            allowAnyViewWhenUnscoped: true,
+            useParentView: false,
+          })
+          : undefined;
+        if (includeResolution?.hasTemplatedBinding) {
+          return;
+        }
+
+        const fieldResolution = hostResolution?.fieldProperty ? hostResolution : includeResolution ?? hostResolution;
+        const isValidField =
+          fieldResolution?.fieldProperty?.kind === "field";
         if (!isValidField) {
           const range = getRange(content, node);
+          const viewName = fieldResolution?.viewName;
+          const fieldName = fieldResolution?.fieldName ?? node.attribs.name;
           pushHtmlDiagnostic(
             diagnostics,
             suppression,
@@ -353,12 +445,18 @@ function validateDom(
         baseScreenDocument,
         suppression,
         nextPanelViewContext,
-        currentDataFeedContext
+        currentDataFeedContext,
+        nextIncludeFieldContext,
+        includeFieldContextCache
       );
     }
   });
   function validateTemplateName(templateName: string, node: any, insideDataFeed: boolean) {
     const normalizedTemplateName = templateName.trim();
+    if (hasTemplateExpression(normalizedTemplateName)) {
+      return;
+    }
+
     if (normalizedTemplateName.startsWith("record-") && !insideDataFeed) {
       const range = getRange(content, node);
       pushHtmlDiagnostic(
@@ -386,84 +484,72 @@ function validateDom(
   }
 
   function validateCustomizationSelectors(node: any) {
-    if (!baseScreenDocument) {
+    const selectorDocuments = getSelectorValidationDocuments();
+    if (!selectorDocuments.length) {
       return;
     }
 
     forEachCustomizationSelector(node, (attributeName, rawValue, normalizedValue) => {
+      if (hasTemplateExpression(normalizedValue)) {
+        return;
+      }
+
       const range =
         getAttributeValueRange(content, node, attributeName, rawValue) ?? getRange(content, node);
-      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
-      if (error) {
-        pushHtmlDiagnostic(
-          diagnostics,
-          suppression,
-          range,
-          `The ${attributeName} selector "${rawValue}" is not a valid CSS selector (${error}).`
-        );
-        return;
-      }
 
-      if (!nodes.length) {
-        const baseName = path.basename(baseScreenDocument.filePath);
-        pushHtmlDiagnostic(
-          diagnostics,
-          suppression,
-          range,
-          `The ${attributeName} selector "${rawValue}" does not match any elements in ${baseName}.`
-        );
-      }
-    });
-  }
-
-  function getViewNameFromCustomizationSelectors(node: any): string | undefined {
-    if (!baseScreenDocument) {
-      return undefined;
-    }
-
-    let selectorViewName: string | undefined;
-    forEachCustomizationSelector(node, (_attributeName, _rawValue, normalizedValue) => {
-      if (selectorViewName) {
-        return;
-      }
-
-      const { nodes, error } = queryBaseScreenElements(baseScreenDocument, normalizedValue);
-      if (error || !nodes.length) {
-        return;
-      }
-
-      for (const target of nodes) {
-        const candidateViewName = findParentViewName(target);
-        if (candidateViewName) {
-          selectorViewName = candidateViewName;
+      let selectorMatched = false;
+      for (const document of selectorDocuments) {
+        const { nodes, error } = queryBaseScreenElements(document, normalizedValue);
+        if (error) {
+          pushHtmlDiagnostic(
+            diagnostics,
+            suppression,
+            range,
+            `The ${attributeName} selector "${rawValue}" is not a valid CSS selector (${error}).`
+          );
           return;
         }
+
+        if (nodes.length) {
+          selectorMatched = true;
+          break;
+        }
+      }
+
+      if (!selectorMatched) {
+        const documentNames = selectorDocuments.map(getScreenDocumentDisplayName).join(" or ");
+        pushHtmlDiagnostic(
+          diagnostics,
+          suppression,
+          range,
+          `The ${attributeName} selector "${rawValue}" does not match any elements in ${documentNames}.`
+        );
       }
     });
-
-    return selectorViewName;
   }
 
-  function forEachCustomizationSelector(
-    node: any,
-    callback: (attributeName: string, rawValue: string, normalizedValue: string) => void
-  ) {
-    if (!node?.attribs) {
-      return;
+  function resolveActionBinding(actionBinding: string, node: any): boolean {
+    const qualifiedAction = parseQualifiedActionBinding(actionBinding);
+    if (qualifiedAction) {
+      return resolveView(qualifiedAction.viewName)?.viewClass?.properties.get(qualifiedAction.actionName)?.kind === "action";
     }
 
-    for (const [attributeName, attributeValue] of Object.entries(node.attribs)) {
-      if (!isCustomizationSelectorAttribute(attributeName) || typeof attributeValue !== "string") {
-        continue;
-      }
+    const panelHasAction = panelViewContext?.properties.get(actionBinding)?.kind === "action";
+    const scopedViewName = findParentViewName(node);
+    const viewHasAction = resolveView(scopedViewName)?.viewClass?.properties.get(actionBinding)?.kind === "action";
+    return actionLookup.has(actionBinding) || panelHasAction || viewHasAction;
+  }
 
-      const normalizedValue = attributeValue.trim();
-      if (!normalizedValue.length) {
-        continue;
-      }
-
-      callback(attributeName, attributeValue, normalizedValue);
+  function getSelectorValidationDocuments(): BaseScreenDocument[] {
+    const documents: BaseScreenDocument[] = [];
+    const includeDocument = includeFieldContext?.templateDocument;
+    if (includeDocument) {
+      documents.push(includeDocument);
     }
+    if (baseScreenDocument) {
+      documents.push(baseScreenDocument);
+    }
+    return documents;
   }
 
   function validateConfigBinding(bindingValue: string, node: any) {
@@ -482,6 +568,10 @@ function validateDom(
     const configObject = parseConfigObject(bindingValue);
     const range = getRange(content, node);
     if (!configObject) {
+      if (hasTemplateExpression(bindingValue)) {
+        return;
+      }
+
       pushHtmlDiagnostic(
         diagnostics,
         suppression,
@@ -527,7 +617,7 @@ function validateDom(
     }
 
     const normalizedValue = rawValue.trim();
-    if (!normalizedValue.length) {
+    if (!normalizedValue.length || hasTemplateExpression(normalizedValue)) {
       return;
     }
 
@@ -548,6 +638,10 @@ function validateDom(
 
 
   function validateControlStateBinding(bindingValue: string, node: any) {
+    if (hasTemplateExpression(bindingValue)) {
+      return;
+    }
+
     const parts = bindingValue.split(".");
     const range = getRange(content, node);
     if (parts.length !== 2) {
@@ -594,6 +688,63 @@ function validateDom(
       );
     }
   }
+
+  function validateStateFieldBinding(bindingValue: string, node: any) {
+    const fieldResolution = resolveHtmlField({
+      rawFieldName: bindingValue,
+      elementNode: node,
+      metadataContext: hostFieldMetadataContext,
+      selectorDocument: baseScreenDocument,
+      useParentView: false,
+    });
+    if (fieldResolution?.hasTemplatedBinding) {
+      return;
+    }
+
+    const range = getRange(content, node);
+    if (!fieldResolution?.viewName) {
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
+        range,
+        "The state.bind attribute must use the <view>.<field> format for non-button controls."
+      );
+      return;
+    }
+
+    if (!fieldResolution.viewResolution) {
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
+        range,
+        `The state.bind attribute references unknown view "${fieldResolution.viewName}".`
+      );
+      return;
+    }
+
+    if (fieldResolution.fieldProperty?.kind !== "field") {
+      pushHtmlDiagnostic(
+        diagnostics,
+        suppression,
+        range,
+        `The state.bind attribute references unknown field "${fieldResolution.fieldName}" on view "${fieldResolution.viewName}".`
+      );
+    }
+  }
+
+  function hasConfigId(node: any): boolean {
+    const rawConfig = node.attribs?.["config.bind"];
+    if (typeof rawConfig !== "string" || !rawConfig.length) {
+      return false;
+    }
+
+    const configObject = parseConfigObject(rawConfig);
+    if (configObject) {
+      return Object.prototype.hasOwnProperty.call(configObject, "id");
+    }
+
+    return hasTemplateExpression(rawConfig);
+  }
 }
 
 function validateIncludeNode(
@@ -605,7 +756,7 @@ function validateIncludeNode(
   suppression: SuppressionEngine
 ) {
   const includeUrl = node.attribs?.url;
-  if (typeof includeUrl !== "string" || !includeUrl.length) {
+  if (typeof includeUrl !== "string" || !includeUrl.length || hasTemplateExpression(includeUrl)) {
     return;
   }
 
@@ -667,6 +818,25 @@ function shouldIgnoreIncludeAttribute(attributeName: string): boolean {
   }
 
   return false;
+}
+
+function parseQualifiedActionBinding(value: string | undefined): { viewName: string; actionName: string } | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const parts = value.split(".");
+  if (parts.length !== 2) {
+    return undefined;
+  }
+
+  const viewName = parts[0]?.trim();
+  const actionName = parts[1]?.trim();
+  if (!viewName || !actionName) {
+    return undefined;
+  }
+
+  return { viewName, actionName };
 }
 
 function getAttributeValueRange(

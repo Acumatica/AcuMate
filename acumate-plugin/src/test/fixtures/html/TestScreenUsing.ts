@@ -11,6 +11,8 @@ export class ProdItemSelectedView extends PXView {
 export class ItemConfigurationView extends PXView {
 	ConfigurationID!: PXFieldState;
 	Revision!: PXFieldState;
+	ConfigureEntry!: PXActionState;
+	Reconfigure!: PXActionState;
 }
 
 export class TestScreenUsingMaint extends PXScreen {

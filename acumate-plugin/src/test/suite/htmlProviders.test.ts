@@ -19,9 +19,13 @@ const qpTemplateFixturePath = path.join(fixturesRoot, 'TestQpTemplate.html');
 const qpTemplateRecordInsidePath = path.join(fixturesRoot, 'TestQpTemplateRecordInside.html');
 const qpTemplateRecordOutsidePath = path.join(fixturesRoot, 'TestQpTemplateRecordOutside.html');
 const includeHostPath = path.join(fixturesRoot, 'TestIncludeHost.html');
+const includeFieldModificationHostPath = path.join(fixturesRoot, 'TestIncludeFieldModificationHost.html');
 const importedFixturePath = path.join(fixturesRoot, 'TestScreenImported.html');
 const configCompletionPath = path.join(fixturesRoot, 'TestConfigBindingCompletion.html');
 const controlTypeCompletionPath = path.join(fixturesRoot, 'TestControlTypeCompletion.html');
+const duplicateViewNamesFixturePath = path.join(fixturesRoot, 'TestDuplicateViewNames.html');
+const stateFieldBindingPath = path.join(fixturesRoot, 'TestStateFieldBinding.html');
+const qualifiedActionBindingPath = path.join(fixturesRoot, 'TestQualifiedActionBinding.html');
 const screenFixturesRoot = path.resolve(__dirname, '../../../src/test/fixtures/screens');
 const screenExtensionHtmlPath = path.join(
 	screenFixturesRoot,
@@ -50,6 +54,20 @@ const screenSelectorHtmlPath = path.join(
 	'SO301000',
 	'extensions',
 	'SO301000_FieldSelectors.html'
+);
+const screenDependentExtensionHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_Discounts.html'
+);
+const screenIncludeExtensionMixinHtmlPath = path.join(
+	screenFixturesRoot,
+	'SO',
+	'SO301000',
+	'extensions',
+	'SO301000_IncludeExtensionMixin.html'
 );
 const fieldControlHtmlPath = path.join(fixturesRoot, 'FieldControlInfo.html');
 const backendGraphName = 'PX.SM.ProjectNewUiFrontendFileMaintenance';
@@ -198,6 +216,97 @@ describe('HTML completion provider integration', () => {
 		assert.ok(/qp-drop-down/.test(value), 'Hover should show default control type');
 	});
 
+	it('shows backend metadata for fields scoped by selector target view', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				CurrentDocument: {
+					name: 'CurrentDocument',
+					fields: {
+						AMCuryEstimateTotal: {
+							name: 'AMCuryEstimateTotal',
+							displayName: 'Manufacturing Estimate Total',
+							typeName: 'PX.Objects.CS.PXDecimal'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const caret = positionAt(document, 'name="AMCuryEstimateTotal"', 'name="'.length + 1);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for selector-scoped HTML field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Manufacturing Estimate Total/.test(value), 'Hover should show selector-scoped backend display name');
+		assert.ok(/CurrentDocument/.test(value), 'Hover should show selector target view name');
+	});
+
+	it('shows backend metadata for qp-include child fields from host extension mixins', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				addItemParameters: {
+					name: 'addItemParameters',
+					fields: {
+						VendorID: {
+							name: 'VendorID',
+							displayName: 'Vendor',
+							typeName: 'PX.Objects.AP.Vendor'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinHtmlPath);
+		const caret = positionAt(document, 'name="VendorID"', 'name="'.length + 1);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for include child extension-mixin field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Vendor/.test(value), 'Hover should show include child backend display name');
+		assert.ok(/addItemParameters/.test(value), 'Hover should show include template view name');
+	});
+
+	it('shows backend metadata for non-button state.bind field bindings', async () => {
+		const graphStructure: GraphStructure = {
+			name: backendGraphName,
+			views: {
+				EstimateRecordSelected: {
+					name: 'EstimateRecordSelected',
+					fields: {
+						ImageUrl: {
+							name: 'ImageUrl',
+							displayName: 'Estimate Image',
+							typeName: 'System.String'
+						}
+					}
+				}
+			}
+		};
+		AcuMateContext.ApiService = new HtmlMockApiClient({ [backendGraphName]: graphStructure });
+
+		const document = await vscode.workspace.openTextDocument(stateFieldBindingPath);
+		const caret = positionAt(
+			document,
+			'state.bind="EstimateRecordSelected.ImageUrl"',
+			'state.bind="EstimateRecordSelected.'.length + 1
+		);
+		const hover = await provideHtmlFieldHover(document, caret);
+		assert.ok(hover, 'Expected hover result for state.bind field');
+		const contents = Array.isArray(hover!.contents) ? hover!.contents : [hover!.contents];
+		const first = contents[0];
+		const value = first instanceof vscode.MarkdownString ? first.value : `${first}`;
+		assert.ok(/Estimate Image/.test(value), 'Hover should show state.bind backend display name');
+		assert.ok(/EstimateRecordSelected/.test(value), 'Hover should show state.bind view name');
+	});
+
 	it('suggests view names for using view attribute', async () => {
 		const document = await vscode.workspace.openTextDocument(usingFixturePath);
 		const provider = new HtmlCompletionProvider();
@@ -279,6 +388,61 @@ describe('HTML completion provider integration', () => {
 		assert.ok(completions && completions.length > 0, 'No completions returned for state.bind');
 		const labels = completions.map(item => item.label);
 		assert.ok(labels.includes('AddBlanketLineOK'), 'AddBlanketLineOK action not suggested');
+	});
+
+	it('suggests PXAction names from using view context', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'state.bind="ConfigureEntry"', 'state.bind="'.length + 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for using view state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('ConfigureEntry'), 'ConfigureEntry not suggested from using view');
+	});
+
+	it('suggests qualified view action names for qp-button state.bind attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(qualifiedActionBindingPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(
+			document,
+			'state.bind="Document.AdjustDocAmt"',
+			'state.bind="Document.'.length
+		);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for qualified action state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('Document.AdjustDocAmt'), 'Document.AdjustDocAmt not suggested');
+	});
+
+	it('suggests view + field pairs for non-button state.bind attributes', async () => {
+		const document = await vscode.workspace.openTextDocument(stateFieldBindingPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'state.bind=""', 'state.bind="'.length);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No completions returned for non-button state.bind');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('EstimateRecordSelected.ImageUrl'), 'EstimateRecordSelected.ImageUrl not suggested');
+		assert.ok(!labels.includes('SaveAction'), 'Non-button state.bind should not suggest PXAction names');
+	});
+
+	it('suggests field names from selector target view context', async () => {
+		const document = await vscode.workspace.openTextDocument(screenSelectorHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="AMCuryEstimateTotal"', 'name="'.length + 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for selector target view');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('AMCuryEstimateTotal'), 'AMCuryEstimateTotal not suggested from selector target view');
+	});
+
+	it('suggests qp-include child field names from host extension mixins', async () => {
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinHtmlPath);
+		const provider = new HtmlCompletionProvider();
+		const caret = positionAt(document, 'name="VendorID"', 'name="'.length + 1);
+		const completions = await provider.provideCompletionItems(document, caret);
+		assert.ok(completions && completions.length > 0, 'No field completions returned for include child field');
+		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('VendorID'), 'VendorID not suggested from include host extension mixin');
 	});
 
 	it('suggests field names for using containers inheriting parent views', async () => {
@@ -369,6 +533,8 @@ describe('HTML completion provider integration', () => {
 		const completions = await provider.provideCompletionItems(document, caret);
 		assert.ok(completions && completions.length > 0, 'No completions returned for config.bind');
 		const labels = completions.map(item => item.label);
+		assert.ok(labels.includes('id'), 'id config property not suggested');
+		assert.ok(labels.includes('tabIndex'), 'tabIndex config property not suggested');
 		assert.ok(labels.includes('enabled'), 'enabled config property not suggested');
 		assert.ok(labels.includes('dialogResult'), 'dialogResult config property not suggested');
 	});
@@ -401,6 +567,29 @@ describe('HTML definition provider integration', () => {
 			locations.some(loc => loc.uri.fsPath.endsWith('TestScreen.ts')),
 			'Expected field definition inside TestScreen.ts'
 		);
+	});
+
+	it('navigates to the imported view class when class names collide', async () => {
+		const document = await vscode.workspace.openTextDocument(duplicateViewNamesFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="WcID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestDuplicateViewNames.models.ts')),
+			'Expected definition inside the directly imported SelectionFilter model'
+		);
+	});
+
+	it('does not navigate from unbound field names', async () => {
+		const htmlPath = path.join(fixturesRoot, 'TestScreenUnboundField.html');
+		const document = await vscode.workspace.openTextDocument(htmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="actions"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.strictEqual(locations.length, 0, 'Expected no definitions for unbound field name');
 	});
 
 	it('navigates from field inside using container with custom view', async () => {
@@ -533,6 +722,53 @@ describe('HTML definition provider integration', () => {
 		);
 	});
 
+	it('navigates from using view state.bind attribute to PXAction definition', async () => {
+		const document = await vscode.workspace.openTextDocument(usingFixturePath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'state.bind="ConfigureEntry"', 'state.bind="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestScreenUsing.ts')),
+			'Expected using view action definition inside TestScreenUsing.ts'
+		);
+	});
+
+	it('navigates from qualified qp-button state.bind attribute to view PXAction definition', async () => {
+		const document = await vscode.workspace.openTextDocument(qualifiedActionBindingPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'state.bind="Document.AdjustDocAmt"',
+			'state.bind="Document.'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qualified view action');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestQualifiedActionBinding.ts')),
+			'Expected qualified view action definition inside TestQualifiedActionBinding.ts'
+		);
+	});
+
+	it('navigates from non-button state.bind attribute to PXField property', async () => {
+		const document = await vscode.workspace.openTextDocument(stateFieldBindingPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'state.bind="EstimateRecordSelected.ImageUrl"',
+			'state.bind="EstimateRecordSelected.'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for non-button state.bind field');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestStateFieldBinding.ts')),
+			'Expected state.bind field definition inside TestStateFieldBinding.ts'
+		);
+	});
+
 	it('navigates from qp-include url to referenced file', async () => {
 		const document = await vscode.workspace.openTextDocument(includeHostPath);
 		const provider = new HtmlDefinitionProvider();
@@ -564,6 +800,96 @@ describe('HTML definition provider integration', () => {
 		assert.ok(
 			locations.some(loc => loc.uri.fsPath.endsWith('SO301000.html')),
 			'Expected navigation to base screen HTML'
+		);
+	});
+
+	it('navigates from customization selector attributes to dependent extension HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(screenDependentExtensionHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			'after="#tab-Approval"',
+			'after="'.length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for dependent extension selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_Approvals.html')),
+			'Expected navigation to dependent extension HTML'
+		);
+	});
+
+	it('navigates from qp-include child selector attributes to include template HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			"before=\"#includedView [name='Anchor']\"",
+			"before=\"".length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-include customization selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('include-field-modification-template.html')),
+			'Expected navigation to include template HTML'
+		);
+	});
+
+	it('navigates from qp-include child remove selectors to include template HTML', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(
+			document,
+			"remove=\"#includedView [name='Anchor']\"",
+			"remove=\"".length + 1
+		);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-include remove selector');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('include-field-modification-template.html')),
+			'Expected navigation to include template HTML'
+		);
+	});
+
+	it('navigates from qp-include child field name to include template TS definition', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="IncludedAlpha"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for qp-include child field name');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('include-field-modification-template.ts')),
+			'Expected navigation to include template TS file'
+		);
+	});
+
+	it('navigates from qp-include child field name to host TS definition via include selector target', async () => {
+		const document = await vscode.workspace.openTextDocument(includeFieldModificationHostPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="HostField"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for host field inside qp-include');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('TestIncludeFieldModificationHost.ts')),
+			'Expected navigation to host screen TS file'
+		);
+	});
+
+	it('navigates from qp-include child field name to host extension mixin definition', async () => {
+		const document = await vscode.workspace.openTextDocument(screenIncludeExtensionMixinHtmlPath);
+		const provider = new HtmlDefinitionProvider();
+		const caret = positionAt(document, 'name="VendorID"', 'name="'.length + 1);
+		const definition = await provider.provideDefinition(document, caret);
+		const locations = Array.isArray(definition) ? definition : definition ? [definition] : [];
+		assert.ok(locations.length >= 1, 'No definitions returned for include extension mixin field');
+		assert.ok(
+			locations.some(loc => loc.uri.fsPath.endsWith('SO301000_IncludeExtensionMixin.ts')),
+			'Expected navigation to host extension mixin TS file'
 		);
 	});
 

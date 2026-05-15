@@ -234,30 +234,47 @@ export function readAttributeAtOffset(text: string, offset: number) {
 	};
 }
 
-// Climbs ancestors until a view.bind is found, mirroring runtime scoping.
-export function findParentViewName(node: any): string | undefined {
-	let current: any = node?.parent ?? node?.parentNode;
+export function getElementViewName(node: any): string | undefined {
+	const viewBinding = node?.attribs?.['view.bind'];
+	if (typeof viewBinding === 'string' && viewBinding.trim().length) {
+		return viewBinding.trim();
+	}
+
+	if (node?.name === 'qp-panel') {
+		const panelId = node.attribs?.['id'];
+		if (typeof panelId === 'string' && panelId.trim().length) {
+			return panelId.trim();
+		}
+	}
+
+	if (node?.name === 'using') {
+		const usingView = node.attribs?.view;
+		if (typeof usingView === 'string' && usingView.trim().length) {
+			return usingView.trim();
+		}
+	}
+
+	return undefined;
+}
+
+export function findViewNameAtOrAbove(node: any): string | undefined {
+	let current: any = node;
 	while (current) {
-		const viewBinding = current.attribs?.['view.bind'];
-		if (typeof viewBinding === 'string' && viewBinding.length) {
-			return viewBinding;
-		}
-
-		if (current.name === 'qp-panel') {
-			const panelId = current.attribs?.['id'];
-			if (typeof panelId === 'string' && panelId.trim().length) {
-				return panelId.trim();
-			}
-		}
-
-		if (current.name === 'using') {
-			const usingView = current.attribs?.view;
-			if (usingView) {
-				return usingView;
-			}
+		const viewName = getElementViewName(current);
+		if (viewName) {
+			return viewName;
 		}
 
 		current = current.parent ?? current.parentNode;
 	}
 	return undefined;
+}
+
+// Climbs ancestors until a view scope is found, mirroring runtime scoping.
+export function findParentViewName(node: any): string | undefined {
+	return findViewNameAtOrAbove(node?.parent ?? node?.parentNode);
+}
+
+export function isActionStateBindTag(tagName: string | undefined): boolean {
+	return typeof tagName === 'string' && tagName.toLowerCase() === 'qp-button';
 }

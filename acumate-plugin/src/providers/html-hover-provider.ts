@@ -4,19 +4,19 @@ import {
 	findNodeAtOffset,
 	elevateToElementNode,
 	getAttributeContext,
-	findParentViewName,
 	HtmlAttributeContext,
+	isActionStateBindTag,
 } from './html-shared';
-import {
-	getRelatedTsFiles,
-	loadClassInfosFromFiles,
-	filterClassesBySource,
-	createClassInfoLookup,
-	filterScreenLikeClasses,
-	resolveViewBinding,
-} from '../utils';
+import { getRelatedTsFiles } from '../utils';
 import { loadBackendFieldsForView } from './html-backend-utils';
 import { BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
+import { getBaseScreenDocument } from '../services/screen-html-service';
+import {
+	getIncludeFieldContext,
+	loadHtmlFieldMetadataContext,
+	parseFieldReference,
+	resolveHtmlField,
+} from '../services/html-field-context-service';
 
 export function registerHtmlHoverProvider(context: vscode.ExtensionContext) {
 	const provider = vscode.languages.registerHoverProvider(
@@ -53,11 +53,13 @@ export async function provideHtmlFieldHover(
 	}
 
 	const attributeContext = getAttributeContext(document, offset, elementNode);
-	if (!attributeContext || !isFieldNameAttribute(attributeContext)) {
+	if (!attributeContext || !isFieldHoverAttribute(attributeContext)) {
 		return undefined;
 	}
 
-	return buildFieldHover(document.uri.fsPath, attributeContext, elementNode);
+	return buildFieldHover(document.uri.fsPath, attributeContext, elementNode, {
+		useParentView: isFieldNameAttribute(attributeContext),
+	});
 }
 
 function isFieldNameAttribute(attribute: HtmlAttributeContext): boolean {
@@ -69,10 +71,19 @@ function isFieldNameAttribute(attribute: HtmlAttributeContext): boolean {
 	return tagName === 'field' || tagName === 'qp-field';
 }
 
+function isFieldHoverAttribute(attribute: HtmlAttributeContext): boolean {
+	if (isFieldNameAttribute(attribute)) {
+		return true;
+	}
+
+	return attribute.attributeName === 'state.bind' && !isActionStateBindTag(attribute.tagName);
+}
+
 async function buildFieldHover(
 	htmlFilePath: string,
 	attributeContext: HtmlAttributeContext,
-	elementNode: any
+	elementNode: any,
+	options: { useParentView: boolean }
 ): Promise<vscode.Hover | undefined> {
 	const fieldName = attributeContext.value?.trim();
 	if (!fieldName) {
@@ -80,42 +91,69 @@ async function buildFieldHover(
 	}
 
 	const tsFilePaths = getRelatedTsFiles(htmlFilePath);
-	if (!tsFilePaths.length) {
+	const hostContext = loadHtmlFieldMetadataContext(tsFilePaths);
+	if (!hostContext) {
 		return undefined;
 	}
 
-	const classInfos = loadClassInfosFromFiles(tsFilePaths);
-	if (!classInfos.length) {
+	const fieldReference = parseFieldReference(fieldName);
+	const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+	const includeContext = getIncludeFieldContext({
+		documentPath: htmlFilePath,
+		elementNode,
+		hostTsFilePaths: tsFilePaths,
+		hostScreenClasses: hostContext.screenClasses,
+		workspaceRoots,
+	});
+	const includeResolution = includeContext
+		? resolveHtmlField({
+			fieldReference,
+			elementNode,
+			metadataContext: includeContext,
+			selectorDocument: includeContext.templateDocument,
+			parameterValues: includeContext.parameterValues,
+			allowAnyViewWhenUnscoped: true,
+			useParentView: false,
+		})
+		: undefined;
+	const hostIncludeSelectorResolution = includeContext
+		? resolveHtmlField({
+			fieldReference,
+			elementNode,
+			metadataContext: hostContext,
+			selectorDocument: includeContext.templateDocument,
+			useParentView: options.useParentView,
+		})
+		: undefined;
+	const hostBaseResolution = resolveHtmlField({
+		fieldReference,
+		elementNode,
+		metadataContext: hostContext,
+		selectorDocument: getBaseScreenDocument(htmlFilePath),
+		useParentView: options.useParentView,
+	});
+	const hostResolution = hostIncludeSelectorResolution?.viewResolution
+		? hostIncludeSelectorResolution
+		: hostBaseResolution;
+	const hoverResolution =
+		includeResolution?.viewName && includeResolution.viewResolution && !includeResolution.hasTemplatedBinding
+			? includeResolution
+			: hostResolution;
+	if (!hoverResolution?.viewName || hoverResolution.hasTemplatedBinding) {
 		return undefined;
 	}
 
-	const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
-	if (!relevantClassInfos.length) {
-		return undefined;
-	}
-
-	const screenClasses = filterScreenLikeClasses(relevantClassInfos);
-	if (!screenClasses.length) {
-		return undefined;
-	}
-
-	const viewName = findParentViewName(elementNode);
-	if (!viewName) {
-		return undefined;
-	}
-
-	const classInfoLookup = createClassInfoLookup(classInfos);
-	const resolution = resolveViewBinding(viewName, screenClasses, classInfoLookup);
-	if (!resolution) {
-		return undefined;
-	}
-
-	const backendFields = await loadBackendFieldsForView(viewName, screenClasses);
+	const backendFields = await loadBackendFieldsForView(
+		hoverResolution.viewName,
+		hoverResolution === includeResolution
+			? includeContext?.hostScreenClasses ?? hostContext.screenClasses
+			: hostContext.screenClasses
+	);
 	if (!backendFields?.size) {
 		return undefined;
 	}
 
-	const normalizedFieldName = normalizeMetaName(fieldName);
+	const normalizedFieldName = normalizeMetaName(hoverResolution.fieldName);
 	if (!normalizedFieldName) {
 		return undefined;
 	}
@@ -125,7 +163,7 @@ async function buildFieldHover(
 		return undefined;
 	}
 
-	const markdown = buildFieldMarkdown(backendField, fieldName, viewName);
+	const markdown = buildFieldMarkdown(backendField, hoverResolution.fieldName, hoverResolution.viewName);
 	if (!markdown) {
 		return undefined;
 	}

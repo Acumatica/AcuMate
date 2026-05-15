@@ -42,5 +42,13 @@ function assertBarcodeControl(controls: ReturnType<typeof getClientControlsMetad
 	const propNames = definition?.properties.map(prop => prop.name) ?? [];
 	assert.ok(propNames.includes('soundControl'));
 	assert.ok(propNames.includes('soundPath'));
+
+	const button = controls.find(control => control.tagName === 'qp-button');
+	assert.ok(button, 'Expected qp-button control to be discovered');
+	assert.strictEqual(button?.config?.typeName, 'IButtonControlConfig');
+	const buttonProps = button?.config?.definition?.properties.map(prop => prop.name) ?? [];
+	assert.ok(buttonProps.includes('id'), 'Expected inherited id config property');
+	assert.ok(buttonProps.includes('tabIndex'), 'Expected inherited tabIndex config property');
+	assert.ok(buttonProps.includes('text'), 'Expected own text config property');
 }
 

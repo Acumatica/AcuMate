@@ -6,11 +6,8 @@ import {
 	loadClassInfosFromFiles,
 	CollectedClassInfo,
 	ClassPropertyInfo,
-	createClassInfoLookup,
 	resolveViewBinding,
-	filterScreenLikeClasses,
 	collectActionProperties,
-	filterClassesBySource,
 	getLineAndColumnFromIndex,
 } from '../utils';
 import {
@@ -19,6 +16,7 @@ import {
 	elevateToElementNode,
 	getAttributeContext,
 	findParentViewName,
+	isActionStateBindTag,
 } from './html-shared';
 import { resolveIncludeFilePath } from '../services/include-service';
 import {
@@ -26,8 +24,20 @@ import {
 	isCustomizationSelectorAttribute,
 	queryBaseScreenElements,
 	BaseScreenDocument,
-	getCustomizationSelectorAttributes,
+	getDocumentForNode,
 } from '../services/screen-html-service';
+import {
+	HtmlFieldMetadataContext,
+	HtmlIncludeFieldContext,
+	createHtmlFieldMetadataContext,
+	findFieldsInAnyView,
+	getIncludeFieldContext,
+	parseFieldReference,
+	resolveHtmlField,
+} from '../services/html-field-context-service';
+
+type DefinitionMetadataContext = HtmlFieldMetadataContext;
+type IncludeDefinitionContext = HtmlIncludeFieldContext;
 
 // Hooks VS Code so view/field bindings support "Go to Definition" directly from HTML.
 export function registerHtmlDefinitionProvider(context: vscode.ExtensionContext) {
@@ -64,9 +74,16 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		const baseScreenDocument = getBaseScreenDocument(document.uri.fsPath);
+		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
+		const hostTsFilePaths = getRelatedTsFiles(document.uri.fsPath);
+		const includeContext = getIncludeFieldContext({
+			documentPath: document.uri.fsPath,
+			elementNode,
+			hostTsFilePaths,
+			workspaceRoots,
+		});
 
 		if (attributeContext.attributeName === 'url' && attributeContext.tagName === 'qp-include') {
-			const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
 			const includePath = resolveIncludeFilePath(attributeContext.value, document.uri.fsPath, workspaceRoots);
 			if (!includePath) {
 				return;
@@ -75,40 +92,45 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		if (isCustomizationSelectorAttribute(attributeContext.attributeName)) {
-			if (!baseScreenDocument) {
-				return;
-			}
-
 			const selector = attributeContext.value?.trim();
 			if (!selector) {
 				return;
 			}
 
-			const { nodes, error } = queryBaseScreenElements(baseScreenDocument, selector);
-			if (error || !nodes.length) {
-				return;
+			const includeLocations = getSelectorLocations(includeContext?.templateDocument, selector);
+			if (includeLocations.length) {
+				return includeLocations;
 			}
 
-			const locations: vscode.Location[] = [];
-			const seen = new Set<number>();
-			for (const nodeCandidate of nodes) {
-				const startIndex = typeof nodeCandidate.startIndex === 'number' ? nodeCandidate.startIndex : undefined;
-				if (startIndex === undefined || seen.has(startIndex)) {
-					continue;
-				}
-				seen.add(startIndex);
-				const location = createLocationFromHtmlNode(baseScreenDocument, nodeCandidate);
-				if (location) {
-					locations.push(location);
-				}
-			}
-
-			if (locations.length) {
-				return locations;
+			const baseLocations = getSelectorLocations(baseScreenDocument, selector);
+			if (baseLocations.length) {
+				return baseLocations;
 			}
 		}
 
-		const tsFilePaths = getRelatedTsFiles(document.uri.fsPath);
+		if (
+			attributeContext.attributeName === 'name' &&
+			attributeContext.tagName === 'field' &&
+			hasUnboundAttribute(elementNode)
+		) {
+			return;
+		}
+
+		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field' && includeContext) {
+			const includeLocations = getFieldDefinitionLocations(
+				attributeContext.value,
+				elementNode,
+				includeContext,
+				includeContext.templateDocument,
+				includeContext.parameterValues,
+				true
+			);
+			if (includeLocations.length) {
+				return includeLocations;
+			}
+		}
+
+		const tsFilePaths = hostTsFilePaths;
 		if (!tsFilePaths.length) {
 			return;
 		}
@@ -118,13 +140,8 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return;
 		}
 
-		const relevantClassInfos = filterClassesBySource(classInfos, tsFilePaths);
-		if (!relevantClassInfos.length) {
-			return;
-		}
-
-		const classInfoLookup = createClassInfoLookup(classInfos);
-		const screenClasses = filterScreenLikeClasses(relevantClassInfos);
+		const documentMetadataContext = createHtmlFieldMetadataContext(classInfos, tsFilePaths);
+		const { classInfoLookup, screenClasses } = documentMetadataContext;
 		// Resolved metadata lets us jump from HTML bindings directly to the backing TypeScript symbol.
 
 		if (attributeContext.attributeName === 'view.bind' || (attributeContext.attributeName === 'view' && attributeContext.tagName === 'using')) {
@@ -162,11 +179,29 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 		}
 
 		if (attributeContext.attributeName === 'state.bind') {
-			const actionProperty = findActionProperty(attributeContext.value, screenClasses);
-			if (!actionProperty) {
-				return;
+			if (isActionStateBindTag(attributeContext.tagName)) {
+				const actionProperty =
+					findQualifiedViewActionProperty(attributeContext.value, documentMetadataContext) ??
+					findActionProperty(attributeContext.value, screenClasses) ??
+					findViewActionProperty(attributeContext.value, elementNode, documentMetadataContext);
+				if (!actionProperty) {
+					return;
+				}
+				return createLocationFromProperty(actionProperty);
 			}
-			return createLocationFromProperty(actionProperty);
+
+			const locations = getFieldDefinitionLocations(
+				attributeContext.value,
+				elementNode,
+				documentMetadataContext,
+				includeContext?.templateDocument ?? baseScreenDocument,
+				includeContext?.parameterValues,
+				false,
+				false
+			);
+			if (locations.length) {
+				return locations;
+			}
 		}
 
 		if (attributeContext.attributeName === 'control-state.bind' && attributeContext.tagName === 'qp-field') {
@@ -184,30 +219,97 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 
 		if (attributeContext.attributeName === 'name' && attributeContext.tagName === 'field') {
 			// Field names dereference through the closest parent view to locate the property in TS.
-			let viewName = findParentViewName(elementNode);
-			if (!viewName) {
-				viewName = getViewNameFromCustomizationSelectors(attributeContext.node, baseScreenDocument);
+			const locations = getFieldDefinitionLocations(
+				attributeContext.value,
+				elementNode,
+				documentMetadataContext,
+				includeContext?.templateDocument ?? baseScreenDocument,
+				includeContext?.parameterValues
+			);
+			if (locations.length) {
+				return locations;
 			}
-			if (!viewName) {
-				return;
-			}
-
-			const resolution = resolveViewBinding(viewName, screenClasses, classInfoLookup);
-			const viewClass = resolution?.viewClass;
-			if (!viewClass) {
-				return;
-			}
-
-			const fieldProperty = viewClass.properties.get(attributeContext.value);
-			if (!fieldProperty || fieldProperty.kind !== 'field') {
-				return;
-			}
-
-			return createLocationFromProperty(fieldProperty);
 		}
 
 		return undefined;
 	}
+}
+
+function hasUnboundAttribute(elementNode: any): boolean {
+	return Boolean(elementNode?.attribs && Object.prototype.hasOwnProperty.call(elementNode.attribs, 'unbound'));
+}
+
+function getSelectorLocations(
+	document: BaseScreenDocument | undefined,
+	selector: string
+): vscode.Location[] {
+	if (!document) {
+		return [];
+	}
+
+	const { nodes, matches, error } = queryBaseScreenElements(document, selector);
+	if (error || !nodes.length) {
+		return [];
+	}
+
+	const locations: vscode.Location[] = [];
+	const seen = new Set<string>();
+	const selectorMatches = matches.length
+		? matches
+		: nodes.map(node => ({ node, document: getDocumentForNode(document, node) }));
+	for (const { node: nodeCandidate, document: sourceDocument } of selectorMatches) {
+		const startIndex = typeof nodeCandidate.startIndex === 'number' ? nodeCandidate.startIndex : undefined;
+		const key = startIndex === undefined ? undefined : `${sourceDocument.filePath}:${startIndex}`;
+		if (key === undefined || seen.has(key)) {
+			continue;
+		}
+		seen.add(key);
+		const location = createLocationFromHtmlNode(sourceDocument, nodeCandidate);
+		if (location) {
+			locations.push(location);
+		}
+	}
+
+	return locations;
+}
+
+function getFieldDefinitionLocations(
+	rawFieldName: string | undefined,
+	elementNode: any,
+	metadataContext: DefinitionMetadataContext,
+	selectorDocument?: BaseScreenDocument,
+	parameterValues?: Map<string, string>,
+	allowAnyViewFallback = false,
+	useParentView = true
+): vscode.Location[] {
+	if (!rawFieldName) {
+		return [];
+	}
+
+	const parsed = parseFieldReference(rawFieldName);
+	const resolution = resolveHtmlField({
+		fieldReference: parsed,
+		elementNode,
+		metadataContext,
+		selectorDocument,
+		parameterValues,
+		allowAnyViewFallback,
+		useParentView,
+	});
+	if (!resolution || resolution.hasTemplatedBinding) {
+		return [];
+	}
+
+	if (resolution.fieldProperty?.kind === 'field' && !resolution.usedAnyViewFallback) {
+		return [createLocationFromProperty(resolution.fieldProperty)];
+	}
+
+	if (!allowAnyViewFallback) {
+		return [];
+	}
+
+	return findFieldsInAnyView(resolution.fieldName, metadataContext)
+		.map(match => createLocationFromProperty(match.fieldProperty));
 }
 
 function findActionProperty(actionName: string | undefined, screenClasses: CollectedClassInfo[]): ClassPropertyInfo | undefined {
@@ -216,6 +318,60 @@ function findActionProperty(actionName: string | undefined, screenClasses: Colle
 	}
 	const actions = collectActionProperties(screenClasses);
 	return actions.get(actionName);
+}
+
+function findViewActionProperty(
+	actionName: string | undefined,
+	elementNode: any,
+	metadataContext: DefinitionMetadataContext
+): ClassPropertyInfo | undefined {
+	if (!actionName) {
+		return undefined;
+	}
+
+	const viewName = findParentViewName(elementNode);
+	const viewClass = viewName
+		? resolveViewBinding(viewName, metadataContext.screenClasses, metadataContext.classInfoLookup)?.viewClass
+		: undefined;
+	const actionProperty = viewClass?.properties.get(actionName);
+	return actionProperty?.kind === 'action' ? actionProperty : undefined;
+}
+
+function findQualifiedViewActionProperty(
+	actionBinding: string | undefined,
+	metadataContext: DefinitionMetadataContext
+): ClassPropertyInfo | undefined {
+	const parsed = parseQualifiedActionBinding(actionBinding);
+	if (!parsed) {
+		return undefined;
+	}
+
+	const viewClass = resolveViewBinding(
+		parsed.viewName,
+		metadataContext.screenClasses,
+		metadataContext.classInfoLookup
+	)?.viewClass;
+	const actionProperty = viewClass?.properties.get(parsed.actionName);
+	return actionProperty?.kind === 'action' ? actionProperty : undefined;
+}
+
+function parseQualifiedActionBinding(value: string | undefined): { viewName: string; actionName: string } | undefined {
+	if (!value) {
+		return undefined;
+	}
+
+	const parts = value.split('.');
+	if (parts.length !== 2) {
+		return undefined;
+	}
+
+	const viewName = parts[0]?.trim();
+	const actionName = parts[1]?.trim();
+	if (!viewName || !actionName) {
+		return undefined;
+	}
+
+	return { viewName, actionName };
 }
 
 function parseControlStateBinding(value: string | undefined): { viewName: string; fieldName: string } | undefined {
@@ -248,45 +404,6 @@ function createLocationFromHtmlNode(document: BaseScreenDocument, node: any): vs
 			new vscode.Position(end.line, end.column)
 		)
 	);
-}
-
-function getViewNameFromCustomizationSelectors(
-	node: any,
-	baseDocument: BaseScreenDocument | undefined
-): string | undefined {
-	if (!baseDocument?.dom?.length) {
-		return undefined;
-	}
-
-	const attributes = node?.attribs;
-	if (!attributes) {
-		return undefined;
-	}
-
-	for (const attributeName of getCustomizationSelectorAttributes()) {
-		const rawValue = attributes[attributeName];
-		if (typeof rawValue !== 'string') {
-			continue;
-		}
-		const normalizedValue = rawValue.trim();
-		if (!normalizedValue.length) {
-			continue;
-		}
-
-		const { nodes, error } = queryBaseScreenElements(baseDocument, normalizedValue);
-		if (error || !nodes.length) {
-			continue;
-		}
-
-		for (const candidate of nodes) {
-			const viewName = findParentViewName(candidate);
-			if (viewName) {
-				return viewName;
-			}
-		}
-	}
-
-	return undefined;
 }
 
 // Converts a collected property back into a VS Code location for navigation.

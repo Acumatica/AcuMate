@@ -8,6 +8,7 @@ import {
 	getAttributeContext,
 	readAttributeAtOffset,
 	findParentViewName,
+	findViewNameAtOrAbove,
 } from '../../providers/html-shared';
 
 function extractOffset(template: string): { text: string; offset: number } {
@@ -89,5 +90,16 @@ describe('findParentViewName', () => {
 		const element = elevateToElementNode(node);
 		const viewName = findParentViewName(element);
 		assert.strictEqual(viewName, 'CurrentDocument');
+	});
+
+	it('returns the current node view scope for selector targets', async () => {
+		const { text, offset } = extractOffset('<qp-fieldset id="target" view.bind="HeaderView|"></qp-fieldset>');
+		await vscode.workspace.openTextDocument({ language: 'html', content: text });
+		const dom = parseDocumentDom(text);
+		assert.ok(dom);
+		const node = findNodeAtOffset(dom!, offset);
+		const element = elevateToElementNode(node);
+		const viewName = findViewNameAtOrAbove(element);
+		assert.strictEqual(viewName, 'HeaderView');
 	});
 });
