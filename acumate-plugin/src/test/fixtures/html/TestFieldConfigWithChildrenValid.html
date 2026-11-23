@@ -1,0 +1,15 @@
+<template>
+	<qp-fieldset id="fsNotes" view.bind="Document">
+		<field name="Notes" config-type.bind="1" config-rows.bind="5">
+			<!-- comments and whitespace alone do not count as child elements -->
+		</field>
+		<field name="Notes">
+			<qp-tooltip id="ttPlain">Help text</qp-tooltip>
+		</field>
+		<field name="Notes" replace-content>
+			<qp-field control-state.bind="state" config-type.bind="1" config-rows.bind="5">
+				<qp-tooltip id="ttReplaceContent">Help text</qp-tooltip>
+			</qp-field>
+		</field>
+	</qp-fieldset>
+</template>

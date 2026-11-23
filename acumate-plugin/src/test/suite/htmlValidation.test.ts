@@ -555,4 +555,37 @@ describe('HTML validation diagnostics', () => {
 			'Valid selector field should not produce field diagnostics'
 		);
 	});
+
+	it('warns when a <field> with child elements carries config-*, config.bind, or control-type', async () => {
+		const document = await openFixtureDocument('TestFieldConfigWithChildren.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.ok(
+			diagnostics.some(d =>
+				d.message.includes('"config-type.bind"') &&
+				d.message.includes('"config-rows.bind"') &&
+				d.message.includes('replace-content')
+			),
+			'Expected warning when <field> with child elements carries config-* attributes'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('"config.bind"') && d.message.includes('replace-content')),
+			'Expected warning when <field> with child elements carries config.bind'
+		);
+		assert.ok(
+			diagnostics.some(d => d.message.includes('"control-type"') && d.message.includes('replace-content')),
+			'Expected warning when <field> with child elements carries control-type'
+		);
+	});
+
+	it('allows childless configured fields and control-state.bind="state" inside <field replace-content>', async () => {
+		const document = await openFixtureDocument('TestFieldConfigWithChildrenValid.html');
+		await validateHtmlFile(document);
+		const diagnostics = AcuMateContext.HtmlValidator?.get(document.uri) ?? [];
+		assert.strictEqual(
+			diagnostics.length,
+			0,
+			`Expected no diagnostics for valid <field> usages, got: ${diagnostics.map(d => d.message).join('; ')}`
+		);
+	});
 });

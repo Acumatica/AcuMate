@@ -6,7 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 ### Added
-- Draft section for upcoming fixes and features.
+- Added an HTML validation warning when a `<field>` with child elements carries `config-*`, `config.bind`, or `control-type` without `replace-content`, since `qp-fieldset` silently drops those attributes at runtime.
+
+### Fixed
+- Allowed `control-state.bind="state"` on `<qp-field>` elements inside `<field replace-content>` without triggering a `<view>.<field>` format warning.
   
 ## [1.0.1] - 2026-01-22
 ### Fixed
