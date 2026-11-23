@@ -70,7 +70,10 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
     findClassAndCheckPosition(sourceFile);
     if (!activeClassKind && activeClassName) {
         const classInfo = classInfoLookup.get(activeClassName);
-        if (classInfo && isScreenLikeClass(classInfo)) {
+        if (classInfo?.type === 'PXScreen' || classInfo?.type === 'PXView') {
+            activeClassKind = classInfo.type;
+        }
+        else if (classInfo && isScreenLikeClass(classInfo)) {
             activeClassKind = 'PXScreen';
         }
     }
@@ -142,10 +145,11 @@ export async function provideTSCompletionItems(document: vscode.TextDocument, po
             return;
         }
 
+        const candidateViewClassNames = new Set<string>([activeClassName, ...(viewClassInfo.mixedInto ?? [])]);
         const referencingViewNames = new Set<string>();
         for (const classInfo of classInfos) {
             for (const property of classInfo.properties.values()) {
-                if ((property.kind === 'view' || property.kind === 'viewCollection') && property.viewClassName === activeClassName) {
+                if ((property.kind === 'view' || property.kind === 'viewCollection') && property.viewClassName && candidateViewClassNames.has(property.viewClassName)) {
                     const normalized = normalizeMetaName(property.name);
                     if (normalized) {
                         referencingViewNames.add(normalized);

@@ -113,13 +113,15 @@ function findHoverPropertyTarget(
 	return undefined;
 }
 
-function collectReferencingViews(classInfos: CollectedClassInfo[], targetClassName: string): Set<string> {
+function collectReferencingViews(classInfos: CollectedClassInfo[], targetClassInfo: CollectedClassInfo): Set<string> {
+	const candidateNames = new Set<string>([targetClassInfo.className, ...(targetClassInfo.mixedInto ?? [])]);
 	const referencing = new Set<string>();
 	for (const classInfo of classInfos) {
 		for (const property of classInfo.properties.values()) {
 			if (
 				(property.kind === 'view' || property.kind === 'viewCollection') &&
-				property.viewClassName === targetClassName
+				property.viewClassName &&
+				candidateNames.has(property.viewClassName)
 			) {
 				const normalized = normalizeMetaName(property.name);
 				if (normalized) {
@@ -137,7 +139,7 @@ function buildFieldHoverMarkdown(
 	hoverTarget: { classInfo: CollectedClassInfo; property: ClassPropertyInfo },
 	backendViews: Map<string, BackendViewMetadata>
 ): vscode.MarkdownString | undefined {
-	const referencingViews = collectReferencingViews(classInfos, hoverTarget.classInfo.className);
+	const referencingViews = collectReferencingViews(classInfos, hoverTarget.classInfo);
 	if (!referencingViews.size) {
 		return undefined;
 	}

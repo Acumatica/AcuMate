@@ -1,10 +1,17 @@
 import { GraphModel } from "../model/graph-model";
 import { GraphStructure } from "../model/graph-structure";
-import { GraphAPIRoute, GraphAPIStructureRoute, AuthEndpoint, LogoutEndpoint, FeaturesRoute } from "./constants";
+import {
+    GraphAPIRoute,
+    GraphAPIStructureRoute,
+    AuthEndpoint,
+    LogoutEndpoint,
+    FeaturesRoute,
+    LegacyFeaturesRoute
+} from "./constants";
 import { IAcuMateApiClient } from "./acu-mate-api-client";
 import { AcuMateContext } from "../plugin-context";
 import { FeatureModel } from "../model/FeatureModel";
-import { logError, logInfo } from "../logging/logger";
+import { logError, logInfo, logWarn } from "../logging/logger";
 
 interface FeatureSetsResponse {
     sets?: FeatureSetEntry[];
@@ -20,9 +27,26 @@ interface FeatureEntry {
     enabled?: boolean;
 }
 
+interface HttpGetResult<T> {
+    status: number;
+    data?: T;
+}
+
 export class AcuMateApiClient implements IAcuMateApiClient {
 
     private sessionCookieHeader?: string;
+    private readonly unsupportedMetadataBackendUrls = new Set<string>();
+    private readonly unsupportedLegacyFeatureUrls = new Set<string>();
+
+    public resetState(): void {
+        this.unsupportedMetadataBackendUrls.clear();
+        this.unsupportedLegacyFeatureUrls.clear();
+    }
+
+    private getNormalizedBackendKey(): string | undefined {
+        const url = AcuMateContext.ConfigurationService?.backedUrl?.trim();
+        return url ? url.toLowerCase() : undefined;
+    }
 
     private updateSessionCookies(response: Response) {
         const cookieAccessor = response.headers as unknown as { getSetCookie?: () => string[] };
@@ -46,8 +70,8 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             "password" : AcuMateContext.ConfigurationService.password,
             "tenant" : AcuMateContext.ConfigurationService.tenant?.trim() || undefined
         };
-        const response = await fetch(AcuMateContext.ConfigurationService.backedUrl!+AuthEndpoint, {
-            method:'POST',
+        const response = await fetch(AcuMateContext.ConfigurationService.backedUrl! + AuthEndpoint, {
+            method: 'POST',
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(data)
         });
@@ -65,8 +89,8 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         }
 
         logInfo('Logging out from AcuMate backend.');
-        const response = await fetch(AcuMateContext.ConfigurationService.backedUrl!+LogoutEndpoint, {
-            method:'POST',
+        const response = await fetch(AcuMateContext.ConfigurationService.backedUrl! + LogoutEndpoint, {
+            method: 'POST',
             headers: {
                 "Content-Type": "application/json",
                 "Cookie": this.sessionCookieHeader
@@ -83,10 +107,14 @@ export class AcuMateApiClient implements IAcuMateApiClient {
         }
     }
 
-    private async makeGetRequest<T>(route: string): Promise<T | undefined> {
+    private async makeGetRequestDetailed<T>(route: string): Promise<HttpGetResult<T>> {
         if (!AcuMateContext.ConfigurationService.useBackend) {
             logInfo('Skipped backend request because acuMate.useBackend is disabled.', { route });
-            return undefined;
+            return { status: 0 };
+        }
+
+        if (!AcuMateContext.ConfigurationService.backedUrl?.trim()) {
+            return { status: 0 };
         }
 
         try {
@@ -96,34 +124,34 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             if (authResponse.status !== 200 && authResponse.status !== 204) {
                 const errorBody = await authResponse.text().catch(() => "");
                 logError('AcuMate backend authentication failed.', { status: authResponse.status, errorBody });
-                return undefined;
+                return { status: authResponse.status };
             }
 
-            const url = AcuMateContext.ConfigurationService.backedUrl!+route;
+            const url = AcuMateContext.ConfigurationService.backedUrl! + route;
             const headers: Record<string, string> = { "Content-Type": "application/json" };
             if (this.sessionCookieHeader) {
                 headers.Cookie = this.sessionCookieHeader;
             }
 
             const settings: RequestInit = {
-                method:'GET',
-                headers
+                method: 'GET',
+                headers,
+                credentials: 'include'
             };
-            settings.credentials = `include`;
             logInfo('Issuing backend GET request.', { url });
             const response = await fetch(url, settings);
 
             if (!response.ok) {
                 const errorBody = await response.text().catch(() => "");
                 logError('Backend GET request failed.', { url, status: response.status, errorBody });
-                return undefined;
+                return { status: response.status };
             }
 
             const contentType = response.headers.get("content-type") ?? "";
             if (!contentType.includes("application/json")) {
                 const errorBody = await response.text().catch(() => "");
                 logError('Backend GET returned unexpected content type.', { url, contentType, errorBody });
-                return undefined;
+                return { status: response.status };
             }
 
             const data = await response.json();
@@ -133,28 +161,99 @@ export class AcuMateApiClient implements IAcuMateApiClient {
             }
             logInfo('Backend GET succeeded.', summary);
 
-            return data as T;
+            return { status: response.status, data: data as T };
         }
         catch (error) {
             logError('Unexpected error during backend GET request.', { route, error });
+            return { status: -1 };
         }
         finally {
             await this.logout();
         }
     }
 
+    private markMetadataApiUnsupported(backendKey: string | undefined, route: string): void {
+        if (!backendKey || this.unsupportedMetadataBackendUrls.has(backendKey)) {
+            return;
+        }
+        this.unsupportedMetadataBackendUrls.add(backendKey);
+        logWarn(
+            `Backend endpoint "${route}" returned 404. The ui/meta-data/* API requires Acumatica 2026 R1 or later; skipping further metadata requests for this backend URL until settings change or cache is dropped.`,
+            { backendUrl: AcuMateContext.ConfigurationService.backedUrl }
+        );
+    }
 
     public async getGraphs(): Promise<GraphModel[] | undefined> {
-        return await this.makeGetRequest<GraphModel[]>(GraphAPIRoute);
+        if (!AcuMateContext.ConfigurationService.useBackend) {
+            return undefined;
+        }
+
+        const backendKey = this.getNormalizedBackendKey();
+        if (!backendKey || this.unsupportedMetadataBackendUrls.has(backendKey)) {
+            return undefined;
+        }
+
+        const response = await this.makeGetRequestDetailed<GraphModel[]>(GraphAPIRoute);
+        if (response.data) {
+            return response.data;
+        }
+        if (response.status === 404) {
+            this.markMetadataApiUnsupported(backendKey, GraphAPIRoute);
+        }
+
+        return undefined;
     }
 
     public async getGraphStructure(graphName: string): Promise<GraphStructure | undefined> {
-        return await this.makeGetRequest<GraphStructure>(GraphAPIStructureRoute + graphName);
+        if (!AcuMateContext.ConfigurationService.useBackend) {
+            return undefined;
+        }
+
+        const backendKey = this.getNormalizedBackendKey();
+        if (!backendKey || this.unsupportedMetadataBackendUrls.has(backendKey)) {
+            return undefined;
+        }
+
+        const response = await this.makeGetRequestDetailed<GraphStructure>(GraphAPIStructureRoute + graphName);
+        return response.data;
     }
 
     public async getFeatures(): Promise<FeatureModel[] | undefined> {
-        const response = await this.makeGetRequest<FeatureSetsResponse | FeatureModel[]>(FeaturesRoute);
-        return normalizeFeatureResponse(response);
+        if (!AcuMateContext.ConfigurationService.useBackend) {
+            return undefined;
+        }
+
+        const backendKey = this.getNormalizedBackendKey();
+        if (!backendKey) {
+            return undefined;
+        }
+
+        if (!this.unsupportedMetadataBackendUrls.has(backendKey)) {
+            const response = await this.makeGetRequestDetailed<FeatureSetsResponse | FeatureModel[]>(FeaturesRoute);
+            if (response.data) {
+                return normalizeFeatureResponse(response.data);
+            }
+            if (response.status === 404) {
+                this.markMetadataApiUnsupported(backendKey, FeaturesRoute);
+            }
+        }
+
+        // Pre-26R1 Acumatica (e.g., 25R2) exposes active tenant feature states at GET ui/features
+        if (!this.unsupportedLegacyFeatureUrls.has(backendKey)) {
+            const legacyResponse = await this.makeGetRequestDetailed<FeatureSetsResponse | FeatureModel[]>(LegacyFeaturesRoute);
+            if (legacyResponse.data) {
+                const normalized = normalizeFeatureResponse(legacyResponse.data);
+                if (normalized?.length) {
+                    logInfo('Loaded feature states from legacy Acumatica endpoint ui/features.', { count: normalized.length });
+                    return normalized;
+                }
+            }
+            if (legacyResponse.status === 404) {
+                this.unsupportedLegacyFeatureUrls.add(backendKey);
+            }
+        }
+
+        return undefined;
     }
 }
 
@@ -193,4 +292,3 @@ function normalizeFeatureResponse(response: FeatureSetsResponse | FeatureModel[]
 
     return flattened;
 }
-
