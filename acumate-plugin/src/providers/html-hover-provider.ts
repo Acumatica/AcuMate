@@ -10,7 +10,7 @@ import {
 import { getRelatedTsFiles } from '../utils';
 import { loadBackendFieldsForView } from './html-backend-utils';
 import { BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
-import { getBaseScreenDocument } from '../services/screen-html-service';
+import { getBaseScreenDocumentWithPriorPlacements } from '../services/screen-html-service';
 import {
 	getIncludeFieldContext,
 	loadHtmlFieldMetadataContext,
@@ -57,7 +57,7 @@ export async function provideHtmlFieldHover(
 		return undefined;
 	}
 
-	return buildFieldHover(document.uri.fsPath, attributeContext, elementNode, {
+	return buildFieldHover(document.uri.fsPath, document.getText(), attributeContext, elementNode, {
 		useParentView: isFieldNameAttribute(attributeContext),
 	});
 }
@@ -81,6 +81,7 @@ function isFieldHoverAttribute(attribute: HtmlAttributeContext): boolean {
 
 async function buildFieldHover(
 	htmlFilePath: string,
+	htmlContent: string,
 	attributeContext: HtmlAttributeContext,
 	elementNode: any,
 	options: { useParentView: boolean }
@@ -129,7 +130,11 @@ async function buildFieldHover(
 		fieldReference,
 		elementNode,
 		metadataContext: hostContext,
-		selectorDocument: getBaseScreenDocument(htmlFilePath),
+		selectorDocument: getBaseScreenDocumentWithPriorPlacements(
+			htmlFilePath,
+			htmlContent,
+			typeof elementNode?.startIndex === 'number' ? elementNode.startIndex : undefined
+		),
 		useParentView: options.useParentView,
 	});
 	const hostResolution = hostIncludeSelectorResolution?.viewResolution

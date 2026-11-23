@@ -2,11 +2,40 @@ import path from 'path';
 import * as fs from 'fs';
 import vscode from 'vscode';
 import { AcuMateContext } from '../plugin-context';
+import { getOpenedFilePath, resolveFrontendSourcesUri } from '../utils';
 import { validateHtmlFile } from './htmlValidation/html-validation';
 import { collectGraphInfoDiagnostics } from './tsValidation/graph-info-validation';
 
 const validationOutput = vscode.window.createOutputChannel('AcuMate Validation');
 export const workspacePath = 'WebSites\\Pure\\Site\\FrontendSources\\';
+
+function resolveDefaultValidationDirectory(workspaceFolderPath: string): string {
+	const openedFile = getOpenedFilePath();
+	if (openedFile) {
+		const forwardOpened = path.normalize(openedFile).split(path.sep).join('/');
+		const screensMatch = forwardOpened.match(/^(.*\/screens)(?:\/|$)/i);
+		if (screensMatch?.[1]) {
+			const candidate = path.normalize(screensMatch[1].split('/').join(path.sep));
+			if (fsExists(candidate)) {
+				return candidate;
+			}
+		}
+	}
+
+	const candidates = [
+		path.join(workspaceFolderPath, 'screen', 'src', 'development', 'screens'),
+		path.join(workspaceFolderPath, 'screen', 'src', 'customizationScreens'),
+		path.join(workspaceFolderPath, 'screen', 'src', 'screens'),
+		path.join(workspaceFolderPath, 'src', 'screens'),
+	];
+	for (const candidate of candidates) {
+		if (fsExists(candidate)) {
+			return candidate;
+		}
+	}
+
+	return workspaceFolderPath;
+}
 
 export interface WorkspaceValidationOptions {
 	root: string;
@@ -42,15 +71,13 @@ export interface WorkspaceValidationResult {
 type ValidationIssue = { file: string; diagnostics: vscode.Diagnostic[] };
 
 export async function runWorkspaceScreenValidation(): Promise<void> {
-	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
+	const workspaceFolderUri = resolveFrontendSourcesUri();
 	if (!workspaceFolderUri) {
 		vscode.window.showWarningMessage('Open a workspace folder before running AcuMate screen validation.');
 		return;
 	}
 
-	const defaultRoot = path.join(workspaceFolderUri.fsPath, 'src', 'screens');
-	const defaultExists = fsExists(defaultRoot);
-	const initialValue = defaultExists ? defaultRoot : workspaceFolderUri.fsPath;
+	const initialValue = resolveDefaultValidationDirectory(workspaceFolderUri.fsPath);
 	const targetInput = await vscode.window.showInputBox({
 		title: 'Screen validation root',
 		prompt: 'Folder containing HTML screens (absolute path or relative to workspace).',
@@ -170,7 +197,7 @@ export async function runWorkspaceScreenValidationPipeline(
 }
 
 export async function runWorkspaceTypeScriptValidation(): Promise<void> {
-	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
+	const workspaceFolderUri = resolveFrontendSourcesUri();
 	if (!workspaceFolderUri) {
 		vscode.window.showWarningMessage('Open a workspace folder before running AcuMate TypeScript validation.');
 		return;
@@ -186,9 +213,7 @@ export async function runWorkspaceTypeScriptValidation(): Promise<void> {
 		return;
 	}
 
-	const defaultRoot = path.join(workspaceFolderUri.fsPath, 'src', 'screens');
-	const defaultExists = fsExists(defaultRoot);
-	const initialValue = defaultExists ? defaultRoot : workspaceFolderUri.fsPath;
+	const initialValue = resolveDefaultValidationDirectory(workspaceFolderUri.fsPath);
 	const targetInput = await vscode.window.showInputBox({
 		title: 'TypeScript validation root',
 		prompt: 'Folder containing screen TypeScript files (absolute path or relative to workspace).',

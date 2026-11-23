@@ -3,6 +3,11 @@ import path from "path";
 import ts from "typescript";
 import { DomHandler, Parser } from "htmlparser2";
 import { selectAll } from "css-select";
+import {
+	getScreenCandidateDirectories,
+	isLocalOrSrcModuleSpecifier,
+	resolveModulePath,
+} from "../utils";
 
 export interface BaseScreenDocument {
 	filePath: string;
@@ -84,31 +89,184 @@ export function loadHtmlDocument(htmlFilePath: string): BaseScreenDocument | und
 
 export function resolveBaseScreenHtmlPath(htmlFilePath: string): string | undefined {
 	const normalized = path.normalize(htmlFilePath);
-	const lower = normalized.toLowerCase();
-	const marker = `${path.sep}extensions${path.sep}`.toLowerCase();
-	const markerIndex = lower.lastIndexOf(marker);
+	const forwardPath = normalized.split(path.sep).join("/");
+	const lowerForward = forwardPath.toLowerCase();
+	const marker = "/extensions/";
+	const markerIndex = lowerForward.lastIndexOf(marker);
 	if (markerIndex === -1) {
 		return undefined;
 	}
 
-	const screenDir = normalized.substring(0, markerIndex);
-	const screenName = path.basename(screenDir);
+	const screenDirForward = forwardPath.substring(0, markerIndex);
+	const screenName = path.basename(screenDirForward);
 	if (!screenName) {
 		return undefined;
 	}
 
-	const candidates = [
-		path.join(screenDir, `${screenName}.html`),
-		path.join(screenDir, `${screenName}.htm`),
-	];
+	for (const candidateDir of getScreenCandidateDirectories(screenDirForward)) {
+		const candidates = [
+			path.join(candidateDir, `${screenName}.html`),
+			path.join(candidateDir, `${screenName}.htm`),
+		];
 
-	for (const candidate of candidates) {
-		if (fs.existsSync(candidate)) {
-			return candidate;
+		for (const candidate of candidates) {
+			if (fs.existsSync(candidate)) {
+				return candidate;
+			}
 		}
 	}
 
 	return undefined;
+}
+
+function cloneDomNodes(
+	nodes: any[] | undefined,
+	parent: any,
+	sourceMap: WeakMap<object, BaseScreenDocument> | undefined,
+	defaultDocument: BaseScreenDocument,
+	targetMap: WeakMap<object, BaseScreenDocument>
+): any[] {
+	if (!nodes?.length) {
+		return [];
+	}
+
+	const clonedList: any[] = [];
+	for (const orig of nodes) {
+		if (!orig || typeof orig !== "object") {
+			continue;
+		}
+		const clone = Object.assign(Object.create(Object.getPrototypeOf(orig)), orig);
+		clone.attribs = orig.attribs ? { ...orig.attribs } : orig.attribs;
+		clone.parent = parent;
+		clone.parentNode = parent;
+		clone.prev = null;
+		clone.next = null;
+		const mappedDoc = sourceMap?.get(orig) ?? defaultDocument;
+		targetMap.set(clone, mappedDoc);
+		clone.children = orig.children
+			? cloneDomNodes(orig.children, clone, sourceMap, mappedDoc, targetMap)
+			: orig.children;
+		clonedList.push(clone);
+	}
+
+	rewireSiblings(clonedList);
+	return clonedList;
+}
+
+function rewireSiblings(nodes: any[]) {
+	for (let i = 0; i < nodes.length; i++) {
+		nodes[i].prev = i > 0 ? nodes[i - 1] : null;
+		nodes[i].previousSibling = nodes[i].prev;
+		nodes[i].next = i + 1 < nodes.length ? nodes[i + 1] : null;
+		nodes[i].nextSibling = nodes[i].next;
+	}
+}
+
+export function cloneScreenDocumentForSession(document: BaseScreenDocument): BaseScreenDocument {
+	const targetMap = new WeakMap<object, BaseScreenDocument>();
+	const clonedDom = cloneDomNodes(document.dom, null, document.nodeDocumentMap, document, targetMap);
+	return {
+		filePath: document.filePath,
+		content: document.content,
+		dom: clonedDom,
+		sourceDocuments: document.sourceDocuments,
+		nodeDocumentMap: targetMap,
+	};
+}
+
+export function applyExtensionNodePlacement(
+	targetDocument: BaseScreenDocument,
+	sourceNode: any,
+	sourceDocument?: BaseScreenDocument
+): void {
+	if (!targetDocument?.dom || !sourceNode?.attribs || sourceNode.type !== "tag") {
+		return;
+	}
+
+	const placementKinds = ["before", "after", "append", "prepend", "prepand"] as const;
+	for (const kind of placementKinds) {
+		const rawSelector = sourceNode.attribs[kind];
+		if (typeof rawSelector !== "string" || !rawSelector.trim() || /{{\s*[^}]+\s*}}/.test(rawSelector)) {
+			continue;
+		}
+
+		const { nodes, error } = queryBaseScreenElements(targetDocument, rawSelector.trim());
+		if (error || !nodes.length) {
+			continue;
+		}
+
+		const nodeMap = targetDocument.nodeDocumentMap ?? new WeakMap<object, BaseScreenDocument>();
+		targetDocument.nodeDocumentMap = nodeMap;
+		const effectiveSourceDoc = sourceDocument ?? targetDocument;
+
+		for (const anchor of nodes) {
+			if (kind === "append" || kind === "prepend" || kind === "prepand") {
+				const cloned = cloneDomNodes([sourceNode], anchor, undefined, effectiveSourceDoc, nodeMap)[0];
+				if (!cloned) {
+					continue;
+				}
+				anchor.children = Array.isArray(anchor.children) ? anchor.children : [];
+				if (kind === "append") {
+					anchor.children.push(cloned);
+				} else {
+					anchor.children.unshift(cloned);
+				}
+				rewireSiblings(anchor.children);
+			} else {
+				const parentContainer = anchor.parent ?? anchor.parentNode;
+				const siblings: any[] = parentContainer?.children ?? targetDocument.dom;
+				const anchorIndex = siblings.indexOf(anchor);
+				if (anchorIndex === -1) {
+					continue;
+				}
+				const cloned = cloneDomNodes([sourceNode], parentContainer ?? null, undefined, effectiveSourceDoc, nodeMap)[0];
+				if (!cloned) {
+					continue;
+				}
+				const insertIndex = kind === "before" ? anchorIndex : anchorIndex + 1;
+				siblings.splice(insertIndex, 0, cloned);
+				rewireSiblings(siblings);
+			}
+		}
+		break;
+	}
+}
+
+export function getBaseScreenDocumentWithPriorPlacements(
+	htmlFilePath: string,
+	currentContent?: string,
+	maxStartIndex?: number
+): BaseScreenDocument | undefined {
+	const baseDoc = getBaseScreenDocument(htmlFilePath);
+	if (!baseDoc || !currentContent) {
+		return baseDoc;
+	}
+
+	const sessionDoc = cloneScreenDocumentForSession(baseDoc);
+	const currentDom = parseHtml(currentContent);
+	const currentSourceDoc: BaseScreenDocument = {
+		filePath: path.normalize(htmlFilePath),
+		content: currentContent,
+		dom: currentDom,
+	};
+
+	const walk = (nodes: any[] | undefined) => {
+		if (!nodes) {
+			return;
+		}
+		for (const node of nodes) {
+			if (maxStartIndex !== undefined && typeof node?.startIndex === "number" && node.startIndex >= maxStartIndex) {
+				return;
+			}
+			if (node?.type === "tag") {
+				applyExtensionNodePlacement(sessionDoc, node, currentSourceDoc);
+			}
+			walk(node?.children);
+		}
+	};
+
+	walk(currentDom);
+	return sessionDoc;
 }
 
 export function queryBaseScreenElements(document: BaseScreenDocument, selector: string): SelectorQueryResult {
@@ -423,8 +581,14 @@ function resolveDependencyTsPath(
 	sourceTsPath: string,
 	dependency: InterfaceDependency
 ): string | undefined {
-	if (dependency.moduleSpecifier?.startsWith(".")) {
-		return resolveModuleTsPath(sourceTsPath, dependency.moduleSpecifier);
+	if (isLocalOrSrcModuleSpecifier(dependency.moduleSpecifier) && dependency.moduleSpecifier) {
+		const resolved = resolveModulePath(sourceTsPath, dependency.moduleSpecifier);
+		if (resolved) {
+			return resolved;
+		}
+		if (dependency.moduleSpecifier.startsWith(".")) {
+			return resolveModuleTsPath(sourceTsPath, dependency.moduleSpecifier);
+		}
 	}
 
 	return findFileWithExtensions(path.join(path.dirname(sourceTsPath), dependency.typeName), [".ts", ".tsx"]);
@@ -516,7 +680,19 @@ function getExtensionNameFromFilePath(filePath: string): string {
 function isHtmlPathInDirectory(htmlFilePath: string, directoryPath: string): boolean {
 	const normalizedHtmlDirectory = path.normalize(path.dirname(htmlFilePath)).toLowerCase();
 	const normalizedDirectory = path.normalize(directoryPath).toLowerCase();
-	return normalizedHtmlDirectory === normalizedDirectory;
+	if (normalizedHtmlDirectory === normalizedDirectory) {
+		return true;
+	}
+
+	const screenDirForward = path.dirname(directoryPath).split(path.sep).join("/");
+	for (const candidateScreenDir of getScreenCandidateDirectories(screenDirForward)) {
+		const candidateExtDir = path.normalize(path.join(candidateScreenDir, "extensions")).toLowerCase();
+		if (normalizedHtmlDirectory === candidateExtDir) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 function tryReadTsSourceFile(tsFilePath: string): ts.SourceFile | undefined {

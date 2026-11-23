@@ -25,7 +25,7 @@ import { getScreenTemplates } from '../services/screen-template-service';
 import { getIncludeMetadata, IncludeMetadata } from '../services/include-service';
 import { BackendFieldMetadata, normalizeMetaName } from '../backend-metadata-utils';
 import { loadBackendFieldsForView } from './html-backend-utils';
-import { getBaseScreenDocument } from '../services/screen-html-service';
+import { getBaseScreenDocumentWithPriorPlacements } from '../services/screen-html-service';
 import {
 	HtmlIncludeFieldContext,
 	createHtmlFieldMetadataContext,
@@ -162,7 +162,11 @@ export class HtmlCompletionProvider implements vscode.CompletionItemProvider {
 
 			const viewName = getParentOrSelectorViewName(
 				elementNode,
-				getBaseScreenDocument(document.uri.fsPath)
+				getBaseScreenDocumentWithPriorPlacements(
+					document.uri.fsPath,
+					document.getText(),
+					typeof elementNode?.startIndex === 'number' ? elementNode.startIndex : undefined
+				)
 			);
 			if (!viewName) {
 				return undefined;

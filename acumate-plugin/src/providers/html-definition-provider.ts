@@ -20,7 +20,7 @@ import {
 } from './html-shared';
 import { resolveIncludeFilePath } from '../services/include-service';
 import {
-	getBaseScreenDocument,
+	getBaseScreenDocumentWithPriorPlacements,
 	isCustomizationSelectorAttribute,
 	queryBaseScreenElements,
 	BaseScreenDocument,
@@ -73,7 +73,11 @@ export class HtmlDefinitionProvider implements vscode.DefinitionProvider {
 			return;
 		}
 
-		const baseScreenDocument = getBaseScreenDocument(document.uri.fsPath);
+		const baseScreenDocument = getBaseScreenDocumentWithPriorPlacements(
+			document.uri.fsPath,
+			document.getText(),
+			typeof elementNode?.startIndex === 'number' ? elementNode.startIndex : undefined
+		);
 		const workspaceRoots = vscode.workspace.workspaceFolders?.map(folder => folder.uri.fsPath);
 		const hostTsFilePaths = getRelatedTsFiles(document.uri.fsPath);
 		const includeContext = getIncludeFieldContext({

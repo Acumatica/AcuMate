@@ -1,4 +1,4 @@
-import { checkFileExists, createFile, runNpmCommand, screensPath, workspacePath } from "../../utils";
+import { checkFileExists, createFile, resolveFrontendSourcesUri, runNpmCommand, screensPath } from "../../utils";
 import { selectActions } from "../common/select-actions";
 import { selectFields } from "../common/select-fields";
 import { selectGraphType } from "./select-graph-type";
@@ -86,7 +86,11 @@ export async function createScreen() {
     }
 
 	const folderPath = screensPath + screenId?.substring(0, 2) + "\\" + screenId;
-	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
+	const workspaceFolderUri = resolveFrontendSourcesUri();
+	if (!workspaceFolderUri) {
+		vscode.window.showErrorMessage('Open a workspace folder before creating a screen.');
+		return;
+	}
 	const fileUri = vscode.Uri.joinPath(workspaceFolderUri, folderPath, screenId + ".ts");
 
 	if (await checkFileExists(fileUri)) {

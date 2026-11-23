@@ -23,6 +23,8 @@ import {
   queryBaseScreenElements,
   BaseScreenDocument,
   getScreenDocumentDisplayName,
+  cloneScreenDocumentForSession,
+  applyExtensionNodePlacement,
 } from "../../services/screen-html-service";
 import { createSuppressionEngine, SuppressionEngine } from "../../diagnostics/suppression";
 import {
@@ -98,7 +100,10 @@ export async function validateHtmlFile(document: vscode.TextDocument) {
   const controlMetadata = new Map(
     getClientControlsMetadata({ startingPath: filePath, workspaceRoots }).map((control) => [control.tagName.toLowerCase(), control])
   );
-  const baseScreenDocument = getBaseScreenDocument(filePath);
+  const rawBaseScreenDocument = getBaseScreenDocument(filePath);
+  const baseScreenDocument = rawBaseScreenDocument
+    ? cloneScreenDocumentForSession(rawBaseScreenDocument)
+    : undefined;
 
   const handler = new DomHandler(
     (error, dom): void => {
@@ -236,6 +241,13 @@ function validateDom(
       }
 
       validateCustomizationSelectors(node);
+      if (baseScreenDocument) {
+        applyExtensionNodePlacement(baseScreenDocument, node, {
+          filePath: htmlFilePath,
+          content,
+          dom,
+        });
+      }
     }
 
     if (

@@ -12,7 +12,15 @@ export class ConfigurationService {
     }
 
     get backedUrl() : string | undefined {
-        return this.config.get("backedUrl");
+        const raw = this.config.get<string>("backedUrl") || this.config.get<string>("backendUrl");
+        if (!raw) {
+            return raw;
+        }
+        const trimmed = raw.trim();
+        if (!trimmed) {
+            return trimmed;
+        }
+        return trimmed.endsWith("/") ? trimmed : `${trimmed}/`;
     }
 
     get login() : string | undefined {

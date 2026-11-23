@@ -10,8 +10,73 @@ export const workspacePath = 'WebSites\\Pure\\Site\\FrontendSources\\';
 
 import ts from 'typescript';
 
+function isDirectory(targetPath: string | undefined): boolean {
+	if (!targetPath) {
+		return false;
+	}
+	try {
+		return fs.statSync(targetPath).isDirectory();
+	}
+	catch {
+		return false;
+	}
+}
+
+function extractFrontendSourcesFromPath(candidatePath: string | undefined): string | undefined {
+	if (!candidatePath) {
+		return undefined;
+	}
+	const normalized = path.normalize(candidatePath);
+	const forward = normalized.split(path.sep).join('/');
+	const match = forward.match(/^(.*\/FrontendSources)(?:\/|$)/i);
+	if (match?.[1]) {
+		return path.normalize(match[1]);
+	}
+	const nestedCandidate = path.join(normalized, 'FrontendSources');
+	if (isDirectory(nestedCandidate)) {
+		return nestedCandidate;
+	}
+	if (path.basename(normalized).toLowerCase() === 'screen' && isDirectory(path.join(normalized, 'src'))) {
+		return path.dirname(normalized);
+	}
+	return undefined;
+}
+
+export function resolveFrontendSourcesUri(hintPath?: string): vscode.Uri | undefined {
+	if (AcuMateContext.repositoryPath) {
+		const legacyRepoWorkspace = path.join(AcuMateContext.repositoryPath, workspacePath);
+		if (isDirectory(legacyRepoWorkspace)) {
+			return vscode.Uri.file(legacyRepoWorkspace);
+		}
+	}
+
+	const fromHint = extractFrontendSourcesFromPath(hintPath);
+	if (fromHint) {
+		return vscode.Uri.file(fromHint);
+	}
+
+	const openedFile = getOpenedFilePath();
+	const fromOpened = extractFrontendSourcesFromPath(openedFile);
+	if (fromOpened) {
+		return vscode.Uri.file(fromOpened);
+	}
+
+	for (const folder of vscode.workspace.workspaceFolders ?? []) {
+		const fromWorkspace = extractFrontendSourcesFromPath(folder.uri.fsPath);
+		if (fromWorkspace) {
+			return vscode.Uri.file(fromWorkspace);
+		}
+	}
+
+	if (vscode.workspace.workspaceFolders?.length) {
+		return vscode.workspace.workspaceFolders[0].uri;
+	}
+
+	return undefined;
+}
+
 export async function createFile(path: string, fileName: string, content: string): Promise<vscode.Uri | undefined> {
-	const workspaceFolderUri = vscode.Uri.file(`${AcuMateContext.repositoryPath}${workspacePath}`);
+	const workspaceFolderUri = resolveFrontendSourcesUri();
 	if (workspaceFolderUri) {
 		const fileUri = vscode.Uri.joinPath(workspaceFolderUri, path, fileName);
 
@@ -279,7 +344,44 @@ function getImportModuleSpecifier(sourceFile: ts.SourceFile, className: string):
 	return undefined;
 }
 
-function resolveModulePath(sourceFilePath: string, moduleSpecifier: string): string | undefined {
+export function isLocalOrSrcModuleSpecifier(moduleSpecifier: string | undefined): boolean {
+	if (!moduleSpecifier) {
+		return false;
+	}
+	return (
+		moduleSpecifier.startsWith('.') ||
+		moduleSpecifier.startsWith('src/') ||
+		moduleSpecifier.startsWith('src\\')
+	);
+}
+
+function findExistingCandidateFile(basePath: string): string | undefined {
+	for (const candidate of buildCandidateFilePaths(basePath)) {
+		if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
+			return candidate;
+		}
+	}
+	return undefined;
+}
+
+function getMappedOverlayTargetBases(targetBase: string): string[] {
+	const results: string[] = [];
+	const forward = path.normalize(targetBase).split(path.sep).join('/');
+	const customizationPattern = /\/customizationScreens\/[^/]+\//i;
+	const developmentPattern = /\/development\//i;
+
+	if (customizationPattern.test(forward)) {
+		results.push(path.normalize(forward.replace(customizationPattern, '/').split('/').join(path.sep)));
+		results.push(path.normalize(forward.replace(customizationPattern, '/development/').split('/').join(path.sep)));
+	}
+	if (developmentPattern.test(forward)) {
+		results.push(path.normalize(forward.replace(developmentPattern, '/').split('/').join(path.sep)));
+	}
+
+	return results;
+}
+
+export function resolveModulePath(sourceFilePath: string, moduleSpecifier: string): string | undefined {
 	if (!moduleSpecifier) {
 		return undefined;
 	}
@@ -288,16 +390,41 @@ function resolveModulePath(sourceFilePath: string, moduleSpecifier: string): str
 		return undefined;
 	}
 
-	// Support only relative imports for now
-	if (moduleSpecifier.startsWith('.')) {
+	const normalizedSpecifier = moduleSpecifier.replace(/\\/g, '/');
+
+	if (normalizedSpecifier.startsWith('.')) {
 		const baseDir = path.dirname(sourceFilePath);
-		const normalizedSpecifier = moduleSpecifier.replace(/\\/g, '/');
 		const targetBase = path.resolve(baseDir, normalizedSpecifier);
-		const candidateFiles = buildCandidateFilePaths(targetBase);
-		for (const candidate of candidateFiles) {
-			if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) {
-				return candidate;
+		const directMatch = findExistingCandidateFile(targetBase);
+		if (directMatch) {
+			return directMatch;
+		}
+
+		for (const mappedBase of getMappedOverlayTargetBases(targetBase)) {
+			const mappedMatch = findExistingCandidateFile(mappedBase);
+			if (mappedMatch) {
+				return mappedMatch;
 			}
+		}
+		return undefined;
+	}
+
+	if (normalizedSpecifier.startsWith('src/')) {
+		let currentDir = path.dirname(path.resolve(sourceFilePath));
+		const visited = new Set<string>();
+		while (currentDir && !visited.has(currentDir)) {
+			visited.add(currentDir);
+			if (isDirectory(path.join(currentDir, 'src'))) {
+				const candidateMatch = findExistingCandidateFile(path.resolve(currentDir, normalizedSpecifier));
+				if (candidateMatch) {
+					return candidateMatch;
+				}
+			}
+			const parentDir = path.dirname(currentDir);
+			if (parentDir === currentDir) {
+				break;
+			}
+			currentDir = parentDir;
 		}
 	}
 
@@ -405,6 +532,7 @@ export type CollectedClassInfo = {
 	properties: Map<string, ClassPropertyInfo>;
 	sourceFile: ts.SourceFile;
 	node: ts.ClassDeclaration;
+	mixedInto?: string[];
 };
 
 function collectClassPropertiesFromSource(
@@ -453,7 +581,7 @@ function collectClassPropertiesFromSource(
 		}
 
 		const moduleSpecifier = statement.moduleSpecifier.text;
-		if (!moduleSpecifier.startsWith('.')) {
+		if (!isLocalOrSrcModuleSpecifier(moduleSpecifier)) {
 			continue;
 		}
 
@@ -501,6 +629,43 @@ function applyMixinTargets(classInfos: CollectedClassInfo[], mixinTargets: Map<s
 
 	const lookup = new Map(classInfos.map(info => [info.className, info]));
 
+	// Propagate PXScreen/PXView types and mixedInto chains across interface-merged extension classes
+	let changed = true;
+	let iterations = 0;
+	while (changed && iterations < 10) {
+		changed = false;
+		iterations++;
+		for (const [mixinName, targetNames] of mixinTargets) {
+			const mixinInfo = lookup.get(mixinName);
+			if (!mixinInfo) {
+				continue;
+			}
+
+			const mixedIntoSet = new Set<string>(mixinInfo.mixedInto ?? []);
+			for (const targetName of targetNames) {
+				if (!mixedIntoSet.has(targetName)) {
+					mixedIntoSet.add(targetName);
+					changed = true;
+				}
+				const targetInfo = lookup.get(targetName);
+				if (!targetInfo) {
+					continue;
+				}
+				for (const transitiveTarget of targetInfo.mixedInto ?? []) {
+					if (!mixedIntoSet.has(transitiveTarget)) {
+						mixedIntoSet.add(transitiveTarget);
+						changed = true;
+					}
+				}
+				if (!mixinInfo.type && targetInfo.type) {
+					mixinInfo.type = targetInfo.type;
+					changed = true;
+				}
+			}
+			mixinInfo.mixedInto = [...mixedIntoSet];
+		}
+	}
+
 	for (const [mixinName, targetNames] of mixinTargets) {
 		const mixinInfo = lookup.get(mixinName);
 		if (!mixinInfo) {
@@ -516,6 +681,12 @@ function applyMixinTargets(classInfos: CollectedClassInfo[], mixinTargets: Map<s
 			for (const [propName, propInfo] of mixinInfo.properties) {
 				if (!targetInfo.properties.has(propName)) {
 					targetInfo.properties.set(propName, propInfo);
+				}
+			}
+
+			for (const [propName, propInfo] of targetInfo.properties) {
+				if (!mixinInfo.properties.has(propName)) {
+					mixinInfo.properties.set(propName, propInfo);
 				}
 			}
 		}
@@ -646,27 +817,43 @@ export function getOpenedFilePath(): string | undefined {
 }
 
 export function getFrontendSourcesPath(): string | undefined {
-    const pathArray = getOpenedFilePath()?.split(screensPath);
-    const path = pathArray ? pathArray[0] : undefined;
-    return path;
+    const opened = getOpenedFilePath();
+    if (opened) {
+        const match = opened.match(/^(.*?[\\/])screen[\\/]src[\\/]/i);
+        if (match?.[1]) {
+            return match[1];
+        }
+    }
+    const resolved = resolveFrontendSourcesUri(opened)?.fsPath;
+    if (resolved) {
+        return resolved.endsWith(path.sep) ? resolved : `${resolved}${path.sep}`;
+    }
+    return undefined;
 }
 
 export function getScreenAppPath(): string | undefined {
     const frontendSourcesPath = getFrontendSourcesPath();
-    const path = frontendSourcesPath ? `${frontendSourcesPath}screen` : undefined;
-    return path;
+    const result = frontendSourcesPath ? `${frontendSourcesPath}screen` : undefined;
+    return result;
 }
 
 export function getScreensSrcPath(): string | undefined {
     const frontendSourcesPath = getFrontendSourcesPath();
-    const path = frontendSourcesPath ? `${frontendSourcesPath}${screensPath}` : undefined;
-    return path;
+    const result = frontendSourcesPath ? `${frontendSourcesPath}${screensPath}` : undefined;
+    return result;
 }
 
 export function getOpenedScreenId(): string | undefined {
-    const openedScreenPathArray = getOpenedFilePath()?.split('\\');
-    const openedScreenId = openedScreenPathArray ? openedScreenPathArray[openedScreenPathArray.length - 1].split('.')[0] : undefined;
-    return openedScreenId;
+    const opened = getOpenedFilePath();
+    if (!opened) {
+        return undefined;
+    }
+    const normalized = path.normalize(opened).split(path.sep).join('/');
+    const extMatch = normalized.match(/\/([A-Za-z0-9]+)\/extensions\/[^/]+$/i);
+    if (extMatch?.[1]) {
+        return extMatch[1];
+    }
+    return path.basename(opened).split('.')[0];
 }
 
 export function groupBy<T>(array: T[], key: keyof T): Record<string, T[]> {
@@ -718,6 +905,23 @@ export function getRelatedTsFiles(htmlFilePath: string): string[] {
 	return [...related];
 }
 
+export function getScreenCandidateDirectories(screenDirForward: string): string[] {
+	const candidateDirs = new Set<string>([screenDirForward]);
+	const developmentPattern = /\/development\//i;
+	const customizationPattern = /\/customizationScreens\/[^/]+\//i;
+
+	if (customizationPattern.test(screenDirForward)) {
+		candidateDirs.add(screenDirForward.replace(customizationPattern, '/'));
+		candidateDirs.add(screenDirForward.replace(customizationPattern, '/development/'));
+	}
+
+	if (developmentPattern.test(screenDirForward)) {
+		candidateDirs.add(screenDirForward.replace(developmentPattern, '/'));
+	}
+
+	return [...candidateDirs].map(dirForward => path.normalize(dirForward.split('/').join(path.sep)));
+}
+
 export function getScreenTsFromExtension(filePath: string): string | undefined {
 	const normalized = path.normalize(filePath);
 	const forwardPath = normalized.split(path.sep).join('/');
@@ -739,14 +943,7 @@ export function getScreenTsFromExtension(filePath: string): string | undefined {
 		return undefined;
 	}
 
-	const candidateDirs = new Set<string>([screenDirForward]);
-	const developmentPattern = /\/development\//i;
-	if (developmentPattern.test(screenDirForward)) {
-		candidateDirs.add(screenDirForward.replace(developmentPattern, '/'));
-	}
-
-	for (const candidateDirForward of candidateDirs) {
-		const candidateDir = path.normalize(candidateDirForward.split('/').join(path.sep));
+	for (const candidateDir of getScreenCandidateDirectories(screenDirForward)) {
 		const candidate = path.join(candidateDir, `${screenName}.ts`);
 		if (fs.existsSync(candidate)) {
 			return candidate;

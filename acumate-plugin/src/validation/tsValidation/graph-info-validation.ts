@@ -136,28 +136,31 @@ export async function collectGraphInfoDiagnostics(
 
 	const classInfos = getClassPropertiesFromTs(documentText, document.fileName);
 	const classInfoLookup = createClassInfoLookup(classInfos);
-	const screenClasses = classInfos.filter(
+	const localScreenClasses = classInfos.filter(
 		info => path.normalize(info.sourceFile.fileName) === normalizedDocumentPath && isScreenLikeClass(info)
 	);
-	if (!screenClasses.length) {
+	const allScreenClasses = classInfos.filter(isScreenLikeClass);
+	if (!localScreenClasses.length && !allScreenClasses.length) {
 		return diagnostics;
 	}
 
-	const featureDisabledClasses = collectFeatureDisabledScreenClasses(screenClasses, disabledFeatureNames);
+	const featureDisabledClasses = collectFeatureDisabledScreenClasses(allScreenClasses, disabledFeatureNames);
 
-	diagnostics.push(
-		...compareScreenDeclarationsWithGraph(
-			screenClasses,
-			structure,
-			document,
-			graphName,
-			suppression,
-			featureDisabledClasses
-		)
-	);
+	if (localScreenClasses.length) {
+		diagnostics.push(
+			...compareScreenDeclarationsWithGraph(
+				localScreenClasses,
+				structure,
+				document,
+				graphName,
+				suppression,
+				featureDisabledClasses
+			)
+		);
+	}
 	diagnostics.push(
 		...compareViewClassesWithGraph(
-			screenClasses,
+			allScreenClasses,
 			classInfoLookup,
 			structure,
 			document,
@@ -389,6 +392,10 @@ function createPropertyDiagnostic(
 	message: string,
 	suppression: SuppressionEngine
 ): vscode.Diagnostic | undefined {
+	if (path.normalize(property.sourceFile.fileName).toLowerCase() !== path.normalize(document.fileName).toLowerCase()) {
+		return undefined;
+	}
+
 	const range = new vscode.Range(
 		document.positionAt(property.node.getStart()),
 		document.positionAt(property.node.getEnd())

@@ -19,6 +19,8 @@ import { registerHtmlHoverProvider } from './providers/html-hover-provider';
 import { registerGraphInfoValidation } from './validation/tsValidation/graph-info-validation';
 import { registerSuppressionCodeActions } from './providers/suppression-code-actions';
 import { registerTsHoverProvider } from './providers/ts-hover-provider';
+import { clearGraphMetadataCache } from './services/graph-metadata-service';
+import { clearFeatureMetadataCache } from './services/feature-metadata-service';
 import { getFrontendSourcesPath } from './utils';
 import {
 	runWorkspaceScreenValidation,
@@ -36,6 +38,13 @@ const OPEN_SETTINGS_LABEL = 'Open AcuMate Settings';
 let backendConfigWarningShown = false;
 let backendDisabledLogged = false;
 let backendFeaturesInitialized = false;
+let activeApiClient: AcuMateApiClient | undefined;
+
+function resetRuntimeMetadataCaches() {
+	clearGraphMetadataCache();
+	clearFeatureMetadataCache();
+	activeApiClient?.resetState();
+}
 
 function reportBackendConfigurationState() {
 	if (!AcuMateContext.ConfigurationService.useBackend) {
@@ -86,6 +95,7 @@ function registerConfigurationWatcher(context: vscode.ExtensionContext) {
 
 		logInfo('Detected acuMate settings change. Reloading configuration.');
 		AcuMateContext.ConfigurationService.reload();
+		resetRuntimeMetadataCaches();
 		backendConfigWarningShown = false;
 		backendDisabledLogged = false;
 		reportBackendConfigurationState();
@@ -350,7 +360,8 @@ function createCommands(context: vscode.ExtensionContext) {
 	disposable = vscode.commands.registerCommand('acumate.dropCache', async () => {
 		const keys = context.globalState.keys();
 		logCommandInvocation('acumate.dropCache', { clearedKeys: keys.length });
-		keys.forEach(key => context.globalState.update(key, undefined));
+		await Promise.all(keys.map(key => context.globalState.update(key, undefined)));
+		resetRuntimeMetadataCaches();
 	});
 	context.subscriptions.push(disposable);
 
@@ -426,6 +437,7 @@ function init(context: vscode.ExtensionContext) {
 	AcuMateContext.ConfigurationService = new ConfigurationService();
 	const cacheService = new CachedDataService(context.globalState);
 	const apiClient = new AcuMateApiClient();
+	activeApiClient = apiClient;
 	AcuMateContext.ApiService = new LayeredDataService(cacheService, apiClient);
 	reportBackendConfigurationState();
 	registerConfigurationWatcher(context);
@@ -438,8 +450,17 @@ function init(context: vscode.ExtensionContext) {
 }
 
 function getRepositoryPath(): string | undefined {
-	const gitConfigPath = findConfig('config', { cwd: vscode.workspace.workspaceFolders?.[0].uri.fsPath ?? getFrontendSourcesPath(), dir: '.git' });
-	return gitConfigPath?.replace('.git\\config', '');
+	try {
+		const cwd = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? getFrontendSourcesPath();
+		if (!cwd) {
+			return undefined;
+		}
+		const gitConfigPath = findConfig('config', { cwd, dir: '.git' });
+		return gitConfigPath?.replace(/\.git[\\/]config$/i, '');
+	}
+	catch {
+		return undefined;
+	}
 }
 
 
