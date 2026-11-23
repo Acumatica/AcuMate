@@ -367,6 +367,10 @@ function validateDom(
       validateControlTypeAttribute(node);
     }
 
+    if (node.type === "tag" && node.name === "field") {
+      validateFieldConfigWithChildren(node);
+    }
+
     if (
       hasScreenMetadata &&
       node.type === "tag" &&
@@ -637,8 +641,41 @@ function validateDom(
   }
 
 
+  function validateFieldConfigWithChildren(node: any) {
+    if (!node?.attribs || hasAttributeIgnoreCase(node, "replace-content")) {
+      return;
+    }
+
+    const hasElementChild = Array.isArray(node.children) && node.children.some((child: any) => child?.type === "tag");
+    if (!hasElementChild) {
+      return;
+    }
+
+    const droppedAttributes = Object.keys(node.attribs).filter((attrName) => {
+      const lower = attrName.toLowerCase();
+      return lower === "config.bind" || lower === "control-type" || lower.startsWith("config-");
+    });
+
+    if (!droppedAttributes.length) {
+      return;
+    }
+
+    const formattedAttrs = droppedAttributes.map((attr) => `"${attr}"`).join(", ");
+    const range = getRange(content, node);
+    pushHtmlDiagnostic(
+      diagnostics,
+      suppression,
+      range,
+      `The <field> element has child elements, so ${formattedAttrs} will be silently dropped. Use <field replace-content> with an explicit <qp-field> instead.`
+    );
+  }
+
   function validateControlStateBinding(bindingValue: string, node: any) {
     if (hasTemplateExpression(bindingValue)) {
+      return;
+    }
+
+    if (bindingValue.trim() === "state" && isInsideReplaceContentField(node)) {
       return;
     }
 
@@ -921,6 +958,28 @@ function getAttributeValueRange(
   }
 
   return undefined;
+}
+
+function hasAttributeIgnoreCase(node: any, attributeName: string): boolean {
+  if (!node?.attribs) {
+    return false;
+  }
+
+  const target = attributeName.toLowerCase();
+  return Object.keys(node.attribs).some((key) => key.toLowerCase() === target);
+}
+
+function isInsideReplaceContentField(node: any): boolean {
+  let current = node?.parent ?? node?.parentNode;
+  while (current) {
+    if (current.type === "tag" && typeof current.name === "string" && current.name.toLowerCase() === "field") {
+      if (hasAttributeIgnoreCase(current, "replace-content")) {
+        return true;
+      }
+    }
+    current = current.parent ?? current.parentNode;
+  }
+  return false;
 }
 
 function getElementId(node: any): string {

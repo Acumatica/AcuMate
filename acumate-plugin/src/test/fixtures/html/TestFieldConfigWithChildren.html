@@ -1,0 +1,13 @@
+<template>
+	<qp-fieldset id="fsNotes" view.bind="Document">
+		<field name="Notes" config-type.bind="1" config-rows.bind="5">
+			<qp-tooltip id="ttNotes">Help text</qp-tooltip>
+		</field>
+		<field name="Notes" config.bind="{ rows: 5 }">
+			<qp-tooltip id="ttNotesConfig">Help text</qp-tooltip>
+		</field>
+		<field name="Notes" control-type="qp-drop-down">
+			<qp-tooltip id="ttNotesControl">Help text</qp-tooltip>
+		</field>
+	</qp-fieldset>
+</template>
